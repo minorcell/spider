@@ -309,7 +309,8 @@ body {
   margin: 0 0 12px;
 }
 
-#settings label.check {
+#settings label.check,
+#memory label.check {
   display: flex;
   align-items: center;
   gap: 8px;

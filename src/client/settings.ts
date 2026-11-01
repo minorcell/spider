@@ -12,6 +12,8 @@ export interface PilotSettings {
   compact: boolean;
   /** Compact threshold in KB. Null uses the built-in 400 KB default. */
   compactKb: number | null;
+  /** When on, a long idle stretch may write the day's conversation into the diary. */
+  autoMemory: boolean;
 }
 
 export type PilotInput = {
@@ -21,6 +23,7 @@ export type PilotInput = {
   contextTokens?: number | null;
   compact?: boolean;
   compactKb?: number | null;
+  autoMemory?: boolean;
 };
 
 const EMPTY: PilotSettings = {
@@ -30,6 +33,7 @@ const EMPTY: PilotSettings = {
   contextTokens: null,
   compact: false,
   compactKb: null,
+  autoMemory: false,
 };
 
 export function readPilot(): PilotSettings {
@@ -44,6 +48,7 @@ export function readPilot(): PilotSettings {
       contextTokens: positiveInt(parsed.contextTokens),
       compact: parsed.compact === true,
       compactKb: positiveInt(parsed.compactKb),
+      autoMemory: parsed.autoMemory === true,
     };
   } catch {
     return { ...EMPTY };
@@ -58,6 +63,7 @@ export function writePilot(settings: PilotInput): void {
     contextTokens: positiveInt(settings.contextTokens),
     compact: settings.compact === true,
     compactKb: positiveInt(settings.compactKb),
+    autoMemory: settings.autoMemory === true,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 }

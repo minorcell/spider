@@ -16,6 +16,7 @@ const settings: PilotSettings = {
   contextTokens: null,
   compact: false,
   compactKb: null,
+  autoMemory: false,
 };
 
 beforeEach(() => {

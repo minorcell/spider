@@ -35,6 +35,7 @@ const settings: PilotSettings = {
   contextTokens: null,
   compact: false,
   compactKb: null,
+  autoMemory: false,
 };
 
 function session(turns: ChatSession['turns'], summary = ''): ChatSession {

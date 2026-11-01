@@ -12,6 +12,7 @@ const EMPTY = {
   contextTokens: null,
   compact: false,
   compactKb: null,
+  autoMemory: false,
 };
 
 describe('pilot settings', () => {
@@ -47,6 +48,18 @@ describe('pilot settings', () => {
       compactKb: -3,
     });
     expect(readPilot()).toMatchObject({ contextTokens: null, compact: false, compactKb: null });
+  });
+
+  it('stores auto memory as an opt-in flag', () => {
+    writePilot({
+      baseURL: 'https://example.com',
+      model: 'gpt',
+      apiKey: 'key',
+      autoMemory: true,
+    });
+    expect(readPilot().autoMemory).toBe(true);
+    writePilot({ baseURL: 'https://example.com', model: 'gpt', apiKey: 'key' });
+    expect(readPilot().autoMemory).toBe(false);
   });
 
   it('reads integers written as strings', () => {

@@ -4,7 +4,7 @@ import { Diary } from '../../src/client/journal/diary.js';
 import { localDate, shiftDate } from '../../src/client/journal/dates.js';
 import * as usageLedger from '../../src/client/journal/usage.js';
 import { summarizeDiary } from '../../src/client/journal/summarize.js';
-import { mountPanel } from '../../src/client/panel.js';
+import { AUTO_MEMORY_IDLE_MS, mountPanel } from '../../src/client/panel.js';
 import { readPilot, writePilot, type PilotSettings } from '../../src/client/settings.js';
 import type { Stage } from '../../src/client/stage.js';
 import type { SimSession } from '../../src/shared/sim/session.js';
@@ -51,6 +51,7 @@ const CHROME = `
   </dialog>
   <dialog id="memory">
     <form id="memory-form">
+      <input name="autoMemory" type="checkbox" />
       <select name="date"></select>
       <input name="line" />
       <textarea name="noted"></textarea>
@@ -122,6 +123,11 @@ async function flush(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setImmediate(resolve));
   }
+}
+
+/** Let promises started by a timer callback settle while the clock is fake. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 50; i++) await vi.advanceTimersByTimeAsync(1);
 }
 
 beforeEach(() => {
@@ -606,6 +612,7 @@ const PILOT: PilotSettings = {
   contextTokens: null,
   compact: false,
   compactKb: null,
+  autoMemory: false,
 };
 
 describe('diary panel', () => {
@@ -687,6 +694,27 @@ describe('diary panel', () => {
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await flush();
     expect(await day.read(day.date)).toMatchObject({ line: '新的一句', noted: '记住' });
+  });
+
+  it('toggles auto memory from the memory dialog', async () => {
+    writePilot({
+      baseURL: 'https://example.com',
+      model: 'model-1',
+      apiKey: 'key',
+      autoMemory: true,
+    });
+    mount();
+    await flush();
+    clickButton('#menu-memory');
+    await flush();
+    const box = document.querySelector<HTMLInputElement>('[name="autoMemory"]')!;
+    expect(box.checked).toBe(true);
+    box.checked = false;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(readPilot().autoMemory).toBe(false);
+    box.checked = true;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(readPilot().autoMemory).toBe(true);
   });
 
   it('dismisses the leave dialog', async () => {
@@ -946,49 +974,132 @@ describe('diary panel', () => {
     spy.mockRestore();
   });
 
-  it('asks to summarize after a quiet spell', async () => {
+  it('does not open the leave dialog after a long quiet spell', async () => {
     await seedDay();
     vi.useFakeTimers();
     mount();
     await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(180000);
-    expect(document.querySelector<HTMLDialogElement>('#leave')!.open).toBe(true);
-  });
-
-  it('does not ask to summarize when nothing is behind', async () => {
-    await seedDay(false);
-    vi.useFakeTimers();
-    mount();
-    await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(180000);
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS * 2);
     expect(document.querySelector<HTMLDialogElement>('#leave')!.open).toBe(false);
   });
 
-  it('does not open leave when it is already open', async () => {
+  it('writes the diary after a long idle when auto memory is on', async () => {
     await seedDay();
+    ready();
+    writePilot({ ...readPilot(), autoMemory: true });
     vi.useFakeTimers();
     mount();
     await vi.advanceTimersByTimeAsync(0);
-    const show = vi.spyOn(HTMLDialogElement.prototype, 'showModal');
-    document.querySelector<HTMLDialogElement>('#leave')!.open = true;
-    await vi.advanceTimersByTimeAsync(180000);
-    expect(show).not.toHaveBeenCalled();
-    show.mockRestore();
+    expect(summarizeDiary).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS);
+    await settle();
+    expect(summarizeDiary).toHaveBeenCalledTimes(1);
   });
 
-  it('does not ask to leave during a run', async () => {
+  it('leaves the diary alone when auto memory is off', async () => {
     await seedDay();
+    ready();
+    vi.useFakeTimers();
+    mount();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS * 2);
+    expect(summarizeDiary).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-memorize without a diary', async () => {
+    ready();
+    writePilot({ ...readPilot(), autoMemory: true });
+    const spy = vi.spyOn(Diary, 'open').mockRejectedValueOnce(new Error('no db'));
+    vi.useFakeTimers();
+    mount();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS);
+    expect(summarizeDiary).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('does not auto-memorize when nothing is behind', async () => {
+    await seedDay(false);
+    ready();
+    writePilot({ ...readPilot(), autoMemory: true });
+    vi.useFakeTimers();
+    mount();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS);
+    expect(summarizeDiary).not.toHaveBeenCalled();
+  });
+
+  it('waits for a fresh idle stretch after activity', async () => {
+    await seedDay();
+    ready();
+    writePilot({ ...readPilot(), autoMemory: true });
+    vi.useFakeTimers();
+    mount();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS - 60_000);
+    window.dispatchEvent(new Event('keydown'));
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS - 60_000);
+    expect(summarizeDiary).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await settle();
+    expect(summarizeDiary).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not auto-memorize during a run', async () => {
+    await seedDay();
+    ready();
+    writePilot({ ...readPilot(), autoMemory: true });
     vi.useFakeTimers();
     mount();
     await vi.advanceTimersByTimeAsync(0);
     loop.runAgent.mockImplementation(() => new Promise(() => {}));
-    ready();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
-    const show = vi.spyOn(HTMLDialogElement.prototype, 'showModal');
-    await vi.advanceTimersByTimeAsync(180000);
-    expect(show).not.toHaveBeenCalled();
-    show.mockRestore();
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS * 2);
+    expect(summarizeDiary).not.toHaveBeenCalled();
+  });
+
+  it('does not start a second digest while one is running', async () => {
+    await seedDay();
+    ready();
+    writePilot({ ...readPilot(), autoMemory: true });
+    let release!: () => void;
+    vi.mocked(summarizeDiary).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ line: '记下了', summary: '摘要' });
+        }),
+    );
+    vi.useFakeTimers();
+    mount();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS);
+    await settle();
+    expect(summarizeDiary).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS);
+    await settle();
+    expect(summarizeDiary).toHaveBeenCalledTimes(1);
+    release();
+    await settle();
+  });
+
+  it('backs off after a failed digest', async () => {
+    await seedDay();
+    ready();
+    writePilot({ ...readPilot(), autoMemory: true });
+    vi.mocked(summarizeDiary).mockRejectedValueOnce(new Error('boom'));
+    vi.useFakeTimers();
+    mount();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS);
+    await settle();
+    expect(summarizeDiary).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS - 60_000);
+    await settle();
+    expect(summarizeDiary).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    await settle();
+    expect(summarizeDiary).toHaveBeenCalledTimes(2);
   });
 });
 

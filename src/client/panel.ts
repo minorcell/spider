@@ -7,7 +7,10 @@ import type { Stage } from './stage.js';
 import type { SimSession } from '../shared/sim/session.js';
 
 const BUBBLE_MS = 5000;
-const IDLE_MS = 3 * 60 * 1000;
+/** How long the page must go untouched before auto memory may run. */
+export const AUTO_MEMORY_IDLE_MS = 30 * 60 * 1000;
+/** How often to check whether that idle stretch has passed. */
+const AUTO_MEMORY_CHECK_MS = 60 * 1000;
 
 /** Settings, the instruction box, and the bubble that follows the spider. */
 export function mountPanel(doc: Document, session: SimSession, stage: Stage): void {
@@ -75,7 +78,8 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   const lineInput = memoryForm.querySelector<HTMLInputElement>('input[name="line"]');
   const notedInput = memoryForm.querySelector<HTMLTextAreaElement>('textarea[name="noted"]');
   const summaryInput = memoryForm.querySelector<HTMLTextAreaElement>('textarea[name="summary"]');
-  if (!dateSelect || !lineInput || !notedInput || !summaryInput) {
+  const autoMemoryInput = memoryForm.querySelector<HTMLInputElement>('input[name="autoMemory"]');
+  if (!dateSelect || !lineInput || !notedInput || !summaryInput || !autoMemoryInput) {
     throw new Error('Missing pilot chrome');
   }
 
@@ -188,23 +192,46 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   dialog.addEventListener('close', persist);
 
   let diary: Diary | null = null;
-  let idleTimer = 0;
+  let lastActivity = Date.now();
+  let digesting = false;
+  /** When a failed digest may be tried again. */
+  let digestRetryAt = 0;
   const diaryReady = Diary.open()
     .then((opened) => {
       diary = opened;
       void opened.backfill(readPilot()).catch(() => undefined);
-      armIdle();
       return opened;
     })
     .catch(() => null);
 
-  const armIdle = (): void => {
-    window.clearTimeout(idleTimer);
-    idleTimer = window.setTimeout(() => {
-      if (current || !diary?.behind() || leave.open) return;
-      leave.showModal();
-    }, IDLE_MS);
+  const noteActivity = (): void => {
+    lastActivity = Date.now();
   };
+  for (const type of ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const) {
+    window.addEventListener(type, noteActivity, { passive: true });
+  }
+
+  /** Write the day into the diary once the page has been quiet long enough. */
+  const rememberIfIdle = (): void => {
+    if (current || digesting) return;
+    const settings = readPilot();
+    const opened = diary;
+    if (!settings.autoMemory) return;
+    if (!opened?.behind()) return;
+    if (Date.now() - lastActivity < AUTO_MEMORY_IDLE_MS) return;
+    if (Date.now() < digestRetryAt) return;
+    digesting = true;
+    void opened
+      .digest(settings)
+      .catch(() => {
+        digestRetryAt = Date.now() + AUTO_MEMORY_IDLE_MS;
+      })
+      .finally(() => {
+        digesting = false;
+      });
+  };
+
+  window.setInterval(rememberIfIdle, AUTO_MEMORY_CHECK_MS);
 
   const fillMemory = (page: { line: string; noted: string; summary: string }): void => {
     lineInput.value = page.line;
@@ -235,6 +262,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
       summaryInput.value = '';
     }
     setMenu(false);
+    autoMemoryInput.checked = readPilot().autoMemory;
     memoryDialog.showModal();
   };
 
@@ -274,6 +302,9 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   });
   usageClose.addEventListener('click', () => usageDialog.close());
   memoryClose.addEventListener('click', () => memoryDialog.close());
+  autoMemoryInput.addEventListener('change', () => {
+    writePilot({ ...readPilot(), autoMemory: autoMemoryInput.checked });
+  });
   dateSelect.addEventListener('change', () => {
     void diary?.read(dateSelect.value).then((page) => {
       if (page) fillMemory(page);
@@ -332,7 +363,6 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
     let sawText = false;
     const traces: Trace[] = [];
     let pending: { name: string; input: unknown } | null = null;
-    window.clearTimeout(idleTimer);
     try {
       const opened = diary ?? (await diaryReady);
       if (controller.signal.aborted) {
@@ -397,7 +427,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
         current = null;
         send.textContent = '发送';
       }
-      armIdle();
+      lastActivity = Date.now();
     }
   };
 
