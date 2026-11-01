@@ -1,8 +1,9 @@
-import { Diary } from './journal/diary.js';
+import { openJournal, type Journal, type OpenedJournal } from './journal/api.js';
 import { flushWorld, onRestore, setPending, type BootNote } from './worldStore.js';
 import { localDate } from './journal/dates.js';
 import type { Trace } from './journal/session.js';
-import { formatTokens, readUsage, recordUsage, type UsageSnapshot } from './journal/usage.js';
+import { formatTokens } from './journal/tokens.js';
+import type { UsageSnapshot } from './journal/usage.js';
 import { pilotReady, readPilot, writePilot, type PilotSettings } from './settings.js';
 import type { Stage } from './stage.js';
 import type { SimSession } from '../shared/sim/session.js';
@@ -19,6 +20,7 @@ export function mountPanel(
   session: SimSession,
   stage: Stage,
   note?: BootNote,
+  injected?: Promise<OpenedJournal | null> | OpenedJournal,
 ): void {
   const form = doc.querySelector<HTMLFormElement>('#pilot');
   const goal = doc.querySelector<HTMLInputElement>('#goal');
@@ -215,16 +217,17 @@ export function mountPanel(
   settingsForm.addEventListener('submit', persist);
   dialog.addEventListener('close', persist);
 
-  let diary: Diary | null = null;
+  let journal: Journal | null = null;
   let lastActivity = Date.now();
   let digesting = false;
   /** When a failed digest may be tried again. */
   let digestRetryAt = 0;
-  const diaryReady = Diary.open()
+  const journalReady = Promise.resolve(injected ?? openJournal())
     .then((opened) => {
-      diary = opened;
-      void opened.backfill(readPilot()).catch(() => undefined);
-      return opened;
+      if (!opened) return null;
+      journal = opened.journal;
+      void opened.journal.backfill(readPilot()).catch(() => undefined);
+      return opened.journal;
     })
     .catch(() => null);
 
@@ -239,7 +242,7 @@ export function mountPanel(
   const rememberIfIdle = (): void => {
     if (current || digesting) return;
     const settings = readPilot();
-    const opened = diary;
+    const opened = journal;
     if (!settings.autoMemory) return;
     if (!opened?.behind()) return;
     if (Date.now() - lastActivity < AUTO_MEMORY_IDLE_MS) return;
@@ -264,7 +267,7 @@ export function mountPanel(
   };
 
   const showMemory = async (): Promise<void> => {
-    const opened = diary ?? (await diaryReady);
+    const opened = journal ?? (await journalReady);
     /* v8 ignore next */
     if (!opened) return;
     const pages = await opened.pages();
@@ -308,8 +311,10 @@ export function mountPanel(
 
   const refreshUsage = async (): Promise<void> => {
     const today = localDate(new Date());
+    const opened = journal ?? (await journalReady);
     try {
-      renderUsage(await readUsage(today));
+      if (!opened) throw new Error('no journal');
+      renderUsage(await opened.readUsage(today));
     } catch {
       renderUsage({
         today: { date: today, input: 0, output: 0, total: 0, calls: 0, cacheRead: 0, reasoning: 0 },
@@ -330,14 +335,14 @@ export function mountPanel(
     writePilot({ ...readPilot(), autoMemory: autoMemoryInput.checked });
   });
   dateSelect.addEventListener('change', () => {
-    void diary?.read(dateSelect.value).then((page) => {
+    void journal?.read(dateSelect.value).then((page) => {
       if (page) fillMemory(page);
     });
   });
   memoryForm.addEventListener('submit', () => {
-    if (!diary) return;
-    const date = dateSelect.value || diary.date;
-    void diary.write({
+    if (!journal) return;
+    const date = dateSelect.value || journal.date;
+    void journal.write({
       date,
       line: lineInput.value,
       noted: notedInput.value,
@@ -346,13 +351,13 @@ export function mountPanel(
   });
 
   leaveClose.addEventListener('click', () => {
-    if (diary) diary.dismissed = true;
+    if (journal) journal.dismissed = true;
     leave.close();
   });
   leaveSummarize.addEventListener('click', () => {
-    if (!diary) return;
+    if (!journal) return;
     leaveSummarize.disabled = true;
-    void diary
+    void journal
       .digest(readPilot())
       .then(() => {
         show('记下了。这个页面可以关掉了。', 'note');
@@ -369,14 +374,14 @@ export function mountPanel(
   window.addEventListener('beforeunload', (event) => {
     // Vite reloads this page on each save. That is not the user leaving.
     if (import.meta.env.MODE === 'development') return;
-    if (!diary?.behind()) return;
+    if (!journal?.behind()) return;
     event.preventDefault();
     window.setTimeout(() => {
       if (!leave.open) leave.showModal();
     }, 0);
   });
   window.addEventListener('pagehide', () => {
-    void diary?.save();
+    void journal?.save();
   });
 
   const release = (controller: AbortController): void => {
@@ -397,7 +402,7 @@ export function mountPanel(
     setPending({ text, tool: null });
     flushWorld('poke');
     try {
-      const opened = diary ?? (await diaryReady);
+      const opened = journal ?? (await journalReady);
       if (controller.signal.aborted) {
         if (!replaced.has(controller)) show('已停止', 'note');
         release(controller);
@@ -443,7 +448,7 @@ export function mountPanel(
         },
       });
       const answer = reply.text;
-      await recordUsage(reply.usage);
+      await opened?.recordUsage(reply.usage);
       if (controller.signal.aborted) {
         if (!replaced.has(controller)) show('已停止', 'note');
         release(controller);

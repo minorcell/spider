@@ -5,6 +5,7 @@ import {
   installWorldStore,
   onRestore,
   pendingNow,
+  prefer,
   resetWorldStore,
   restoreWorld,
   setPending,
@@ -14,6 +15,7 @@ import { localDate } from '../../src/shared/dates.js';
 import { SimSession } from '../../src/shared/sim/session.js';
 import { captureBody, type WorldRecord } from '../../src/shared/sim/snapshot.js';
 import { Terrain } from '../../src/shared/terrain.js';
+import type { SnapshotStore } from '../../src/client/journal/store.js';
 
 const gate = vi.hoisted(() => ({ mode: 'ok' as 'ok' | 'hang' | 'reject' }));
 
@@ -51,6 +53,46 @@ function stamp(session: SimSession, over: Partial<WorldRecord> = {}): WorldRecor
 async function put(record: WorldRecord): Promise<void> {
   const db = await openSpiderDb();
   await db.put('snapshots', record);
+}
+
+interface MemoryStore extends SnapshotStore {
+  value: unknown;
+  failRead: boolean;
+  failWrite: boolean;
+  hangRead: boolean;
+  calls: string[];
+}
+
+function memoryStore(value: unknown = null): MemoryStore {
+  const store: MemoryStore = {
+    value,
+    failRead: false,
+    failWrite: false,
+    hangRead: false,
+    calls: [],
+    readSnapshot() {
+      store.calls.push('read');
+      if (store.hangRead) return new Promise(() => {});
+      if (store.failRead) return Promise.reject(new Error('read'));
+      return Promise.resolve(store.value);
+    },
+    putSnapshot(record) {
+      store.calls.push('put');
+      if (store.failWrite) return Promise.reject(new Error('write'));
+      store.value = record;
+      return Promise.resolve();
+    },
+    removeSnapshot() {
+      store.calls.push('remove');
+      store.value = null;
+      return Promise.resolve();
+    },
+    sweepSnapshots() {
+      store.calls.push('sweep');
+      return Promise.resolve();
+    },
+  };
+  return store;
 }
 
 beforeEach(async () => {
@@ -186,6 +228,7 @@ describe('flushWorld', () => {
     session.world.sprouts = (session.world.sprouts ?? 0) + 1;
     flushWorld('poke');
     await writesDone();
+    session.world.seed = 99;
     session.world.terrain = new Terrain(99);
     flushWorld('poke');
     await writesDone();
@@ -204,6 +247,10 @@ describe('flushWorld', () => {
     flushWorld('poke');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(moved + 1);
+    session.world.entities.pop();
+    flushWorld('poke');
+    await writesDone();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(moved + 2);
   });
 
   it('lets this tab keep its lease across a reload', async () => {
@@ -409,5 +456,388 @@ describe('flushWorld', () => {
     flushWorld('poke');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').owner).toEqual(expect.any(String));
+  });
+});
+
+describe('injected snapshot store', () => {
+  it('reads, writes, and sweeps through the given store', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    expect(await restoreWorld(session, new Date(), store)).toMatchObject({ restored: false });
+    installWorldStore(session, store);
+    session.spider.root.position.x += 0.3;
+    flushWorld('poke');
+    await writesDone();
+    expect(store.value).toMatchObject({ id: 'current' });
+    expect(store.calls).toContain('put');
+    expect(store.calls).toContain('sweep');
+  });
+
+  it('reconciles a deferred store and adopts a newer save', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    store.hangRead = true;
+    const session = new SimSession(2);
+    const pending = restoreWorld(session, new Date(), store);
+    await vi.advanceTimersByTimeAsync(1500);
+    const note = await pending;
+    expect(note.restored).toBe(false);
+    vi.useRealTimers();
+
+    store.hangRead = false;
+    const other = new SimSession(11);
+    store.value = stamp(other, { seq: 5, pending: { text: '换岛', tool: null } });
+    const heard: string[] = [];
+    onRestore((arrived) => {
+      if (arrived.pendingText) heard.push(arrived.pendingText);
+    });
+    installWorldStore(session, store);
+    await writesDone();
+    expect(session.world.seed).toBe(other.world.seed);
+    expect(heard).toEqual(['换岛']);
+    expect(pendingNow()?.text).toBe('换岛');
+  });
+
+  it('falls back when the deferred store cannot be read', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    store.hangRead = true;
+    const session = new SimSession(2);
+    const pending = restoreWorld(session, new Date(), store);
+    await vi.advanceTimersByTimeAsync(1500);
+    await pending;
+    vi.useRealTimers();
+    store.hangRead = false;
+    store.failRead = true;
+    installWorldStore(session, store);
+    await writesDone();
+    expect(store.calls.filter((call) => call === 'read').length).toBeGreaterThan(1);
+  });
+
+  it('stops writing when the deferred store is a newer format', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    store.hangRead = true;
+    const session = new SimSession(2);
+    const pending = restoreWorld(session, new Date(), store);
+    await vi.advanceTimersByTimeAsync(1500);
+    await pending;
+    vi.useRealTimers();
+    store.hangRead = false;
+    store.value = { format: 2 };
+    installWorldStore(session, store);
+    await writesDone();
+    session.spider.root.position.x += 0.5;
+    flushWorld('poke');
+    await writesDone();
+    expect(store.calls).not.toContain('put');
+  });
+
+  it('stops when the buffer is a newer format', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    localStorage.setItem(KEY, JSON.stringify({ format: 2 }));
+    session.spider.root.position.x += 0.5;
+    flushWorld('poke');
+    await writesDone();
+    expect(store.calls).not.toContain('put');
+  });
+
+  it('stops when the store is a newer format during a write', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    store.value = { format: 2 };
+    session.spider.root.position.x += 0.5;
+    flushWorld('poke');
+    await writesDone();
+    expect(store.calls).not.toContain('put');
+  });
+
+  it('still writes the store when the hide buffer is full', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('full');
+    });
+    session.spider.root.position.x += 0.2;
+    flushWorld('hide');
+    await writesDone();
+    setItem.mockRestore();
+    expect(store.calls).toContain('put');
+    expect((store.value as WorldRecord).seq).toBe(1);
+  });
+
+  it('drops a malformed buffer without waiting for a locked store', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    store.hangRead = true;
+    localStorage.setItem(KEY, '{');
+    const pending = restoreWorld(new SimSession(1), new Date(), store);
+    await vi.advanceTimersByTimeAsync(1500);
+    const note = await pending;
+    vi.useRealTimers();
+    expect(note).toMatchObject({ unreadable: true, cause: 'malformed' });
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('starts when the injected store rejects', async () => {
+    const store = memoryStore();
+    store.failRead = true;
+    const note = await restoreWorld(new SimSession(1), new Date(), store);
+    expect(note).toMatchObject({ restored: false, cause: null });
+  });
+
+  it('stops when a visible tab sees a newer format', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    store.value = { format: 2 };
+    localStorage.setItem(KEY, JSON.stringify({ format: 2 }));
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await writesDone();
+    document.dispatchEvent(new Event('visibilitychange'));
+    await writesDone();
+    session.spider.root.position.x += 0.5;
+    flushWorld('poke');
+    await writesDone();
+    expect(store.calls).not.toContain('put');
+  });
+
+  it('clears the interval when the page goes hidden', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    installWorldStore(session, store);
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await writesDone();
+    // A second hidden tick finds no timer to clear.
+    document.dispatchEvent(new Event('visibilitychange'));
+    await writesDone();
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+  });
+
+  it('prefers the later record, or the one that exists', () => {
+    const a = stamp(new SimSession(1), { seq: 1 });
+    const b = stamp(new SimSession(2), { seq: 2 });
+    expect(prefer(b, a)).toBe(b);
+    expect(prefer(a, b)).toBe(b);
+    expect(prefer(a, undefined)).toBe(a);
+    expect(prefer(undefined, b)).toBe(b);
+    expect(prefer()).toBeUndefined();
+  });
+
+  it('uses the store record when the buffer is empty', async () => {
+    const store = memoryStore(stamp(new SimSession(3), { seq: 2 }));
+    const session = new SimSession(1);
+    await restoreWorld(session, new Date(), store);
+    localStorage.removeItem(KEY);
+    session.spider.root.position.x += 0.5;
+    flushWorld('poke');
+    await writesDone();
+    expect(store.calls).toContain('read');
+  });
+
+  it('saves on the interval and stops the timer when hidden', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    installWorldStore(session, store);
+    session.spider.root.position.x += 0.2;
+    await vi.advanceTimersByTimeAsync(2000);
+    await writesDone();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBeGreaterThan(0);
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await writesDone();
+    vi.useRealTimers();
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+  });
+
+  it('stages a hide snapshot while the store is deferred', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    store.hangRead = true;
+    const session = new SimSession(2);
+    const pending = restoreWorld(session, new Date(), store);
+    await vi.advanceTimersByTimeAsync(1500);
+    await pending;
+    vi.useRealTimers();
+
+    store.hangRead = false;
+    installWorldStore(session, store);
+    session.spider.root.position.x += 0.3;
+    flushWorld('hide');
+    await writesDone();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(1);
+  });
+
+  it('reconciles an empty store without adopting', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    store.hangRead = true;
+    const session = new SimSession(2);
+    const born = session.world.seed;
+    const pending = restoreWorld(session, new Date(), store);
+    await vi.advanceTimersByTimeAsync(1500);
+    await pending;
+    vi.useRealTimers();
+    store.hangRead = false;
+    installWorldStore(session, store);
+    await writesDone();
+    expect(session.world.seed).toBe(born);
+  });
+
+  it('ignores a deferred store that is no newer', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    store.hangRead = true;
+    const local = stamp(new SimSession(4), { seq: 3 });
+    localStorage.setItem(KEY, JSON.stringify(local));
+    const session = new SimSession(2);
+    const pending = restoreWorld(session, new Date(), store);
+    await vi.advanceTimersByTimeAsync(1500);
+    await pending;
+    vi.useRealTimers();
+    store.hangRead = false;
+    store.value = stamp(new SimSession(5), { seq: 2 });
+    installWorldStore(session, store);
+    await writesDone();
+    expect(session.world.seed).toBe(local.seed);
+  });
+
+  it('adopts a deferred save without a pending sentence', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    store.hangRead = true;
+    const session = new SimSession(2);
+    const pending = restoreWorld(session, new Date(), store);
+    await vi.advanceTimersByTimeAsync(1500);
+    await pending;
+    vi.useRealTimers();
+    store.hangRead = false;
+    const other = new SimSession(13);
+    store.value = stamp(other, { seq: 5, pending: null });
+    const heard: Array<string | null> = [];
+    onRestore((arrived) => heard.push(arrived.pendingText));
+    installWorldStore(session, store);
+    await writesDone();
+    expect(session.world.seed).toBe(other.world.seed);
+    expect(heard).toEqual([null]);
+    expect(pendingNow()).toBeNull();
+  });
+
+  it('leaves the page alone when a visible tab finds nothing newer', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    localStorage.removeItem(KEY);
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await writesDone();
+    expect(store.value).toBeNull();
+  });
+
+  it('ignores a visible record this tab wrote', async () => {
+    sessionStorage.setItem('p5-art.world.owner', 'tab-a');
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    const own = stamp(new SimSession(5), {
+      seq: 9,
+      owner: 'tab-a',
+      pending: { text: '自己', tool: null },
+    });
+    store.value = own;
+    localStorage.setItem(KEY, JSON.stringify(own));
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await writesDone();
+    expect(pendingNow()).toBeNull();
+  });
+
+  it('ignores a visible record no newer than the one held', async () => {
+    const store = memoryStore(stamp(new SimSession(3), { seq: 5 }));
+    const session = new SimSession(1);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    store.value = stamp(new SimSession(4), { seq: 4 });
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await writesDone();
+    expect(session.world.seed).toBe(3);
+  });
+
+  it('adopts a visible save without a pending sentence', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    const other = new SimSession(13);
+    const record = stamp(other, { seq: 5, pending: null });
+    store.value = record;
+    localStorage.setItem(KEY, JSON.stringify(record));
+    const heard: Array<string | null> = [];
+    onRestore((arrived) => heard.push(arrived.pendingText));
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await writesDone();
+    expect(session.world.seed).toBe(other.world.seed);
+    expect(heard).toEqual([null]);
+  });
+
+  it('removes a malformed database record when the buffer is good', async () => {
+    const local = stamp(new SimSession(2), { seq: 2 });
+    localStorage.setItem(KEY, JSON.stringify(local));
+    const db = await openSpiderDb();
+    await db.put('snapshots', { id: 'current', format: 1 } as WorldRecord);
+    const note = await restoreWorld(new SimSession(1));
+    expect(note.restored).toBe(true);
+    const after = await openSpiderDb();
+    expect(await after.get('snapshots', 'current')).toMatchObject({ seq: 2 });
   });
 });

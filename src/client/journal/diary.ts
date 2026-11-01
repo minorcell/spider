@@ -1,5 +1,7 @@
+import type { LanguageModelUsage } from 'ai';
 import type { PilotSettings } from '../settings.js';
 import { pilotReady } from '../settings.js';
+import type { Journal } from './api.js';
 import { blankMemory, openSpiderDb, type MemoryPage } from './db.js';
 import { localDate, shiftDate } from './dates.js';
 import {
@@ -13,7 +15,7 @@ import {
   type CompactLimits,
   type Trace,
 } from './session.js';
-import { recordUsage } from './usage.js';
+import { readUsage, recordUsage, type UsageSnapshot } from './usage.js';
 
 const INDEX_DAYS = 60;
 
@@ -50,7 +52,7 @@ function viewOf(page: MemoryPage): MemoryView {
 }
 
 /** Today's conversation plus the diary that outlives it. */
-export class Diary {
+export class Diary implements Journal {
   /** Set when the user dismisses the leave dialog without summarizing. */
   dismissed = false;
 
@@ -156,6 +158,14 @@ export class Diary {
       this.session = { ...action.session, updatedAt: Date.now() };
     }
     await this.save();
+  }
+
+  recordUsage(usage: LanguageModelUsage | null | undefined, now = new Date()): Promise<void> {
+    return recordUsage(usage, now);
+  }
+
+  readUsage(today: string): Promise<UsageSnapshot> {
+    return readUsage(today);
   }
 
   /** Write today's summary into the diary. Noted lines stay as they are. */

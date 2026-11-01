@@ -5,14 +5,28 @@ import { localDate, shiftDate } from '../../src/client/journal/dates.js';
 import * as usageLedger from '../../src/client/journal/usage.js';
 import { summarizeDiary } from '../../src/client/journal/summarize.js';
 import { AUTO_MEMORY_IDLE_MS, mountPanel } from '../../src/client/panel.js';
-import { pendingNow, resetWorldStore } from '../../src/client/worldStore.js';
+import { pendingNow, resetWorldStore, type BootNote } from '../../src/client/worldStore.js';
 import { readPilot, writePilot, type PilotSettings } from '../../src/client/settings.js';
 import type { Stage } from '../../src/client/stage.js';
 import type { SimSession } from '../../src/shared/sim/session.js';
 
 const loop = vi.hoisted(() => ({ runAgent: vi.fn() }));
+const restoreHook = vi.hoisted(() => ({
+  cb: null as ((note: BootNote) => void) | null,
+}));
 
 vi.mock('../../src/client/agent/loop.js', () => ({ runAgent: loop.runAgent }));
+
+vi.mock('../../src/client/worldStore.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/client/worldStore.js')>();
+  return {
+    ...actual,
+    onRestore: (cb: (note: BootNote) => void) => {
+      restoreHook.cb = cb;
+      actual.onRestore(cb);
+    },
+  };
+});
 
 vi.mock('../../src/client/journal/summarize.js', async () => {
   const actual = await vi.importActual<typeof import('../../src/client/journal/summarize.js')>(
@@ -661,6 +675,15 @@ describe('diary panel', () => {
     spy.mockRestore();
   });
 
+  it('keeps running when the journal hand-off is empty', async () => {
+    document.body.innerHTML = CHROME;
+    mountPanel(document, fakeSession(), fakeStage(), undefined, Promise.resolve(null));
+    await flush();
+    clickButton('#menu-memory');
+    await flush();
+    expect(document.querySelector<HTMLDialogElement>('#memory')!.open).toBe(false);
+  });
+
   it('loads another day when the date changes', async () => {
     const day = await seedDay(false);
     const before = shiftDate(day.date, -1);
@@ -1154,6 +1177,16 @@ describe('usage dialog', () => {
     expect(document.querySelector<HTMLDialogElement>('#usage')!.open).toBe(false);
   });
 
+  it('renders an empty ledger when the diary cannot open', async () => {
+    vi.spyOn(Diary, 'open').mockRejectedValueOnce(new Error('no db'));
+    mount();
+    await flush();
+    clickButton('#menu-usage');
+    await flush();
+    expect(document.querySelector<HTMLDialogElement>('#usage')!.open).toBe(true);
+    expect(document.querySelector('#usage-today')!.textContent).toContain('0 次');
+  });
+
   it('shows compacted totals and days', async () => {
     const today = localDate(new Date());
     const [year, month, day] = shiftDate(today, -1).split('-').map(Number);
@@ -1317,5 +1350,28 @@ describe('saved sentence', () => {
     clickButton('#pilot-send', 1);
     await flush();
     expect(pendingNow()).toBeNull();
+  });
+
+  it('takes a restored sentence only while the box is untouched', async () => {
+    mount();
+    await flush();
+    const note = (pendingText: string | null): BootNote => ({
+      restored: true,
+      unreadable: false,
+      cause: null,
+      pendingText,
+    });
+    const goal = document.querySelector<HTMLInputElement>('#goal')!;
+    restoreHook.cb?.(note('接着走'));
+    expect(stage.retile).toHaveBeenCalledTimes(1);
+    expect(goal.value).toBe('接着走');
+
+    goal.value = '自己写的';
+    goal.dispatchEvent(new Event('input'));
+    restoreHook.cb?.(note('旧的'));
+    expect(goal.value).toBe('自己写的');
+
+    restoreHook.cb?.(note(null));
+    expect(stage.retile).toHaveBeenCalledTimes(3);
   });
 });

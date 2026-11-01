@@ -1,5 +1,5 @@
-import { openSpiderDb } from './journal/db.js';
 import { localDate } from '../shared/dates.js';
+import type { SnapshotStore } from './journal/store.js';
 import {
   captureBody,
   chooseRecord,
@@ -45,6 +45,15 @@ let listener: ((note: BootNote) => void) | null = null;
 let onVis: (() => void) | null = null;
 let inflight = 0;
 const idle: Array<() => void> = [];
+let providedStore: SnapshotStore | null = null;
+let storePromise: Promise<SnapshotStore> | null = null;
+
+/** The Worker-backed store in the page; IndexedDB directly in tests and old browsers. */
+function resolveStore(): Promise<SnapshotStore> {
+  if (providedStore) return Promise.resolve(providedStore);
+  storePromise ??= import('./journal/store.js').then((module) => module.dbSnapshotStore());
+  return storePromise;
+}
 
 export function setPending(next: SimBody['pending']): number {
   pendingGen += 1;
@@ -91,9 +100,16 @@ export function resetWorldStore(): void {
   pendingGen = 0;
   sessionRef = null;
   listener = null;
+  providedStore = null;
+  storePromise = null;
 }
 
-export async function restoreWorld(session: Restorable, now = new Date()): Promise<BootNote> {
+export async function restoreWorld(
+  session: Restorable,
+  now = new Date(),
+  store?: SnapshotStore,
+): Promise<BootNote> {
+  if (store) providedStore = store;
   const today = localDate(now);
   const ls = classify(readBuffer(), today);
   const loaded = await loadIdb(today);
@@ -104,8 +120,8 @@ export async function restoreWorld(session: Restorable, now = new Date()): Promi
     readonly = true;
     return { restored: false, unreadable: true, cause: 'format', pendingText: null };
   }
-  await forget(ls, 'local', today, dbOpen);
-  await forget(idb, 'idb', today, dbOpen);
+  await forget(ls, 'local', today);
+  await forget(idb, 'idb', today);
   const chosen = chooseRecord(
     ls.status === 'ok' ? ls.record : null,
     idb.status === 'ok' ? idb.record : null,
@@ -133,12 +149,14 @@ export async function restoreWorld(session: Restorable, now = new Date()): Promi
   };
 }
 
-export function installWorldStore(session: Restorable): void {
+export function installWorldStore(session: Restorable, store?: SnapshotStore): void {
+  if (store) providedStore = store;
   sessionRef = session;
   installed = true;
   if (!owner) owner = pageOwner();
   if (readonly) return;
   if (!lastBody) lastBody = captureBody(session, pending);
+  if (onVis) document.removeEventListener('visibilitychange', onVis);
   onVis = () => {
     if (document.visibilityState === 'hidden') {
       flushWorld('hide');
@@ -157,10 +175,11 @@ export function installWorldStore(session: Restorable): void {
 }
 
 async function write(reason: Reason): Promise<void> {
-  if (!sessionRef || readonly) return;
+  // flushWorld checked readonly and sessionRef before calling.
+  const session = sessionRef as Restorable;
   const now = Date.now();
   const today = localDate(new Date(now));
-  const body = captureBody(sessionRef, pending);
+  const body = captureBody(session, pending);
   const slack = reason === 'interval' ? APPLE_DIRTY_S : 0.05;
   const dirty = !lastBody || changed(lastBody, body, slack);
 
@@ -209,17 +228,18 @@ async function write(reason: Reason): Promise<void> {
     held.leaseUntil - now < SAVE_MS;
   if (!dirty && !renew && !staged) return;
 
-  const kept = dirty ? body : (lastBody ?? body);
+  // Not dirty implies a previous write left the body behind.
+  const kept = dirty ? body : (lastBody as SimBody);
   const floor = Math.max(idbRec?.seq ?? 0, localRec?.seq ?? 0, seenSeq);
   const record =
     staged && staged.seq > (idbRec?.seq ?? 0) ? staged : stamp(kept, floor + 1, now, today);
   const storedLocal = bufferPut(record);
   let storedDb = false;
   try {
-    const db = await openSpiderDb();
-    await db.put('snapshots', record);
+    const store = await resolveStore();
+    await store.putSnapshot(record);
     storedDb = true;
-    await sweep(today);
+    await store.sweepSnapshots(today);
   } catch {
     // The walk continues when the ledger cannot be written.
   }
@@ -229,7 +249,8 @@ async function write(reason: Reason): Promise<void> {
 }
 
 async function catchUp(): Promise<void> {
-  if (!sessionRef || readonly) return;
+  if (readonly) return;
+  const session = sessionRef as Restorable;
   const today = localDate(new Date());
   const chosen = await currentRecord(today);
   if (chosen === 'format') {
@@ -237,10 +258,10 @@ async function catchUp(): Promise<void> {
     return;
   }
   if (!chosen || chosen.seq <= seenSeq || chosen.owner === owner) return;
-  sessionRef.adopt(strip(chosen));
+  session.adopt(strip(chosen));
   pending = chosen.pending;
   seenSeq = chosen.seq;
-  lastBody = captureBody(sessionRef, pending);
+  lastBody = captureBody(session, pending);
   listener?.({
     restored: true,
     unreadable: false,
@@ -281,20 +302,14 @@ async function mirror(chosen: WorldRecord, ls: Classify, idb: Classify): Promise
   }
   if (!idbSame) {
     try {
-      const db = await openSpiderDb();
-      await db.put('snapshots', chosen);
+      await (await resolveStore()).putSnapshot(chosen);
     } catch {
       // The buffer still wins on the next launch.
     }
   }
 }
 
-async function forget(
-  item: Classify,
-  side: 'local' | 'idb',
-  today: string,
-  dbOpen: boolean,
-): Promise<void> {
+async function forget(item: Classify, side: 'local' | 'idb', today: string): Promise<void> {
   if (item.status !== 'expired' && item.status !== 'malformed') return;
   if (side === 'local') {
     try {
@@ -304,25 +319,12 @@ async function forget(
     }
     return;
   }
-  if (!dbOpen) return;
   try {
-    const db = await openSpiderDb();
-    await sweep(today);
-    if (item.status === 'malformed' || item.status === 'expired')
-      await db.delete('snapshots', 'current');
+    const store = await resolveStore();
+    await store.sweepSnapshots(today);
+    await store.removeSnapshot();
   } catch {
     // A failed delete still leaves the page on a fresh island.
-  }
-}
-
-async function sweep(today: string): Promise<void> {
-  const db = await openSpiderDb();
-  const rows = await db.getAll('snapshots');
-  for (const row of rows) {
-    const status = classify(row, today).status;
-    if (row.id !== 'current' || status === 'expired' || status === 'malformed') {
-      await db.delete('snapshots', row.id);
-    }
   }
 }
 
@@ -330,35 +332,32 @@ async function loadIdb(
   today: string,
 ): Promise<{ idb: Classify; opened: boolean; deferred: boolean }> {
   let deferred = false;
-  let opened = true;
+  let value: unknown = null;
   const ready = await new Promise<boolean>((resolve) => {
     const timer = setTimeout(() => {
       deferred = true;
       resolve(false);
     }, OPEN_MS);
-    openSpiderDb().then(
-      () => {
-        clearTimeout(timer);
-        resolve(true);
-      },
-      () => {
-        clearTimeout(timer);
-        deferred = false;
-        opened = false;
-        resolve(false);
-      },
-    );
+    resolveStore()
+      .then((store) => store.readSnapshot())
+      .then(
+        (record) => {
+          value = record;
+          clearTimeout(timer);
+          resolve(true);
+        },
+        () => {
+          clearTimeout(timer);
+          resolve(false);
+        },
+      );
   });
-  if (!ready) return { idb: { status: 'empty' }, opened, deferred };
-  try {
-    return { idb: classify(await readIdb(), today), opened: true, deferred: false };
-  } catch {
-    return { idb: { status: 'empty' }, opened: false, deferred: false };
-  }
+  if (!ready) return { idb: { status: 'empty' }, opened: false, deferred };
+  return { idb: classify(value, today), opened: true, deferred: false };
 }
 
 async function reconcile(): Promise<void> {
-  if (!sessionRef) return;
+  const session = sessionRef as Restorable;
   const today = localDate(new Date());
   let idb: Classify = { status: 'empty' };
   try {
@@ -370,15 +369,13 @@ async function reconcile(): Promise<void> {
   dbDeferred = false;
   if (idb.status === 'format') {
     readonly = true;
-    if (timer) clearInterval(timer);
-    timer = undefined;
     return;
   }
   if (idb.status !== 'ok' || idb.record.seq <= seenSeq) return;
-  sessionRef.adopt(strip(idb.record));
+  session.adopt(strip(idb.record));
   pending = idb.record.pending;
   seenSeq = idb.record.seq;
-  lastBody = captureBody(sessionRef, pending);
+  lastBody = captureBody(session, pending);
   listener?.({
     restored: true,
     unreadable: false,
@@ -388,8 +385,7 @@ async function reconcile(): Promise<void> {
 }
 
 async function readIdb(): Promise<unknown> {
-  const db = await openSpiderDb();
-  return (await db.get('snapshots', 'current')) ?? null;
+  return (await resolveStore()).readSnapshot();
 }
 
 function pageOwner(): string {
@@ -426,10 +422,9 @@ function bufferPut(record: WorldRecord): boolean {
   }
 }
 
-function prefer(a?: WorldRecord, b?: WorldRecord): WorldRecord | undefined {
-  if (!a) return b;
-  if (!b) return a;
-  return newer(a, b);
+/** The later of two records; the one that exists when only one does. */
+export function prefer(a?: WorldRecord, b?: WorldRecord): WorldRecord | undefined {
+  return a && b ? newer(a, b) : (a ?? b);
 }
 
 function readBuffer(): unknown {

@@ -21,6 +21,12 @@ const world = vi.hoisted(() => ({
   flushWorld: vi.fn(),
 }));
 
+const opening = vi.hoisted(() => ({
+  openJournal: vi.fn(async () => ({ journal: {}, store: {} })),
+}));
+
+vi.mock('../../src/client/journal/api.js', () => ({ openJournal: opening.openJournal }));
+
 vi.mock('../../src/client/stage.js', () => ({
   Stage: class {
     bind = control.bind;
@@ -78,6 +84,8 @@ beforeEach(() => {
     cause: null,
     pendingText: null,
   });
+  opening.openJournal.mockReset();
+  opening.openJournal.mockResolvedValue({ journal: {}, store: {} });
 });
 
 describe('main', () => {
@@ -123,5 +131,18 @@ describe('main', () => {
     );
     expect(stop).toHaveBeenCalled();
     expect(control.dispose).toHaveBeenCalled();
+  });
+
+  it('starts the stage when the journal cannot open', async () => {
+    const host = document.createElement('div');
+    host.id = 'stage';
+    document.body.append(host);
+    opening.openJournal.mockRejectedValueOnce(new Error('no worker'));
+
+    await import('../../src/client/main.js');
+
+    expect(control.stages).toHaveLength(1);
+    expect(control.start).toHaveBeenCalledTimes(1);
+    expect(world.installWorldStore).toHaveBeenCalled();
   });
 });

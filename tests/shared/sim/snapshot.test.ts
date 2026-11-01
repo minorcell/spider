@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { localDate } from '../../../src/shared/dates.js';
 import { SimSession } from '../../../src/shared/sim/session.js';
+import { APPLE_EVERY } from '../../../src/shared/world.js';
 import {
   applyBody,
   captureBody,
@@ -56,6 +57,15 @@ describe('snapshot', () => {
     expect(first.spider.root.position.x).toBe(3);
     expect(first.spider.speed).toBe(0);
     expect(first.spider.legs[0].lifted).toBe(false);
+
+    // The blocked predicate bound by applyBody is the restored world's walls.
+    first.spider.root.position.set(0, first.spider.root.position.y, 2);
+    first.spider.yaw = Math.PI;
+    first.spider.root.rotation.y = Math.PI;
+    for (let i = 0; i < 20; i++) {
+      first.spider.update(0.05, { throttle: 1, turn: 0, lift: 0, boost: 1 });
+    }
+    expect(first.spider.halt).toBe('solid');
   });
 
   it('cuts a long sentence down to the stored limit', () => {
@@ -63,6 +73,15 @@ describe('snapshot', () => {
     expect(body.pending?.text).toHaveLength(4000);
     expect(body.pending?.tool).toHaveLength(32);
     expect(captureBody(session(), { text: '', tool: null }).pending).toBeNull();
+  });
+
+  it('falls back to the default apple timer and sprout count', () => {
+    const bare = session();
+    bare.world.appleIn = undefined;
+    bare.world.sprouts = undefined;
+    const body = captureBody(bare, null);
+    expect(body.appleIn).toBe(APPLE_EVERY);
+    expect(body.sprouts).toBe(0);
   });
 
   it('picks the newer sequence, then the later stamp', () => {
@@ -95,8 +114,7 @@ describe('snapshot', () => {
     expect(classify({ ...good(), format: 2 }, today).status).toBe('format');
     expect(classify({ ...good(), format: undefined }, today).status).toBe('format');
 
-    const bad = (patch: Record<string, unknown>) =>
-      classify({ ...good(), ...patch }, today).status;
+    const bad = (patch: Record<string, unknown>) => classify({ ...good(), ...patch }, today).status;
     expect(bad({ day: '2026-13-01' })).toBe('malformed');
     expect(bad({ day: '2026-00-10' })).toBe('malformed');
     expect(bad({ day: 'nope' })).toBe('malformed');
@@ -141,7 +159,12 @@ describe('snapshot', () => {
     ];
     expect(status(crowd)).toBe('malformed');
     expect(
-      status(base.entities, [apple!, { ...apple!, id: 'apple-b' }, { ...apple!, id: 'apple-c' }, { ...apple!, id: 'apple-d' }]),
+      status(base.entities, [
+        apple!,
+        { ...apple!, id: 'apple-b' },
+        { ...apple!, id: 'apple-c' },
+        { ...apple!, id: 'apple-d' },
+      ]),
     ).toBe('malformed');
     expect(status([{ ...home, kind: 'nope' }])).toBe('malformed');
     expect(status([{ ...home, id: 'bad id' }])).toBe('malformed');
@@ -156,17 +179,24 @@ describe('snapshot', () => {
     expect(status([home, null as unknown as typeof home])).toBe('malformed');
     const spider = structuredClone(base.spider);
     expect(classify({ ...base, spider: null }, today).status).toBe('malformed');
-    expect(classify({ ...base, spider: { ...spider, yaw: Number.NaN } }, today).status).toBe('malformed');
-    expect(classify({ ...base, spider: { ...spider, feet: spider.feet.slice(0, 7) } }, today).status).toBe(
+    expect(classify({ ...base, spider: { ...spider, yaw: Number.NaN } }, today).status).toBe(
       'malformed',
     );
+    expect(classify({ ...base, spider: { ...spider, time: 'late' } }, today).status).toBe(
+      'malformed',
+    );
+    expect(
+      classify({ ...base, spider: { ...spider, feet: spider.feet.slice(0, 7) } }, today).status,
+    ).toBe('malformed');
     expect(
       classify(
         { ...base, spider: { ...spider, feet: spider.feet.map((foot) => ({ ...foot, y: 5000 })) } },
         today,
       ).status,
     ).toBe('malformed');
-    expect(classify({ ...base, spider: { ...spider, position: null } }, today).status).toBe('malformed');
+    expect(classify({ ...base, spider: { ...spider, position: null } }, today).status).toBe(
+      'malformed',
+    );
   });
 
   it('names today from the local clock', () => {
