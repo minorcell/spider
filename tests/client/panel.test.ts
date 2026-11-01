@@ -16,6 +16,10 @@ const CHROME = `
   <span id="pilot-model"></span>
   <ol id="trace"></ol>
   <button id="settings-open" type="button"></button>
+  <menu id="corner-menu" hidden>
+    <button id="menu-model" type="button">模型</button>
+    <button id="menu-memory" type="button">记忆</button>
+  </menu>
   <button id="observe-open" type="button"></button>
   <span id="look-hint"></span>
   <dialog id="settings">
@@ -23,8 +27,25 @@ const CHROME = `
       <input name="baseURL" />
       <input name="model" />
       <input name="apiKey" />
+      <input name="contextTokens" />
+      <input name="compact" type="checkbox" />
+      <input name="compactKb" />
     </form>
     <button id="settings-close" type="button"></button>
+  </dialog>
+  <dialog id="memory">
+    <form id="memory-form">
+      <select name="date"></select>
+      <input name="line" />
+      <textarea name="noted"></textarea>
+      <textarea name="summary"></textarea>
+    </form>
+    <p id="memory-empty" hidden></p>
+    <button id="memory-close" type="button"></button>
+  </dialog>
+  <dialog id="leave">
+    <button id="leave-close" type="button"></button>
+    <button id="leave-summarize" type="button"></button>
   </dialog>
 `;
 
@@ -148,6 +169,7 @@ describe('settings dialog', () => {
     document.querySelector('[name="apiKey"]')!.remove();
     mountPanel(document, fakeSession(), fakeStage());
     clickButton('#settings-open');
+    clickButton('#menu-model');
     window.removeEventListener('error', onError);
     expect(onError).toHaveBeenCalled();
   });
@@ -156,6 +178,8 @@ describe('settings dialog', () => {
     ready();
     mount();
     clickButton('#settings-open');
+    expect(document.querySelector<HTMLElement>('#corner-menu')!.hidden).toBe(false);
+    clickButton('#menu-model');
     expect(field('baseURL').value).toBe('https://example.com');
     expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(true);
 

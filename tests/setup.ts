@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, vi } from 'vitest';
 import { AudioContextStub, installDomStubs, ResizeObserverStub } from './stubs.js';
 

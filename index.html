@@ -88,7 +88,23 @@
 
       <div id="corner">
         <button id="observe-open" type="button" aria-pressed="false">观察</button>
-        <button id="settings-open" type="button">设置</button>
+        <button
+          id="settings-open"
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-label="菜单"
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="8" cy="3.2" r="1.15" fill="currentColor" />
+            <circle cx="8" cy="8" r="1.15" fill="currentColor" />
+            <circle cx="8" cy="12.8" r="1.15" fill="currentColor" />
+          </svg>
+        </button>
+        <menu id="corner-menu" hidden>
+          <button id="menu-model" type="button">模型</button>
+          <button id="menu-memory" type="button">记忆</button>
+        </menu>
       </div>
       <ol id="trace" hidden></ol>
       <form id="pilot">
@@ -124,13 +140,64 @@
             >API Key
             <input name="apiKey" type="password" autocomplete="off" spellcheck="false" />
           </label>
+          <label
+            >上下文长度
+            <input name="contextTokens" type="number" min="1" step="1" placeholder="不限制" />
+          </label>
+          <label class="check">
+            <input name="compact" type="checkbox" />
+            自动压缩
+          </label>
+          <label
+            >压缩阈值 KB
+            <input name="compactKb" type="number" min="1" step="1" placeholder="400" />
+          </label>
           <p>
-            填写后记在这台浏览器的 localStorage
-            里，刷新后还在。三项都留下它才会走，留空就站着。地址填到 /v1 为止。
+            地址、模型名和 Key 记在这台浏览器的 localStorage
+            里。三项都留下它才会走，留空就站着。地址填到 /v1
+            为止。上下文长度和自动压缩可以留空。打开自动压缩又不填阈值时，按 400 KB。
           </p>
           <menu>
             <button id="settings-close" type="button" value="cancel">关闭</button>
             <button type="submit" value="default">保存</button>
+          </menu>
+        </form>
+      </dialog>
+
+      <dialog id="memory">
+        <form id="memory-form" method="dialog">
+          <h2>记忆</h2>
+          <label
+            >日期
+            <select name="date"></select>
+          </label>
+          <label
+            >目录
+            <input name="line" type="text" autocomplete="off" />
+          </label>
+          <label
+            >记下的
+            <textarea name="noted" rows="4"></textarea>
+          </label>
+          <label
+            >摘要
+            <textarea name="summary" rows="5"></textarea>
+          </label>
+          <p id="memory-empty" hidden>还没有日记。</p>
+          <menu>
+            <button id="memory-close" type="button" value="cancel">关闭</button>
+            <button type="submit" value="default">保存</button>
+          </menu>
+        </form>
+      </dialog>
+
+      <dialog id="leave">
+        <form method="dialog">
+          <h2>要在离开前记一笔吗</h2>
+          <p>今天的对话还没写进日记。</p>
+          <menu>
+            <button id="leave-close" type="button" value="cancel">确定关闭</button>
+            <button id="leave-summarize" type="button" value="default">总结</button>
           </menu>
         </form>
       </dialog>

@@ -43,9 +43,12 @@ body {
 }
 
 #corner button,
+#corner menu,
 #pilot,
 #trace,
-#settings {
+#settings,
+#memory,
+#leave {
   color: #1b1714;
   font:
     14px/1.65 'Iowan Old Style',
@@ -62,6 +65,38 @@ body {
   z-index: 3;
   display: flex;
   gap: 8px;
+}
+
+#settings-open {
+  display: grid;
+  place-items: center;
+  width: 2em;
+  height: 2em;
+  padding: 0;
+}
+
+#corner-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: #f3efe6;
+  border: 1px solid #1b1714;
+}
+
+#corner-menu[hidden] {
+  display: none;
+}
+
+#corner-menu button {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0.15em 0.7em;
+  cursor: pointer;
 }
 
 #observe-open[aria-pressed='true'] {
@@ -192,7 +227,14 @@ body {
 #pilot button,
 #pilot input,
 #settings input,
-#settings button {
+#settings textarea,
+#settings select,
+#settings button,
+#memory input,
+#memory textarea,
+#memory select,
+#memory button,
+#leave button {
   border: 1px solid #1b1714;
   background: #f3efe6;
   color: inherit;
@@ -202,54 +244,91 @@ body {
 
 #corner button,
 #pilot button,
-#settings button {
+#settings button,
+#memory button,
+#leave button {
   padding: 0 0.55em;
   cursor: pointer;
 }
 
+#corner-menu button {
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
 #pilot input:focus,
 #settings input:focus,
+#settings textarea:focus,
+#memory input:focus,
+#memory textarea:focus,
 #corner button:focus,
 #pilot button:focus,
-#settings button:focus {
+#settings button:focus,
+#memory button:focus,
+#leave button:focus {
   outline: 1px solid #1b1714;
   outline-offset: 2px;
 }
 
-#settings {
+#settings,
+#memory,
+#leave {
   width: min(26rem, calc(100% - 32px));
   padding: 22px 24px;
   border: 1px solid #1b1714;
   background: #f3efe6;
 }
 
-#settings::backdrop {
+#settings::backdrop,
+#memory::backdrop,
+#leave::backdrop {
   background: rgba(243, 239, 230, 0.78);
 }
 
-#settings h2 {
+#settings h2,
+#memory h2,
+#leave h2 {
   margin: 0 0 12px;
   font-size: 16px;
   font-weight: normal;
   letter-spacing: 0.08em;
 }
 
-#settings label {
+#settings label,
+#memory label {
   display: grid;
   gap: 4px;
   margin: 0 0 12px;
 }
 
-#settings input {
-  padding: 0.2em 0.45em;
+#settings label.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-#settings p {
+#settings input,
+#settings textarea,
+#settings select,
+#memory input,
+#memory textarea,
+#memory select {
+  padding: 0.2em 0.45em;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+#settings p,
+#memory p,
+#leave p {
   margin: 0 0 14px;
   opacity: 0.8;
 }
 
-#settings menu {
+#settings menu,
+#memory menu,
+#leave menu {
   display: flex;
   justify-content: flex-end;
   gap: 8px;

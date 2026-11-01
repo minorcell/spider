@@ -1,8 +1,11 @@
+import { Diary } from './journal/diary.js';
+import type { Trace } from './journal/session.js';
 import { pilotReady, readPilot, writePilot, type PilotSettings } from './settings.js';
 import type { Stage } from './stage.js';
 import type { SimSession } from '../shared/sim/session.js';
 
 const BUBBLE_MS = 5000;
+const IDLE_MS = 3 * 60 * 1000;
 
 /** Settings, the instruction box, and the bubble that follows the spider. */
 export function mountPanel(doc: Document, session: SimSession, stage: Stage): void {
@@ -12,11 +15,21 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   const model = doc.querySelector<HTMLElement>('#pilot-model');
   const trace = doc.querySelector<HTMLOListElement>('#trace');
   const open = doc.querySelector<HTMLButtonElement>('#settings-open');
+  const menu = doc.querySelector<HTMLElement>('#corner-menu');
+  const menuModel = doc.querySelector<HTMLButtonElement>('#menu-model');
+  const menuMemory = doc.querySelector<HTMLButtonElement>('#menu-memory');
   const map = doc.querySelector<HTMLButtonElement>('#observe-open');
   const lookHint = doc.querySelector<HTMLElement>('#look-hint');
   const dialog = doc.querySelector<HTMLDialogElement>('#settings');
   const settingsForm = doc.querySelector<HTMLFormElement>('#settings-form');
   const close = doc.querySelector<HTMLButtonElement>('#settings-close');
+  const memoryDialog = doc.querySelector<HTMLDialogElement>('#memory');
+  const memoryForm = doc.querySelector<HTMLFormElement>('#memory-form');
+  const memoryClose = doc.querySelector<HTMLButtonElement>('#memory-close');
+  const memoryEmpty = doc.querySelector<HTMLElement>('#memory-empty');
+  const leave = doc.querySelector<HTMLDialogElement>('#leave');
+  const leaveClose = doc.querySelector<HTMLButtonElement>('#leave-close');
+  const leaveSummarize = doc.querySelector<HTMLButtonElement>('#leave-summarize');
   if (
     !form ||
     !goal ||
@@ -24,11 +37,29 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
     !model ||
     !trace ||
     !open ||
+    !menu ||
+    !menuModel ||
+    !menuMemory ||
     !map ||
     !dialog ||
     !settingsForm ||
-    !close
+    !close ||
+    !memoryDialog ||
+    !memoryForm ||
+    !memoryClose ||
+    !memoryEmpty ||
+    !leave ||
+    !leaveClose ||
+    !leaveSummarize
   ) {
+    throw new Error('Missing pilot chrome');
+  }
+
+  const dateSelect = memoryForm.querySelector<HTMLSelectElement>('select[name="date"]');
+  const lineInput = memoryForm.querySelector<HTMLInputElement>('input[name="line"]');
+  const notedInput = memoryForm.querySelector<HTMLTextAreaElement>('textarea[name="noted"]');
+  const summaryInput = memoryForm.querySelector<HTMLTextAreaElement>('textarea[name="summary"]');
+  if (!dateSelect || !lineInput || !notedInput || !summaryInput) {
     throw new Error('Missing pilot chrome');
   }
 
@@ -99,11 +130,27 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
     field('baseURL').value = settings.baseURL;
     field('model').value = settings.model;
     field('apiKey').value = settings.apiKey;
+    field('contextTokens').value =
+      settings.contextTokens == null ? '' : String(settings.contextTokens);
+    field('compact').checked = settings.compact;
+    field('compactKb').value = settings.compactKb == null ? '' : String(settings.compactKb);
   };
 
-  open.addEventListener('click', () => {
+  const setMenu = (shown: boolean): void => {
+    menu.hidden = !shown;
+    open.setAttribute('aria-expanded', shown ? 'true' : 'false');
+  };
+
+  open.addEventListener('click', () => setMenu(menu.hasAttribute('hidden')));
+  menuModel.addEventListener('click', () => {
+    setMenu(false);
     fill(readPilot());
     dialog.showModal();
+  });
+  doc.addEventListener('click', (event) => {
+    if (!(event.target instanceof Node)) return;
+    if (open.contains(event.target) || menu.contains(event.target)) return;
+    setMenu(false);
   });
   close.addEventListener('click', () => dialog.close());
 
@@ -112,6 +159,9 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
       baseURL: field('baseURL').value,
       model: field('model').value,
       apiKey: field('apiKey').value,
+      contextTokens: numberOrNull(field('contextTokens').value),
+      compact: field('compact').checked,
+      compactKb: numberOrNull(field('compactKb').value),
     });
     paint();
   };
@@ -120,18 +170,131 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   settingsForm.addEventListener('submit', persist);
   dialog.addEventListener('close', persist);
 
+  let diary: Diary | null = null;
+  let idleTimer = 0;
+  const diaryReady = Diary.open()
+    .then((opened) => {
+      diary = opened;
+      void opened.backfill(readPilot()).catch(() => undefined);
+      armIdle();
+      return opened;
+    })
+    .catch(() => null);
+
+  const armIdle = (): void => {
+    window.clearTimeout(idleTimer);
+    idleTimer = window.setTimeout(() => {
+      if (current || !diary?.behind() || leave.open) return;
+      leave.showModal();
+    }, IDLE_MS);
+  };
+
+  const fillMemory = (page: { line: string; noted: string; summary: string }): void => {
+    lineInput.value = page.line;
+    notedInput.value = page.noted;
+    summaryInput.value = page.summary;
+  };
+
+  const showMemory = async (): Promise<void> => {
+    const opened = diary ?? (await diaryReady);
+    if (!opened) return;
+    const pages = await opened.pages();
+    dateSelect.replaceChildren();
+    memoryEmpty.hidden = pages.length > 0;
+    for (const page of pages) {
+      const option = doc.createElement('option');
+      option.value = page.date;
+      option.textContent = page.description ? `${page.date} ${page.description}` : page.date;
+      dateSelect.append(option);
+    }
+    const latest = pages[pages.length - 1];
+    if (latest) {
+      dateSelect.value = latest.date;
+      fillMemory({ line: latest.description, noted: latest.noted, summary: latest.summary });
+    } else {
+      lineInput.value = '';
+      notedInput.value = '';
+      summaryInput.value = '';
+    }
+    setMenu(false);
+    memoryDialog.showModal();
+  };
+
+  menuMemory.addEventListener('click', () => {
+    void showMemory();
+  });
+  memoryClose.addEventListener('click', () => memoryDialog.close());
+  dateSelect.addEventListener('change', () => {
+    void diary?.read(dateSelect.value).then((page) => {
+      if (page) fillMemory(page);
+    });
+  });
+  memoryForm.addEventListener('submit', () => {
+    if (!diary) return;
+    const date = dateSelect.value || diary.date;
+    void diary.write({
+      date,
+      line: lineInput.value,
+      noted: notedInput.value,
+      summary: summaryInput.value,
+    });
+  });
+
+  leaveClose.addEventListener('click', () => {
+    if (diary) diary.dismissed = true;
+    leave.close();
+  });
+  leaveSummarize.addEventListener('click', () => {
+    if (!diary) return;
+    leaveSummarize.disabled = true;
+    void diary
+      .digest(readPilot())
+      .then(() => {
+        show('记下了。这个页面可以关掉了。', 'note');
+        leave.close();
+      })
+      .catch((error: unknown) => {
+        show(explain(error instanceof Error ? error.message : String(error)), 'note');
+      })
+      .finally(() => {
+        leaveSummarize.disabled = false;
+      });
+  });
+
+  window.addEventListener('beforeunload', (event) => {
+    if (!diary?.behind()) return;
+    event.preventDefault();
+    window.setTimeout(() => {
+      if (!leave.open) leave.showModal();
+    }, 0);
+  });
+  window.addEventListener('pagehide', () => {
+    void diary?.save();
+  });
+
   const run = async (
     controller: AbortController,
     text: string,
     settings: PilotSettings,
   ): Promise<void> => {
     let sawText = false;
+    const traces: Trace[] = [];
+    let pending: { name: string; input: unknown } | null = null;
+    window.clearTimeout(idleTimer);
     try {
+      const opened = diary ?? (await diaryReady);
+      if (controller.signal.aborted) {
+        if (!replaced.has(controller)) show('已停止', 'note');
+        return;
+      }
       const { runAgent } = await import('./agent/loop.js');
       const answer = await runAgent({
         goal: text,
         session,
         settings,
+        chat: opened?.session,
+        memoryIndex: opened ? await opened.indexBlock() : undefined,
+        memory: opened?.api(),
         signal: controller.signal,
         onEvent(event) {
           if (controller.signal.aborted) return;
@@ -141,7 +304,16 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
               say(event.text);
               break;
             case 'tool-call':
+              pending = { name: event.name, input: event.input };
               show(thoughtOf(event.input), 'thought');
+              break;
+            case 'tool-result':
+              traces.push({
+                name: event.name,
+                input: pending?.name === event.name ? pending.input : null,
+                output: event.output,
+              });
+              pending = null;
               break;
             case 'error':
               show(explain(event.message), 'note');
@@ -151,6 +323,13 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
           }
         },
       });
+      if (opened && !controller.signal.aborted) {
+        try {
+          await opened.record(text, answer, traces, settings);
+        } catch (error) {
+          show(explain(error instanceof Error ? error.message : String(error)), 'note');
+        }
+      }
       if (controller.signal.aborted) {
         if (!replaced.has(controller)) show('已停止', 'note');
       } else if (!sawText && answer.trim()) show(answer.trim(), 'speech');
@@ -163,6 +342,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
         current = null;
         send.textContent = '发送';
       }
+      armIdle();
     }
   };
 
@@ -244,6 +424,12 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   });
 
   paint();
+}
+
+function numberOrNull(value: string): number | null {
+  if (!value.trim()) return null;
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
 }
 
 function thoughtOf(input: unknown): string {

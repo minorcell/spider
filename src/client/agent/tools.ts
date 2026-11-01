@@ -4,6 +4,7 @@ import type { GoalOutcome, SimSession } from '../../shared/sim/session.js';
 import type { Observation } from '../../shared/state.js';
 import { CARRY_LIMIT } from '../../shared/config.js';
 import { GRASS_VIEW, REACH, VIEW_DISTANCE } from '../../shared/world.js';
+import type { MemoryApi } from '../journal/diary.js';
 
 /**
  * Built-in tools. Each one is a function call on the local simulation.
@@ -23,7 +24,7 @@ function call<T extends z.ZodRawShape>(shape: T) {
   return z.object({ description: thought, ...shape });
 }
 
-export function spiderTools(session: SimSession) {
+export function spiderTools(session: SimSession, memory?: MemoryApi) {
   const finish = (outcome: GoalOutcome, distance = VIEW_DISTANCE): ToolResult => {
     const { halt: _halt, ...rest } = outcome;
     const observation = session.observe(distance);
@@ -175,5 +176,30 @@ export function spiderTools(session: SimSession) {
       }),
       execute: async ({ seconds }) => finish(await session.wait(seconds)),
     }),
+    ...(memory
+      ? {
+          memory: tool({
+            description:
+              '跨天的日记。list 列出每一天的目录。get 读某一天。write 改某一天：先 get，已有的 noted 要留在新的 noted 里。' +
+              '不改变你站的地方，结果里没有观察。不要写坐标、看见的东西或背上的东西。',
+            inputSchema: call({
+              command: z.enum(['list', 'get', 'write']).describe('list、get 或 write。'),
+              date: z.string().optional().describe('这一天，YYYY-MM-DD。get 和 write 要填。'),
+              line: z.string().optional().describe('目录上的一句。'),
+              noted: z.string().optional().describe('明确要留下的话。不填就保持原来的。'),
+              summary: z.string().optional().describe('这一天的摘要。不填就保持原来的。'),
+            }),
+            execute: async ({ command, date, line, noted, summary }) => {
+              if (command === 'list') return { ok: true, pages: await memory.list() };
+              if (!date) return { ok: false, reason: 'need-date' };
+              if (command === 'get') {
+                const page = await memory.get(date);
+                return page ? { ok: true, ...page } : { ok: false, reason: 'not-found', date };
+              }
+              return { ok: true, ...(await memory.write({ date, line, noted, summary })) };
+            },
+          }),
+        }
+      : {}),
   };
 }

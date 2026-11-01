@@ -175,6 +175,39 @@ describe('spiderTools', () => {
     expect(session.wait).toHaveBeenCalledWith(0.5);
   });
 
+  it('reads and writes the diary without touching the body', async () => {
+    const memory = {
+      list: vi.fn(async () => [{ date: '2026-11-02', line: '不要吃红的' }]),
+      get: vi.fn(async () => null),
+      write: vi.fn(async (input: { date: string }) => ({
+        date: input.date,
+        line: '不要吃红的',
+        noted: '不要吃红的',
+        summary: '',
+      })),
+    };
+    const tools = spiderTools(session as unknown as SimSession, memory);
+    expect(Object.keys(tools)).toContain('memory');
+    await expect(execute(tools.memory, { command: 'list' })).resolves.toMatchObject({
+      ok: true,
+      pages: [{ date: '2026-11-02', line: '不要吃红的' }],
+    });
+    await expect(execute(tools.memory, { command: 'get' })).resolves.toMatchObject({
+      ok: false,
+      reason: 'need-date',
+    });
+    await expect(
+      execute(tools.memory, { command: 'get', date: '2026-11-01' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: 'not-found',
+    });
+    await expect(
+      execute(tools.memory, { command: 'write', date: '2026-11-02', noted: '不要吃红的' }),
+    ).resolves.toMatchObject({ ok: true, noted: '不要吃红的' });
+    expect(session.observe).not.toHaveBeenCalled();
+  });
+
   it('advertises the sense limits in the observe description', () => {
     const tools = spiderTools(session as unknown as SimSession);
     expect(tools.observe.description).toContain(String(VIEW_DISTANCE));
