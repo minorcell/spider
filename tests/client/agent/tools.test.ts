@@ -202,6 +202,18 @@ describe('spiderTools', () => {
       ok: false,
       reason: 'not-found',
     });
+    memory.get.mockResolvedValueOnce({
+      date: '2026-11-02',
+      line: '不要吃红的',
+      noted: '不要吃红的',
+      summary: '',
+    } as never);
+    await expect(
+      execute(tools.memory, { command: 'get', date: '2026-11-02' }),
+    ).resolves.toMatchObject({
+      ok: true,
+      line: '不要吃红的',
+    });
     await expect(
       execute(tools.memory, { command: 'write', date: '2026-11-02', noted: '不要吃红的' }),
     ).resolves.toMatchObject({ ok: true, noted: '不要吃红的' });

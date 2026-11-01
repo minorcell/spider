@@ -10,7 +10,16 @@ import {
 import { kindOf, propertiesOf, slicesOf } from '../kinds.js';
 import type { Controls } from '../types.js';
 import { blockedAt, grassHere, insideHome, occluded } from '../sight.js';
-import { createWorld, GRASS_VIEW, REACH, REACH_Y, restingY, VIEW_DISTANCE } from '../world.js';
+import {
+  createWorld,
+  grow,
+  GRASS_VIEW,
+  nextPropId,
+  REACH,
+  REACH_Y,
+  restingY,
+  VIEW_DISTANCE,
+} from '../world.js';
 import { TERRAIN } from '../terrain.js';
 import { CARRY_LIMIT } from '../config.js';
 import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal, type Goal } from './goals.js';
@@ -385,16 +394,8 @@ export class SimSession {
 
   /** Drop a new prop into the world, sitting on the ground. */
   addEntity(kind: string, x: number, z: number): WorldState['entities'][number] {
-    const taken = [...this.world.entities, ...this.world.carrying].filter(
-      (item) => item.kind === kind,
-    );
-    const next =
-      taken.reduce((max, item) => {
-        const suffix = Number(item.id.slice(kind.length + 1));
-        return Number.isFinite(suffix) ? Math.max(max, suffix) : max;
-      }, 0) + 1;
     const entity = {
-      id: `${kind}-${next}`,
+      id: nextPropId(this.world, kind),
       kind,
       x,
       y: restingY(this.world.terrain, kind, x, z),
@@ -530,6 +531,8 @@ export class SimSession {
 
   #step(dt: number): void {
     if (this.paused) return;
+
+    grow(this.world, dt, { x: this.spider.root.position.x, z: this.spider.root.position.z });
 
     const active = this.#active;
     this.spider.update(dt, active ? active.goal.controls() : ZERO);

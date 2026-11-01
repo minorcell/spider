@@ -57,6 +57,13 @@ export interface WorldState {
   blocks: Block[];
   /** What is on the spider's back, oldest first. Empty when it carries nothing. */
   carrying: EntityState[];
+  /**
+   * Seconds until the island may grow one apple. Only a world from `createWorld`
+   * has this. A hand-built fixture does not grow.
+   */
+  appleIn?: number;
+  /** How many times this island has tried to grow an apple. */
+  sprouts?: number;
 }
 
 export interface SeenEntity {

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Terrain, TERRAIN } from '../../src/shared/terrain.js';
 import {
+  APPLE_EVERY,
   createWorld,
+  grow,
   GRASS_VIEW,
   nestBlocks,
   REACH,
@@ -197,5 +199,82 @@ describe('createWorld', () => {
     control.queue = [toRng(spot.x), toRng(spot.z)];
     const grass = createWorld(seed).entities.find((entity) => entity.kind === 'grass');
     expect(grass?.footprint).toEqual({ kind: 'circle', r: 3.2 });
+  });
+});
+
+function bare(seed = 11) {
+  const world = createWorld(seed);
+  world.entities = world.entities.filter((entity) => entity.kind !== 'apple');
+  return world;
+}
+
+describe('grow', () => {
+  it('leaves a hand-built world alone', () => {
+    const world = createWorld(1);
+    world.appleIn = undefined;
+    grow(world, 100);
+    world.appleIn = 0;
+    world.sprouts = undefined;
+    const before = world.entities.length;
+    grow(world, 100);
+    expect(world.entities).toHaveLength(before);
+  });
+
+  it('waits, then grows one apple, and stops at the original handful', () => {
+    const world = bare();
+    world.carrying = [{ id: 'apple-9', kind: 'apple', x: 0, y: 0, z: 0, stage: 0 }];
+    grow(world, 10);
+    expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
+    expect(world.appleIn).toBeCloseTo(APPLE_EVERY - 10);
+
+    grow(world, APPLE_EVERY - 10);
+    const first = world.entities.filter((entity) => entity.kind === 'apple');
+    expect(first.map((entity) => entity.id)).toEqual(['apple-10']);
+    expect(first[0]?.stage).toBe(0);
+
+    const again = bare();
+    again.carrying = [{ id: 'apple-9', kind: 'apple', x: 0, y: 0, z: 0, stage: 0 }];
+    grow(again, APPLE_EVERY);
+    expect(again.entities.find((entity) => entity.kind === 'apple')).toEqual(first[0]);
+
+    const full = createWorld(11);
+    const count = full.entities.filter((entity) => entity.kind === 'apple').length;
+    full.appleIn = 1;
+    grow(full, 100);
+    expect(full.appleIn).toBe(APPLE_EVERY);
+    expect(full.entities.filter((entity) => entity.kind === 'apple')).toHaveLength(count);
+  });
+
+  it('does not grow into the spider, and gives up when nowhere is open', () => {
+    const seed = seedWith(findFlat, 6);
+    const spot = findFlat(seed, 6)!;
+    const world = bare(seed);
+    world.entities = world.entities.filter((entity) => entity.kind === 'nest');
+    world.appleIn = 0;
+    const rolls = Array.from({ length: 80 }, (_, index) =>
+      index % 2 === 0 ? toRng(spot.x) : toRng(spot.z),
+    );
+    control.enabled = true;
+    control.queue = [...rolls];
+    grow(world, 0, spot);
+    expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
+    expect(world.sprouts).toBe(1);
+
+    world.appleIn = 0;
+    world.sprouts = 0;
+    control.queue = [...rolls];
+    grow(world, 0, { x: 0, z: 0 });
+    const apple = world.entities.find((entity) => entity.kind === 'apple');
+    expect(apple).toMatchObject({ x: quantized(spot.x), z: quantized(spot.z) });
+
+    control.enabled = false;
+    const stuck = bare(seed);
+    stuck.appleIn = 0;
+    control.enabled = true;
+    control.queue = [];
+    grow(stuck, 0);
+    expect(stuck.entities.some((entity) => entity.kind === 'apple')).toBe(false);
+    expect(stuck.sprouts).toBe(1);
+    expect(stuck.appleIn).toBe(APPLE_EVERY);
   });
 });

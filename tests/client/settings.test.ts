@@ -49,6 +49,17 @@ describe('pilot settings', () => {
     expect(readPilot()).toMatchObject({ contextTokens: null, compact: false, compactKb: null });
   });
 
+  it('reads integers written as strings', () => {
+    writePilot({
+      baseURL: 'https://example.com',
+      model: 'gpt',
+      apiKey: 'key',
+      contextTokens: '4096' as unknown as number,
+      compactKb: '128' as unknown as number,
+    });
+    expect(readPilot()).toMatchObject({ contextTokens: 4096, compactKb: 128 });
+  });
+
   it('ignores fields of the wrong type', () => {
     localStorage.setItem(
       'p5-art.pilot',

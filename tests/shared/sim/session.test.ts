@@ -721,6 +721,22 @@ describe('sleep and props', () => {
     expect(Math.abs(session.spider.heightSet)).toBeLessThan(0.05);
   });
 
+  it('grows a replacement apple as the simulation runs', () => {
+    const session = new SimSession(4);
+    session.world.entities = session.world.entities.filter((entity) => entity.kind !== 'apple');
+    session.world.appleIn = 0.02;
+    session.frame(1 / 60);
+    expect(session.world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
+    session.frame(1 / 60);
+    expect(session.world.entities.filter((entity) => entity.kind === 'apple')).toHaveLength(1);
+
+    session.world.entities = session.world.entities.filter((entity) => entity.kind !== 'apple');
+    session.world.appleIn = 0;
+    session.paused = true;
+    session.frame(1);
+    expect(session.world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
+  });
+
   it('numbers a new prop after the highest existing one', () => {
     const session = new SimSession(10);
     const existing = session.world.entities.filter((entity) => entity.kind === 'apple').length;

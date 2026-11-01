@@ -113,6 +113,36 @@ describe('runAgent', () => {
     expect(options.tools).toBeTypeOf('object');
   });
 
+  it('adds the diary and an earlier summary to the system prompt', async () => {
+    stream([]);
+    await runAgent({
+      goal: 'go',
+      session: fakeSession(),
+      settings,
+      chat: { date: '2026-11-02', summary: '更早的事', turns: [], updatedAt: 1, digestedAt: 0 },
+      memoryIndex: '目录',
+      memory: { list: vi.fn(), get: vi.fn(), write: vi.fn() },
+    });
+    const system = String(aiControl.streamText.mock.calls[0][0].system);
+    expect(system).toContain('这一天更早的对话收成');
+    expect(system).toContain('目录');
+  });
+
+  it('omits the summary when the day has none yet', async () => {
+    stream([]);
+    await runAgent({
+      goal: 'go',
+      session: fakeSession(),
+      settings,
+      chat: { date: '2026-11-02', summary: '', turns: [], updatedAt: 1, digestedAt: 0 },
+      memoryIndex: '目录',
+      memory: { list: vi.fn(), get: vi.fn(), write: vi.fn() },
+    });
+    const system = String(aiControl.streamText.mock.calls[0][0].system);
+    expect(system).not.toContain('这一天更早的对话收成');
+    expect(system).toContain('目录');
+  });
+
   it('cancels the session when the signal aborts', async () => {
     stream([{ type: 'text-delta', text: 'a' }]);
     const session = fakeSession();

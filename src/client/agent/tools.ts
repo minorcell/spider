@@ -109,7 +109,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
     }),
     eat: tool({
       description:
-        '吃一件 properties 里有 edible 的东西。它在够得着的地方，或者已经在你背上。吃要花时间，stage 会变。吃完它就没了，以后的观察里也不会再出现。中途停下的话，咬到哪算哪。',
+        '吃一件 properties 里有 edible 的东西。它在够得着的地方，或者已经在你背上。吃要花时间，stage 会变。吃完这一只就没了，以后的观察里也不会再出现。中途停下的话，咬到哪算哪。',
       inputSchema: call({
         id: z
           .string()

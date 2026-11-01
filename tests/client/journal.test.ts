@@ -9,9 +9,12 @@ import {
   fit,
   foldSummary,
   needsDigest,
+  overLimit,
+  toMessages,
+  transcript,
   type ChatSession,
 } from '../../src/client/journal/session.js';
-import { readNote } from '../../src/client/journal/summarize.js';
+import { readNote, summarizeDiary } from '../../src/client/journal/summarize.js';
 import type { PilotSettings } from '../../src/client/settings.js';
 
 vi.mock('../../src/client/journal/summarize.js', async () => {
@@ -39,6 +42,18 @@ function session(turns: ChatSession['turns'], summary = ''): ChatSession {
 
 beforeEach(async () => {
   await resetSpiderDb();
+});
+
+describe('resetSpiderDb', () => {
+  it('rejects when the database cannot be deleted', async () => {
+    const spy = vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation(() => {
+      const request = { error: new Error('delete failed') } as unknown as IDBOpenDBRequest;
+      setTimeout(() => request.onerror?.(new Event('error')), 0);
+      return request;
+    });
+    await expect(resetSpiderDb()).rejects.toThrow('delete failed');
+    spy.mockRestore();
+  });
 });
 
 describe('dates', () => {
@@ -121,6 +136,40 @@ describe('fit', () => {
       dropOldest(folded, { contextTokens: 1, compact: false, compactKb: null }).turns,
     ).toHaveLength(1);
   });
+
+  it('checks the byte cap before the token cap', () => {
+    const chat = session([{ role: 'user', text: 'x'.repeat(400) }]);
+    expect(overLimit(chat, { contextTokens: 50, compact: true, compactKb: 400 })).toBe(true);
+    expect(overLimit(chat, { contextTokens: null, compact: true, compactKb: 400 })).toBe(false);
+    expect(overLimit(chat, { contextTokens: 500, compact: false, compactKb: null })).toBe(false);
+  });
+
+  it('keeps the same session when nothing is over the limit', () => {
+    const chat = session([{ role: 'user', text: '短' }]);
+    expect(dropOldest(chat, { contextTokens: null, compact: false, compactKb: null })).toBe(chat);
+  });
+
+  it('writes the transcript and the messages sent to the model', () => {
+    const chat = session(
+      [
+        { role: 'user', text: '拿' },
+        {
+          role: 'assistant',
+          text: '好。',
+          tools: [{ name: 'pick_up', input: {}, output: { ok: true } }],
+        },
+        { role: 'assistant', text: '' },
+      ],
+      '旧',
+    );
+    expect(transcript(chat)).toContain('更早：旧');
+    expect(transcript(chat)).toContain('行动 pick_up');
+    expect(toMessages(chat, '去巢')).toEqual([
+      { role: 'user', content: '拿' },
+      { role: 'assistant', content: '好。\npick_up {"ok":true}' },
+      { role: 'user', content: '去巢' },
+    ]);
+  });
 });
 
 describe('readNote', () => {
@@ -176,5 +225,65 @@ describe('Diary', () => {
     await diary.digest({ ...settings, apiKey: '' });
     expect(diary.behind()).toBe(true);
     expect(await diary.indexBlock()).toBe('记忆目录是空的。');
+  });
+
+  it('leaves an empty session unsaved and reads missing pages as null', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 4, 8));
+    await diary.save();
+    expect(await diary.read('2026-10-01')).toBeNull();
+    await diary.write({ date: diary.date, line: '目录一句' });
+    await diary.write({ date: diary.date, summary: '摘要' });
+    expect(await diary.read(diary.date)).toMatchObject({ line: '目录一句', summary: '摘要' });
+  });
+
+  it('lists directory lines and marks empty ones', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 5, 8));
+    await diary.write({ date: shiftDate(diary.date, -1), line: '昨天说不要吃红的' });
+    await diary.write({ date: diary.date, summary: '今天什么都没有' });
+    const block = await diary.indexBlock();
+    expect(block).toContain('昨天说不要吃红的');
+    expect(block).toContain('（无）');
+  });
+
+  it('keeps tool traces and trims without a summary when compact is off', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 6, 8));
+    await diary.record(
+      '拿',
+      '好。',
+      [{ name: 'pick_up', input: {}, output: { ok: true } }],
+      settings,
+    );
+    expect(diary.session.turns[1]?.tools).toHaveLength(1);
+    await diary.record('再拿', '好。', [], { ...settings, contextTokens: 1, compact: false });
+    expect(diary.session.summary).toBe('');
+  });
+
+  it('drops the oldest turns when summarizing fails', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 7, 8));
+    vi.mocked(summarizeDiary).mockRejectedValueOnce(new Error('no model'));
+    await diary.record('一'.repeat(80), '二'.repeat(80), [], {
+      ...settings,
+      contextTokens: 1,
+      compact: true,
+    });
+    expect(diary.session.summary).toBe('');
+  });
+
+  it('skips backfill without a model', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 8, 8));
+    await diary.backfill({ ...settings, apiKey: '' });
+    expect(await diary.indexBlock()).toBe('记忆目录是空的。');
+  });
+
+  it('keeps existing directory lines when the note is empty', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 9, 8));
+    await diary.write({ date: diary.date, line: '已有的目录句', summary: '已有的摘要' });
+    vi.mocked(summarizeDiary).mockResolvedValueOnce({ line: '', summary: '' });
+    await diary.record('走', '好。', [], settings);
+    await diary.digest(settings);
+    expect(await diary.read(diary.date)).toMatchObject({
+      line: '已有的目录句',
+      summary: '已有的摘要',
+    });
   });
 });
