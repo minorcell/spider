@@ -124,7 +124,7 @@ export async function restoreWorld(session: Restorable, now = new Date()): Promi
   pending = chosen.pending;
   seenSeq = chosen.seq;
   lastBody = captureBody(session, pending);
-  if (dbOpen) await mirror(chosen, ls, idb);
+  if (dbOpen && !dbDeferred) await mirror(chosen, ls, idb);
   return {
     restored: true,
     unreadable: false,
@@ -211,7 +211,8 @@ async function write(reason: Reason): Promise<void> {
 
   const kept = dirty ? body : (lastBody ?? body);
   const floor = Math.max(idbRec?.seq ?? 0, localRec?.seq ?? 0, seenSeq);
-  const record = staged && staged.seq > (idbRec?.seq ?? 0) ? staged : stamp(kept, floor + 1, now, today);
+  const record =
+    staged && staged.seq > (idbRec?.seq ?? 0) ? staged : stamp(kept, floor + 1, now, today);
   const storedLocal = bufferPut(record);
   let storedDb = false;
   try {
@@ -258,14 +259,19 @@ async function currentRecord(today: string): Promise<WorldRecord | 'format' | un
   }
   if (ls.status === 'format' || idb.status === 'format') return 'format';
   return (
-    chooseRecord(ls.status === 'ok' ? ls.record : null, idb.status === 'ok' ? idb.record : null, today) ??
-    undefined
+    chooseRecord(
+      ls.status === 'ok' ? ls.record : null,
+      idb.status === 'ok' ? idb.record : null,
+      today,
+    ) ?? undefined
   );
 }
 
 async function mirror(chosen: WorldRecord, ls: Classify, idb: Classify): Promise<void> {
-  const lsSame = ls.status === 'ok' && ls.record.seq === chosen.seq && ls.record.savedAt === chosen.savedAt;
-  const idbSame = idb.status === 'ok' && idb.record.seq === chosen.seq && idb.record.savedAt === chosen.savedAt;
+  const lsSame =
+    ls.status === 'ok' && ls.record.seq === chosen.seq && ls.record.savedAt === chosen.savedAt;
+  const idbSame =
+    idb.status === 'ok' && idb.record.seq === chosen.seq && idb.record.savedAt === chosen.savedAt;
   if (!lsSame) {
     try {
       localStorage.setItem(BUFFER_KEY, JSON.stringify(chosen));
@@ -283,7 +289,12 @@ async function mirror(chosen: WorldRecord, ls: Classify, idb: Classify): Promise
   }
 }
 
-async function forget(item: Classify, side: 'local' | 'idb', today: string, dbOpen: boolean): Promise<void> {
+async function forget(
+  item: Classify,
+  side: 'local' | 'idb',
+  today: string,
+  dbOpen: boolean,
+): Promise<void> {
   if (item.status !== 'expired' && item.status !== 'malformed') return;
   if (side === 'local') {
     try {
@@ -297,7 +308,8 @@ async function forget(item: Classify, side: 'local' | 'idb', today: string, dbOp
   try {
     const db = await openSpiderDb();
     await sweep(today);
-    if (item.status === 'malformed' || item.status === 'expired') await db.delete('snapshots', 'current');
+    if (item.status === 'malformed' || item.status === 'expired')
+      await db.delete('snapshots', 'current');
   } catch {
     // A failed delete still leaves the page on a fresh island.
   }
@@ -314,7 +326,9 @@ async function sweep(today: string): Promise<void> {
   }
 }
 
-async function loadIdb(today: string): Promise<{ idb: Classify; opened: boolean; deferred: boolean }> {
+async function loadIdb(
+  today: string,
+): Promise<{ idb: Classify; opened: boolean; deferred: boolean }> {
   let deferred = false;
   let opened = true;
   const ready = await new Promise<boolean>((resolve) => {
@@ -439,7 +453,10 @@ function changed(prev: SimBody, next: SimBody, appleSlack: number): boolean {
   if (yawGap(prev.spider.yaw, next.spider.yaw) > YAW_M) return true;
   if (prev.sprouts !== next.sprouts) return true;
   if (prev.seed !== next.seed) return true;
-  if ((prev.pending?.text ?? '') !== (next.pending?.text ?? '') || (prev.pending?.tool ?? null) !== (next.pending?.tool ?? null)) {
+  if (
+    (prev.pending?.text ?? '') !== (next.pending?.text ?? '') ||
+    (prev.pending?.tool ?? null) !== (next.pending?.tool ?? null)
+  ) {
     return true;
   }
   if (prev.appleIn - next.appleIn >= appleSlack) return true;
@@ -460,7 +477,10 @@ function sameList(a: SimBody['entities'], b: SimBody['entities']): boolean {
   });
 }
 
-function sameFoot(a: SimBody['entities'][number]['footprint'], b: SimBody['entities'][number]['footprint']): boolean {
+function sameFoot(
+  a: SimBody['entities'][number]['footprint'],
+  b: SimBody['entities'][number]['footprint'],
+): boolean {
   if (!a && !b) return true;
   if (!a || !b || a.kind !== b.kind) return false;
   if (a.kind === 'circle' && b.kind === 'circle') return a.r === b.r;

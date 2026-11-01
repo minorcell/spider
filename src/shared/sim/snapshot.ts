@@ -50,6 +50,7 @@ export type Classify =
 
 export interface Restorable {
   cancel(): void;
+  adopt(body: SimBody): void;
   readonly world: WorldState;
   readonly spider: Spider;
 }
@@ -61,7 +62,7 @@ export function expiredDay(day: string, today: string): boolean {
 export function captureBody(session: Restorable, pending: SimBody['pending']): SimBody {
   const world = session.world;
   return {
-    seed: world.terrain.seed,
+    seed: world.seed,
     appleIn: world.appleIn ?? APPLE_EVERY,
     sprouts: world.sprouts ?? 0,
     entities: structuredClone(world.entities),
@@ -103,7 +104,7 @@ export function newer(a: WorldRecord, b: WorldRecord): WorldRecord {
 
 export function classify(input: unknown, today: string): Classify {
   if (input == null || input === '') return { status: 'empty' };
-  let value = input;
+  let value: unknown = input;
   if (typeof value === 'string') {
     if (value.length > MAX_JSON) return { status: 'malformed' };
     try {
@@ -117,7 +118,12 @@ export function classify(input: unknown, today: string): Classify {
   if (raw.format !== FORMAT) return { status: 'format' };
   if (!isDay(raw.day)) return { status: 'malformed' };
   if (expiredDay(raw.day, today)) return { status: 'expired' };
-  if (!isFiniteNumber(raw.savedAt) || !Number.isInteger(raw.seq) || raw.seq < 1) {
+  if (
+    !isFiniteNumber(raw.savedAt) ||
+    !isFiniteNumber(raw.seq) ||
+    !Number.isInteger(raw.seq) ||
+    raw.seq < 1
+  ) {
     return { status: 'malformed' };
   }
   if (!isFiniteNumber(raw.leaseUntil) || typeof raw.owner !== 'string' || raw.owner.length === 0) {
@@ -130,11 +136,11 @@ export function classify(input: unknown, today: string): Classify {
     ...body,
     id: 'current',
     format: FORMAT,
-    savedAt: raw.savedAt,
-    day: raw.day,
-    owner: raw.owner,
-    seq: raw.seq,
-    leaseUntil: raw.leaseUntil,
+    savedAt: raw.savedAt as number,
+    day: raw.day as string,
+    owner: raw.owner as string,
+    seq: raw.seq as number,
+    leaseUntil: raw.leaseUntil as number,
   };
   return { status: 'ok', record };
 }
@@ -142,7 +148,8 @@ export function classify(input: unknown, today: string): Classify {
 function bodyOf(raw: Record<string, unknown>): SimBody | null {
   if (!isFiniteNumber(raw.seed)) return null;
   if (!isFiniteNumber(raw.appleIn) || raw.appleIn < 0 || raw.appleIn > APPLE_EVERY) return null;
-  if (!Number.isInteger(raw.sprouts) || raw.sprouts < 0 || raw.sprouts > MAX_SPROUTS) return null;
+  if (!isFiniteNumber(raw.sprouts) || !Number.isInteger(raw.sprouts)) return null;
+  if (raw.sprouts < 0 || raw.sprouts > MAX_SPROUTS) return null;
   if (!Array.isArray(raw.entities) || !Array.isArray(raw.carrying)) return null;
   if (raw.carrying.length > CARRY_LIMIT) return null;
   const count = raw.entities.length + raw.carrying.length;
@@ -165,8 +172,8 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
   if (pending === undefined) return null;
   return {
     seed: raw.seed >>> 0,
-    appleIn: raw.appleIn,
-    sprouts: raw.sprouts,
+    appleIn: raw.appleIn as number,
+    sprouts: raw.sprouts as number,
     entities: ground,
     carrying: held,
     spider,
@@ -179,17 +186,22 @@ function readEntity(value: unknown): EntityState | null {
   const raw = value as Record<string, unknown>;
   if (typeof raw.kind !== 'string' || !Object.hasOwn(KINDS, raw.kind)) return null;
   if (typeof raw.id !== 'string' || !/^[\w.-]{1,64}$/.test(raw.id)) return null;
-  if (!placed(raw.x, raw.y, raw.z) || !isFiniteNumber(raw.stage) || raw.stage < 0 || raw.stage > 8) {
+  if (
+    !placed(raw.x, raw.y, raw.z) ||
+    !isFiniteNumber(raw.stage) ||
+    raw.stage < 0 ||
+    raw.stage > 8
+  ) {
     return null;
   }
   if (!footprintOk(raw.footprint)) return null;
   const entity: EntityState = {
     id: raw.id,
     kind: raw.kind,
-    x: raw.x,
-    y: raw.y,
-    z: raw.z,
-    stage: raw.stage,
+    x: raw.x as number,
+    y: raw.y as number,
+    z: raw.z as number,
+    stage: raw.stage as number,
   };
   if (raw.footprint) entity.footprint = raw.footprint as Footprint;
   return entity;
@@ -201,15 +213,22 @@ function readSpider(value: unknown): SpiderState | null {
   const position = raw.position as { x?: unknown; y?: unknown; z?: unknown } | null;
   if (!position || !placed(position.x, position.y, position.z)) return null;
   if (!isFiniteNumber(raw.yaw)) return null;
-  for (const key of ['time', 'speed', 'height', 'chassisPitch', 'chassisRoll', 'headYaw'] as const) {
+  for (const key of [
+    'time',
+    'speed',
+    'height',
+    'chassisPitch',
+    'chassisRoll',
+    'headYaw',
+  ] as const) {
     if (!isFiniteNumber(raw[key])) return null;
   }
   if (!Array.isArray(raw.feet) || raw.feet.length !== MOUNTS.length) return null;
-  const feet = [];
+  const feet: SpiderState['feet'] = [];
   for (const foot of raw.feet) {
     const point = foot as { x?: unknown; y?: unknown; z?: unknown };
     if (!placed(point?.x, point?.y, point?.z)) return null;
-    feet.push({ x: point.x, y: point.y, z: point.z });
+    feet.push({ x: point.x as number, y: point.y as number, z: point.z as number });
   }
   return {
     time: raw.time as number,
@@ -231,13 +250,17 @@ function readPending(value: unknown): SimBody['pending'] | undefined {
   const raw = value as { text?: unknown; tool?: unknown };
   if (typeof raw.text !== 'string' || raw.text.length > MAX_PENDING) return undefined;
   if (raw.text.length === 0) return null;
-  if (raw.tool != null && (typeof raw.tool !== 'string' || raw.tool.length > MAX_TOOL)) return undefined;
+  if (raw.tool != null && (typeof raw.tool !== 'string' || raw.tool.length > MAX_TOOL))
+    return undefined;
   return { text: raw.text, tool: typeof raw.tool === 'string' ? raw.tool : null };
 }
 
 function cleanPending(pending: SimBody['pending']): SimBody['pending'] {
   if (!pending || pending.text === '') return null;
-  return { text: pending.text.slice(0, MAX_PENDING), tool: pending.tool?.slice(0, MAX_TOOL) ?? null };
+  return {
+    text: pending.text.slice(0, MAX_PENDING),
+    tool: pending.tool?.slice(0, MAX_TOOL) ?? null,
+  };
 }
 
 function footprintOk(value: unknown): boolean {
@@ -274,7 +297,13 @@ function isDay(value: unknown): value is string {
   const [year, month, day] = value.split('-').map(Number);
   const monthText = String(month).padStart(2, '0');
   const dayText = String(day).padStart(2, '0');
-  return value === `${year}-${monthText}-${dayText}` && month >= 1 && month <= 12 && day >= 1 && day <= 31;
+  return (
+    value === `${year}-${monthText}-${dayText}` &&
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= 31
+  );
 }
 
 function isFiniteNumber(value: unknown): value is number {

@@ -107,16 +107,20 @@ describe('main', () => {
       world.installWorldStore.mock.invocationCallOrder[0],
     );
 
-    const [step, world] = control.bind.mock.calls[0] as [(dt: number) => void, () => unknown];
+    const [step, readWorld] = control.bind.mock.calls[0] as [(dt: number) => void, () => unknown];
     step(0.016);
     expect((session.frame as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(0.016);
-    expect(world()).toBe(session.world);
+    expect(readWorld()).toBe(session.world);
 
     window.dispatchEvent(new Event('pagehide'));
     const stop = (session as unknown as { stop: ReturnType<typeof vi.fn> }).stop;
     expect(world.flushWorld).toHaveBeenCalledWith('hide');
-    expect(world.flushWorld.mock.invocationCallOrder[0]).toBeLessThan(stop.mock.invocationCallOrder[0]);
-    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(control.dispose.mock.invocationCallOrder[0]);
+    expect(world.flushWorld.mock.invocationCallOrder[0]).toBeLessThan(
+      stop.mock.invocationCallOrder[0],
+    );
+    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(
+      control.dispose.mock.invocationCallOrder[0],
+    );
     expect(stop).toHaveBeenCalled();
     expect(control.dispose).toHaveBeenCalled();
   });

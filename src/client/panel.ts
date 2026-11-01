@@ -449,16 +449,18 @@ export function mountPanel(
         release(controller);
       } else {
         let recorded = !opened;
+        let failed = false;
         if (opened) {
           try {
             await opened.record(text, answer, traces, settings);
             recorded = true;
           } catch (error) {
+            failed = true;
             show(explain(error instanceof Error ? error.message : String(error)), 'note');
           }
         }
         if (recorded) release(controller);
-        if (!sawText && answer.trim()) show(answer.trim(), 'speech');
+        if (!failed && !sawText && answer.trim()) show(answer.trim(), 'speech');
       }
       if (usageDialog.open) await refreshUsage();
     } catch (error) {

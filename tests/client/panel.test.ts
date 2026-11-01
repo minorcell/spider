@@ -1243,7 +1243,9 @@ describe('saved sentence', () => {
       cause: 'malformed',
       pendingText: null,
     });
-    expect(document.querySelector('#trace')!.textContent).toBe('上次的地方读不出来，这是一片新的。');
+    expect(document.querySelector('#trace')!.textContent).toBe(
+      '上次的地方读不出来，这是一片新的。',
+    );
     document.body.innerHTML = CHROME;
     mountPanel(document, fakeSession(), fakeStage(), {
       restored: false,
@@ -1251,7 +1253,9 @@ describe('saved sentence', () => {
       cause: 'format',
       pendingText: null,
     });
-    expect(document.querySelector('#trace')!.textContent).toBe('这只蜘蛛是更新的页面留下的，这个页面接不上。');
+    expect(document.querySelector('#trace')!.textContent).toBe(
+      '这只蜘蛛是更新的页面留下的，这个页面接不上。',
+    );
   });
 
   it('keeps the sentence until the diary write lands', async () => {

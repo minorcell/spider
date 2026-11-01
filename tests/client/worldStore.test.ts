@@ -287,6 +287,8 @@ describe('flushWorld', () => {
     session.spider.root.position.x += 0.3;
     flushWorld('hide');
     expect(localStorage.getItem(KEY)).toContain('"seq":1');
+    // The write reaches the pending read after its own microtasks.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     release(undefined);
     await writesDone();
     get.mockRestore();
@@ -350,7 +352,10 @@ describe('flushWorld', () => {
     localStorage.setItem(KEY, JSON.stringify(record));
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
     document.dispatchEvent(new Event('visibilitychange'));
-    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
     document.dispatchEvent(new Event('visibilitychange'));
     await writesDone();
     expect(session.world.terrain.seed).toBe(other.world.terrain.seed);
@@ -366,7 +371,10 @@ describe('flushWorld', () => {
     session.spider.root.position.x += 1;
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(localStorage.getItem(KEY)).toBeNull();
-    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
   });
 
   it('leaves a blocked buffer alone', async () => {
