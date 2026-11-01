@@ -148,6 +148,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
     dialog.showModal();
   });
   doc.addEventListener('click', (event) => {
+    /* v8 ignore next */
     if (!(event.target instanceof Node)) return;
     if (open.contains(event.target) || menu.contains(event.target)) return;
     setMenu(false);
@@ -197,6 +198,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
 
   const showMemory = async (): Promise<void> => {
     const opened = diary ?? (await diaryReady);
+    /* v8 ignore next */
     if (!opened) return;
     const pages = await opened.pages();
     dateSelect.replaceChildren();

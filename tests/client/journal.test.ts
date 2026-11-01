@@ -54,6 +54,26 @@ describe('resetSpiderDb', () => {
     await expect(resetSpiderDb()).rejects.toThrow('delete failed');
     spy.mockRestore();
   });
+
+  it('resolves when the delete is blocked', async () => {
+    const spy = vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation(() => {
+      const request = {} as IDBOpenDBRequest;
+      setTimeout(() => request.onblocked?.(new Event('blocked')), 0);
+      return request;
+    });
+    await expect(resetSpiderDb()).resolves.toBeUndefined();
+    spy.mockRestore();
+  });
+
+  it('uses a default error when the request has none', async () => {
+    const spy = vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation(() => {
+      const request = {} as IDBOpenDBRequest;
+      setTimeout(() => request.onerror?.(new Event('error')), 0);
+      return request;
+    });
+    await expect(resetSpiderDb()).rejects.toThrow('delete failed');
+    spy.mockRestore();
+  });
 });
 
 describe('dates', () => {
@@ -142,6 +162,13 @@ describe('fit', () => {
     expect(overLimit(chat, { contextTokens: 50, compact: true, compactKb: 400 })).toBe(true);
     expect(overLimit(chat, { contextTokens: null, compact: true, compactKb: 400 })).toBe(false);
     expect(overLimit(chat, { contextTokens: 500, compact: false, compactKb: null })).toBe(false);
+    expect(
+      overLimit(session([{ role: 'user', text: 'x'.repeat(2000) }]), {
+        contextTokens: null,
+        compact: true,
+        compactKb: 1,
+      }),
+    ).toBe(true);
   });
 
   it('keeps the same session when nothing is over the limit', () => {
@@ -173,6 +200,11 @@ describe('fit', () => {
 });
 
 describe('readNote', () => {
+  it('keeps prose when the JSON fields are not strings', () => {
+    const text = '{"line":1,"summary":null}';
+    expect(readNote(text)).toEqual({ line: text, summary: text });
+  });
+
   it('reads a JSON note and falls back to prose', () => {
     expect(readNote('好的 {"line":"不要吃红的","summary":"主人交代了"}')).toEqual({
       line: '不要吃红的',
@@ -285,5 +317,28 @@ describe('Diary', () => {
       line: '已有的目录句',
       summary: '已有的摘要',
     });
+  });
+
+  it('exposes the memory api', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 10, 8));
+    await diary.write({ date: diary.date, line: '目录句' });
+    const api = diary.api();
+    expect(await api.list()).toEqual([{ date: diary.date, line: '目录句' }]);
+    expect(await api.get(diary.date)).toMatchObject({ line: '目录句' });
+    expect(await api.write({ date: diary.date, summary: '摘要' })).toMatchObject({
+      summary: '摘要',
+    });
+  });
+
+  it('keeps an earlier summary when the note has none', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 11, 8));
+    diary.session = {
+      ...diary.session,
+      summary: '更早的摘要',
+      turns: [{ role: 'user', text: '一'.repeat(80) }],
+    };
+    vi.mocked(summarizeDiary).mockResolvedValueOnce({ line: '新目录句', summary: '' });
+    await diary.record('再走', '好。', [], { ...settings, contextTokens: 1, compact: true });
+    expect(diary.session.summary).toBe('更早的摘要');
   });
 });

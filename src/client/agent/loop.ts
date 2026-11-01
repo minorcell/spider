@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { isStepCount, streamText } from 'ai';
+import { isLoopFinished, streamText } from 'ai';
 import { CARRY_LIMIT } from '../../shared/config.js';
 import type { SimSession } from '../../shared/sim/session.js';
 import type { MemoryApi } from '../journal/diary.js';
@@ -7,8 +7,6 @@ import { toMessages, type ChatSession } from '../journal/session.js';
 import { localDate } from '../journal/dates.js';
 import type { PilotSettings } from '../settings.js';
 import { spiderTools } from './tools.js';
-
-const MAX_STEPS = 20;
 
 const SYSTEM = `你是一个蜘蛛。你就在这片地方里。
 
@@ -93,7 +91,7 @@ export async function runAgent({
       goal,
     ),
     tools: spiderTools(session, memory),
-    stopWhen: isStepCount(MAX_STEPS),
+    stopWhen: isLoopFinished(),
     abortSignal: signal,
     // One body. A second call started early would cancel the goal still running.
     toolCallConcurrency: 1,

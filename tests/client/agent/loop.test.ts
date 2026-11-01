@@ -3,14 +3,14 @@ import type { SimSession } from '../../../src/shared/sim/session.js';
 
 const aiControl = vi.hoisted(() => ({
   streamText: vi.fn(),
-  isStepCount: vi.fn((count: number) => ({ steps: count })),
+  isLoopFinished: vi.fn(() => ({ until: 'finished' })),
   provider: null as null | ReturnType<typeof vi.fn>,
   providerOptions: null as null | Record<string, unknown>,
 }));
 
 vi.mock('ai', () => ({
   streamText: aiControl.streamText,
-  isStepCount: aiControl.isStepCount,
+  isLoopFinished: aiControl.isLoopFinished,
   tool: (config: unknown) => config,
 }));
 
@@ -109,7 +109,7 @@ describe('runAgent', () => {
     expect(options.messages).toEqual([{ role: 'user', content: 'go' }]);
     expect(String(options.system)).toContain('你是一个蜘蛛');
     expect(options.toolCallConcurrency).toBe(1);
-    expect(options.stopWhen).toEqual({ steps: 20 });
+    expect(options.stopWhen).toEqual({ until: 'finished' });
     expect(options.tools).toBeTypeOf('object');
   });
 
