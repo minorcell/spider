@@ -1,4 +1,10 @@
-# 机械蛛
+# Token 蛛
+
+<p align="center">
+  <img src="./public/logo.svg" width="120" height="120" alt="Token 蛛 logo" />
+</p>
+
+[![codecov](https://codecov.io/gh/minorcell/spider/branch/main/graph/badge.svg)](https://codecov.io/gh/minorcell/spider)
 
 一只蜘蛛宠物。填上模型地址、名字和 Key，它就是你的了。
 
@@ -6,7 +12,7 @@
 
 ## 跑起来
 
-需要 Node 22 以上。
+需要 Node 24 以上。
 
 ```bash
 pnpm install

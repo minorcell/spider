@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://spider.minorcell.top/sitemap.xml
