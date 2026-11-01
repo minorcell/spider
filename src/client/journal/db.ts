@@ -9,21 +9,40 @@ export interface MemoryPage {
   updatedAt: number;
 }
 
+/** One local day's model usage. `total` is input plus output, as the provider reported it. */
+export interface UsageDay {
+  date: string;
+  input: number;
+  output: number;
+  total: number;
+  calls: number;
+  cacheRead: number;
+  reasoning: number;
+}
+
 interface SpiderDB extends DBSchema {
   sessions: { key: string; value: ChatSession };
   memories: { key: string; value: MemoryPage };
+  usage: { key: string; value: UsageDay };
 }
 
 const DB_NAME = 'spider';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let opening: Promise<IDBPDatabase<SpiderDB>> | null = null;
 
 export function openSpiderDb(): Promise<IDBPDatabase<SpiderDB>> {
   opening ??= openDB<SpiderDB>(DB_NAME, DB_VERSION, {
     upgrade(db) {
-      db.createObjectStore('sessions', { keyPath: 'date' });
-      db.createObjectStore('memories', { keyPath: 'date' });
+      if (!db.objectStoreNames.contains('sessions')) {
+        db.createObjectStore('sessions', { keyPath: 'date' });
+      }
+      if (!db.objectStoreNames.contains('memories')) {
+        db.createObjectStore('memories', { keyPath: 'date' });
+      }
+      if (!db.objectStoreNames.contains('usage')) {
+        db.createObjectStore('usage', { keyPath: 'date' });
+      }
     },
   });
   return opening;

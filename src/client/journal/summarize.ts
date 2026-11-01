@@ -1,10 +1,11 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText } from 'ai';
+import { generateText, type LanguageModelUsage } from 'ai';
 import type { PilotSettings } from '../settings.js';
 
 export interface DiaryNote {
   line: string;
   summary: string;
+  usage?: LanguageModelUsage;
 }
 
 /** Turn a day's transcript into a directory line and a summary. Noted text stays put. */
@@ -36,7 +37,8 @@ export async function summarizeDiary(input: {
       '回答 {"line":"目录上一句，让以后能决定要不要翻开这一天","summary":"这一天发生了什么"}',
     ].join('\n'),
   });
-  return readNote(result.text);
+  const note = readNote(result.text);
+  return result.usage == null ? note : { ...note, usage: result.usage };
 }
 
 export function readNote(text: string): DiaryNote {

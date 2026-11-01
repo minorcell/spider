@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { isLoopFinished, streamText } from 'ai';
+import { isLoopFinished, streamText, type LanguageModelUsage } from 'ai';
 import { CARRY_LIMIT } from '../../shared/config.js';
 import type { SimSession } from '../../shared/sim/session.js';
 import type { MemoryApi } from '../journal/diary.js';
@@ -42,6 +42,11 @@ export type AgentEvent =
   | { type: 'tool-result'; name: string; output: unknown }
   | { type: 'error'; message: string };
 
+export interface AgentReply {
+  text: string;
+  usage: LanguageModelUsage | null;
+}
+
 export interface RunAgentOptions {
   goal: string;
   session: SimSession;
@@ -68,11 +73,12 @@ export async function runAgent({
   memory,
   signal,
   onEvent,
-}: RunAgentOptions): Promise<string> {
+}: RunAgentOptions): Promise<AgentReply> {
   const provider = createOpenAICompatible({
     name: 'openai-compatible',
     baseURL: settings.baseURL,
     apiKey: settings.apiKey,
+    includeUsage: true,
   });
 
   signal?.addEventListener('abort', () => session.cancel(), { once: true });
@@ -128,7 +134,17 @@ export async function runAgent({
         break;
     }
   }
-  return answer;
+  return { text: answer, usage: await takenUsage(result.usage) };
+}
+
+async function takenUsage(
+  usage: PromiseLike<LanguageModelUsage> | undefined,
+): Promise<LanguageModelUsage | null> {
+  try {
+    return (await usage) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function errorText(error: unknown): string {

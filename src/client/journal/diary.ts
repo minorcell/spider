@@ -14,6 +14,7 @@ import {
   type Trace,
 } from './session.js';
 import { summarizeDiary } from './summarize.js';
+import { recordUsage } from './usage.js';
 
 const INDEX_DAYS = 60;
 
@@ -145,6 +146,7 @@ export class Diary {
           noted: page?.noted ?? '',
           prior: action.session.summary,
         });
+        await recordUsage(note.usage);
         const folded = foldSummary(action.session, note.summary || action.session.summary);
         this.session = { ...dropOldest(folded, limits), updatedAt: Date.now() };
       } catch {
@@ -182,6 +184,7 @@ export class Diary {
       noted: page.noted,
       prior: session.summary,
     });
+    await recordUsage(note.usage);
     await this.db.put('memories', {
       ...page,
       description: note.line || page.description,

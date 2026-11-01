@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetSpiderDb } from '../../src/client/journal/db.js';
 import { Diary } from '../../src/client/journal/diary.js';
-import { shiftDate } from '../../src/client/journal/dates.js';
+import { localDate, shiftDate } from '../../src/client/journal/dates.js';
+import * as usageLedger from '../../src/client/journal/usage.js';
 import { summarizeDiary } from '../../src/client/journal/summarize.js';
 import { mountPanel } from '../../src/client/panel.js';
 import { readPilot, writePilot, type PilotSettings } from '../../src/client/settings.js';
@@ -33,6 +34,7 @@ const CHROME = `
   <menu id="corner-menu" hidden>
     <button id="menu-model" type="button">模型</button>
     <button id="menu-memory" type="button">记忆</button>
+    <button id="menu-usage" type="button">用量</button>
   </menu>
   <button id="observe-open" type="button"></button>
   <span id="look-hint"></span>
@@ -60,6 +62,13 @@ const CHROME = `
   <dialog id="leave">
     <button id="leave-close" type="button"></button>
     <button id="leave-summarize" type="button"></button>
+  </dialog>
+  <dialog id="usage">
+    <p id="usage-today"></p>
+    <p id="usage-total"></p>
+    <ol id="usage-days"></ol>
+    <p id="usage-empty" hidden></p>
+    <button id="usage-close" type="button"></button>
   </dialog>
 `;
 
@@ -230,7 +239,7 @@ describe('running a goal', () => {
 
   it('ignores an empty message', () => {
     ready();
-    loop.runAgent.mockResolvedValue('unused');
+    loop.runAgent.mockResolvedValue({ text: 'unused', usage: null });
     mount();
     submit();
     expect(loop.runAgent).not.toHaveBeenCalled();
@@ -244,7 +253,7 @@ describe('running a goal', () => {
       onEvent({ type: 'text', text: '你' });
       onEvent({ type: 'text', text: '好' });
       onEvent({ type: 'unknown' });
-      return '';
+      return { text: '', usage: null };
     });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
@@ -259,7 +268,7 @@ describe('running a goal', () => {
 
   it('shows the final answer when no text streamed', async () => {
     ready();
-    loop.runAgent.mockResolvedValue(' 完成 ');
+    loop.runAgent.mockResolvedValue({ text: ' 完成 ', usage: null });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
@@ -269,7 +278,7 @@ describe('running a goal', () => {
 
   it('stays quiet for a blank answer', async () => {
     ready();
-    loop.runAgent.mockResolvedValue('   ');
+    loop.runAgent.mockResolvedValue({ text: '   ', usage: null });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
@@ -286,7 +295,7 @@ describe('running a goal', () => {
       onEvent({ type: 'tool-call', input: null });
       onEvent({ type: 'tool-call', input: 'x' });
       onEvent({ type: 'tool-call', input: {} });
-      return '';
+      return { text: '', usage: null };
     });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
@@ -304,7 +313,7 @@ describe('running a goal', () => {
       onEvent({ type: 'error', message: 'Failed to fetch' });
       onEvent({ type: 'error', message: 'boom' });
       onEvent({ type: 'error', message: '' });
-      return '';
+      return { text: '', usage: null };
     });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
@@ -317,7 +326,7 @@ describe('running a goal', () => {
     ready();
     loop.runAgent.mockImplementation(async ({ onEvent }: { onEvent: (event: unknown) => void }) => {
       onEvent({ type: 'error', message: 'TypeError: Failed to fetch' });
-      return '';
+      return { text: '', usage: null };
     });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
@@ -351,7 +360,7 @@ describe('running a goal', () => {
     loop.runAgent.mockImplementation(
       ({ signal }: { signal: AbortSignal }) =>
         new Promise((resolve) => {
-          signal.addEventListener('abort', () => resolve(''));
+          signal.addEventListener('abort', () => resolve({ text: '', usage: null }));
         }),
     );
     mount();
@@ -371,11 +380,11 @@ describe('running a goal', () => {
         call += 1;
         if (call === 1) {
           return new Promise((resolve) => {
-            signal.addEventListener('abort', () => resolve(''));
+            signal.addEventListener('abort', () => resolve({ text: '', usage: null }));
           });
         }
         onEvent({ type: 'text', text: '新的' });
-        return Promise.resolve('');
+        return Promise.resolve({ text: '', usage: null });
       },
     );
     mount();
@@ -462,7 +471,7 @@ describe('running a goal', () => {
           });
         }
         onEvent({ type: 'text', text: '新的' });
-        return Promise.resolve('');
+        return Promise.resolve({ text: '', usage: null });
       },
     );
     mount();
@@ -510,7 +519,7 @@ describe('speech bubble follow', () => {
     ready();
     loop.runAgent.mockImplementation(async ({ onEvent }: { onEvent: (event: unknown) => void }) => {
       onEvent({ type: 'text', text });
-      return '';
+      return { text: '', usage: null };
     });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
@@ -571,7 +580,7 @@ describe('speech bubble follow', () => {
     ready();
     loop.runAgent.mockImplementation(async ({ onEvent }: { onEvent: (event: unknown) => void }) => {
       onEvent({ type: 'text', text: '你好' });
-      return '';
+      return { text: '', usage: null };
     });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
@@ -855,7 +864,7 @@ describe('diary panel', () => {
       onEvent({ type: 'tool-result', name: 'pick_up', output: { ok: true } });
       onEvent({ type: 'tool-result', name: 'drop', output: { ok: true } });
       onEvent({ type: 'error', message: 'boom' });
-      return '';
+      return { text: '', usage: null };
     });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
@@ -870,7 +879,7 @@ describe('diary panel', () => {
     loop.runAgent.mockImplementation(async ({ onEvent }: { onEvent: (event: unknown) => void }) => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       onEvent({ type: 'text', text: '晚了' });
-      return '';
+      return { text: '', usage: null };
     });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
@@ -886,7 +895,7 @@ describe('diary panel', () => {
     vi.spyOn(Diary.prototype, 'record').mockRejectedValueOnce('disk');
     mount();
     await flush();
-    loop.runAgent.mockResolvedValue('');
+    loop.runAgent.mockResolvedValue({ text: '', usage: null });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
     await flush();
@@ -899,7 +908,7 @@ describe('diary panel', () => {
     vi.spyOn(Diary.prototype, 'record').mockRejectedValueOnce(new Error('disk full'));
     mount();
     await flush();
-    loop.runAgent.mockResolvedValue('');
+    loop.runAgent.mockResolvedValue({ text: '', usage: null });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
     await flush();
@@ -929,7 +938,7 @@ describe('diary panel', () => {
     const spy = vi.spyOn(Diary, 'open').mockRejectedValueOnce(new Error('no db'));
     mount();
     await flush();
-    loop.runAgent.mockResolvedValue('');
+    loop.runAgent.mockResolvedValue({ text: '', usage: null });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
     await flush();
@@ -1001,5 +1010,101 @@ describe('pilot number fields', () => {
     input.value = '';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     expect(readPilot().contextTokens).toBeNull();
+  });
+});
+
+const reported = {
+  inputTokens: 1500,
+  outputTokens: 2_500_000,
+  totalTokens: 1_200_000_000,
+  inputTokenDetails: { noCacheTokens: 1500, cacheReadTokens: 0, cacheWriteTokens: undefined },
+  outputTokenDetails: { textTokens: 2_500_000, reasoningTokens: 0 },
+};
+
+describe('usage dialog', () => {
+  beforeEach(async () => {
+    await resetSpiderDb();
+  });
+
+  it('opens an empty ledger', async () => {
+    mount();
+    clickButton('#settings-open');
+    clickButton('#menu-usage');
+    await flush();
+    expect(document.querySelector<HTMLElement>('#corner-menu')!.hidden).toBe(true);
+    expect(document.querySelector<HTMLDialogElement>('#usage')!.open).toBe(true);
+    expect(document.querySelector('#usage-today')!.textContent).toBe(
+      '输入 0\n输出 0\n合计 0\n0 次',
+    );
+    expect(document.querySelector('#usage-empty')!.hidden).toBe(false);
+    clickButton('#usage-close');
+    expect(document.querySelector<HTMLDialogElement>('#usage')!.open).toBe(false);
+  });
+
+  it('shows compacted totals and days', async () => {
+    const today = localDate(new Date());
+    const [year, month, day] = shiftDate(today, -1).split('-').map(Number);
+    await usageLedger.recordUsage(reported, new Date());
+    await usageLedger.recordUsage(
+      { ...reported, inputTokens: 1000, outputTokens: 0, totalTokens: 1000 },
+      new Date(year, month - 1, day, 12),
+    );
+    mount();
+    clickButton('#menu-usage');
+    await flush();
+    const todayText = document.querySelector('#usage-today')!.textContent;
+    expect(todayText).toContain('输入 1.5k');
+    expect(todayText).toContain('输出 2.5m');
+    expect(todayText).toContain('合计 1.2b');
+    expect(todayText).toContain('1 次');
+    expect(document.querySelector('#usage-total')!.textContent).toContain('2 次');
+    expect(document.querySelector('#usage-days')!.textContent).toContain(today);
+    expect(document.querySelector('#usage-days')!.textContent).toContain('1.2b');
+    expect(document.querySelector('#usage-days')!.textContent).toContain(shiftDate(today, -1));
+    expect(document.querySelector('#usage-empty')!.hidden).toBe(true);
+  });
+
+  it('refreshes an open ledger after a reply', async () => {
+    ready();
+    loop.runAgent.mockResolvedValue({ text: '好', usage: reported });
+    mount();
+    clickButton('#menu-usage');
+    await flush();
+    expect(document.querySelector('#usage-today')!.textContent).toContain('0 次');
+    document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
+    submit();
+    await flush();
+    expect(document.querySelector('#usage-today')!.textContent).toContain('输入 1.5k');
+    expect(document.querySelector('#usage-today')!.textContent).toContain('1 次');
+  });
+
+  it('keeps tokens from a stopped reply', async () => {
+    ready();
+    loop.runAgent.mockImplementation(
+      ({ signal }: { signal: AbortSignal }) =>
+        new Promise((resolve) => {
+          signal.addEventListener('abort', () => resolve({ text: '', usage: reported }));
+        }),
+    );
+    mount();
+    document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
+    submit();
+    await flush();
+    clickButton('#pilot-send', 1);
+    await flush();
+    clickButton('#menu-usage');
+    await flush();
+    expect(document.querySelector('#usage-today')!.textContent).toContain('输入 1.5k');
+  });
+
+  it('shows an empty ledger when the read fails', async () => {
+    vi.spyOn(usageLedger, 'readUsage').mockRejectedValueOnce(new Error('down'));
+    mount();
+    clickButton('#menu-usage');
+    await flush();
+    expect(document.querySelector('#usage-today')!.textContent).toBe(
+      '输入 0\n输出 0\n合计 0\n0 次',
+    );
+    expect(document.querySelector('#usage-empty')!.hidden).toBe(false);
   });
 });

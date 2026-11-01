@@ -1,5 +1,7 @@
 import { Diary } from './journal/diary.js';
+import { localDate } from './journal/dates.js';
 import type { Trace } from './journal/session.js';
+import { formatTokens, readUsage, recordUsage, type UsageSnapshot } from './journal/usage.js';
 import { pilotReady, readPilot, writePilot, type PilotSettings } from './settings.js';
 import type { Stage } from './stage.js';
 import type { SimSession } from '../shared/sim/session.js';
@@ -18,6 +20,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   const menu = doc.querySelector<HTMLElement>('#corner-menu');
   const menuModel = doc.querySelector<HTMLButtonElement>('#menu-model');
   const menuMemory = doc.querySelector<HTMLButtonElement>('#menu-memory');
+  const menuUsage = doc.querySelector<HTMLButtonElement>('#menu-usage');
   const map = doc.querySelector<HTMLButtonElement>('#observe-open');
   const lookHint = doc.querySelector<HTMLElement>('#look-hint');
   const dialog = doc.querySelector<HTMLDialogElement>('#settings');
@@ -30,6 +33,12 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   const leave = doc.querySelector<HTMLDialogElement>('#leave');
   const leaveClose = doc.querySelector<HTMLButtonElement>('#leave-close');
   const leaveSummarize = doc.querySelector<HTMLButtonElement>('#leave-summarize');
+  const usageDialog = doc.querySelector<HTMLDialogElement>('#usage');
+  const usageClose = doc.querySelector<HTMLButtonElement>('#usage-close');
+  const usageToday = doc.querySelector<HTMLElement>('#usage-today');
+  const usageTotal = doc.querySelector<HTMLElement>('#usage-total');
+  const usageDays = doc.querySelector<HTMLOListElement>('#usage-days');
+  const usageEmpty = doc.querySelector<HTMLElement>('#usage-empty');
   if (
     !form ||
     !goal ||
@@ -40,6 +49,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
     !menu ||
     !menuModel ||
     !menuMemory ||
+    !menuUsage ||
     !map ||
     !dialog ||
     !settingsForm ||
@@ -50,7 +60,13 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
     !memoryEmpty ||
     !leave ||
     !leaveClose ||
-    !leaveSummarize
+    !leaveSummarize ||
+    !usageDialog ||
+    !usageClose ||
+    !usageToday ||
+    !usageTotal ||
+    !usageDays ||
+    !usageEmpty
   ) {
     throw new Error('Missing pilot chrome');
   }
@@ -225,6 +241,38 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   menuMemory.addEventListener('click', () => {
     void showMemory();
   });
+
+  const renderUsage = (snapshot: UsageSnapshot): void => {
+    usageToday.textContent = usageFigure(snapshot.today);
+    usageTotal.textContent = usageFigure(snapshot.sum);
+    usageDays.replaceChildren();
+    for (const day of snapshot.days) {
+      const item = doc.createElement('li');
+      item.textContent = `${day.date}　${formatTokens(day.total)}`;
+      usageDays.append(item);
+    }
+    usageEmpty.hidden = snapshot.days.length > 0;
+  };
+
+  const refreshUsage = async (): Promise<void> => {
+    const today = localDate(new Date());
+    try {
+      renderUsage(await readUsage(today));
+    } catch {
+      renderUsage({
+        today: { date: today, input: 0, output: 0, total: 0, calls: 0, cacheRead: 0, reasoning: 0 },
+        sum: { date: '', input: 0, output: 0, total: 0, calls: 0, cacheRead: 0, reasoning: 0 },
+        days: [],
+      });
+    }
+  };
+
+  menuUsage.addEventListener('click', () => {
+    setMenu(false);
+    usageDialog.showModal();
+    void refreshUsage();
+  });
+  usageClose.addEventListener('click', () => usageDialog.close());
   memoryClose.addEventListener('click', () => memoryDialog.close());
   dateSelect.addEventListener('change', () => {
     void diary?.read(dateSelect.value).then((page) => {
@@ -292,7 +340,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
         return;
       }
       const { runAgent } = await import('./agent/loop.js');
-      const answer = await runAgent({
+      const reply = await runAgent({
         goal: text,
         session,
         settings,
@@ -327,6 +375,8 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
           }
         },
       });
+      const answer = reply.text;
+      await recordUsage(reply.usage);
       if (opened && !controller.signal.aborted) {
         try {
           await opened.record(text, answer, traces, settings);
@@ -334,6 +384,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
           show(explain(error instanceof Error ? error.message : String(error)), 'note');
         }
       }
+      if (usageDialog.open) await refreshUsage();
       if (controller.signal.aborted) {
         if (!replaced.has(controller)) show('已停止', 'note');
       } else if (!sawText && answer.trim()) show(answer.trim(), 'speech');
@@ -428,6 +479,15 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   });
 
   paint();
+}
+
+function usageFigure(row: { input: number; output: number; total: number; calls: number }): string {
+  return [
+    `输入 ${formatTokens(row.input)}`,
+    `输出 ${formatTokens(row.output)}`,
+    `合计 ${formatTokens(row.total)}`,
+    `${row.calls} 次`,
+  ].join('\n');
 }
 
 function numberOrNull(value: string): number | null {

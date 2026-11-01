@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetSpiderDb } from '../../src/client/journal/db.js';
+import { openSpiderDb, resetSpiderDb } from '../../src/client/journal/db.js';
 import { Diary } from '../../src/client/journal/diary.js';
 import { localDate, shiftDate } from '../../src/client/journal/dates.js';
 import {
@@ -15,6 +15,7 @@ import {
   type ChatSession,
 } from '../../src/client/journal/session.js';
 import { readNote, summarizeDiary } from '../../src/client/journal/summarize.js';
+import { readUsage } from '../../src/client/journal/usage.js';
 import type { PilotSettings } from '../../src/client/settings.js';
 
 vi.mock('../../src/client/journal/summarize.js', async () => {
@@ -340,5 +341,77 @@ describe('Diary', () => {
     vi.mocked(summarizeDiary).mockResolvedValueOnce({ line: '新目录句', summary: '' });
     await diary.record('再走', '好。', [], { ...settings, contextTokens: 1, compact: true });
     expect(diary.session.summary).toBe('更早的摘要');
+  });
+
+  it('records tokens spent summarizing a day', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 12, 8));
+    vi.mocked(summarizeDiary).mockResolvedValueOnce({
+      line: '目录',
+      summary: '摘要',
+      usage: {
+        inputTokens: 8,
+        outputTokens: 2,
+        totalTokens: 10,
+        inputTokenDetails: { noCacheTokens: 7, cacheReadTokens: 1, cacheWriteTokens: undefined },
+        outputTokenDetails: { textTokens: 2, reasoningTokens: 0 },
+      },
+    });
+    await diary.record('一'.repeat(80), '二'.repeat(80), [], {
+      ...settings,
+      contextTokens: 1,
+      compact: true,
+    });
+    expect((await readUsage(localDate(new Date()))).today).toMatchObject({
+      input: 8,
+      output: 2,
+      total: 10,
+      calls: 1,
+      cacheRead: 1,
+    });
+  });
+
+  it('records tokens spent writing the diary', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 13, 8));
+    await diary.record('走', '好。', [], settings);
+    vi.mocked(summarizeDiary).mockResolvedValueOnce({
+      line: '目录',
+      summary: '摘要',
+      usage: {
+        inputTokens: 4,
+        outputTokens: 1,
+        totalTokens: 5,
+        inputTokenDetails: { noCacheTokens: 4, cacheReadTokens: 0, cacheWriteTokens: undefined },
+        outputTokenDetails: { textTokens: 1, reasoningTokens: 0 },
+      },
+    });
+    await diary.digest(settings);
+    expect((await readUsage(localDate(new Date()))).today.calls).toBe(1);
+  });
+
+  it('keeps the summary when the usage ledger cannot be written', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 14, 8));
+    const db = await openSpiderDb();
+    const original = db.transaction.bind(db);
+    vi.spyOn(db, 'transaction').mockImplementation((store, mode, options) => {
+      if (store === 'usage') throw new Error('usage down');
+      return original(store, mode, options);
+    });
+    vi.mocked(summarizeDiary).mockResolvedValueOnce({
+      line: '目录',
+      summary: '摘要',
+      usage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+        inputTokenDetails: { noCacheTokens: 1, cacheReadTokens: 0, cacheWriteTokens: undefined },
+        outputTokenDetails: { textTokens: 1, reasoningTokens: 0 },
+      },
+    });
+    await diary.record('一'.repeat(80), '二'.repeat(80), [], {
+      ...settings,
+      contextTokens: 1,
+      compact: true,
+    });
+    expect(diary.session.summary).toBe('摘要');
   });
 });

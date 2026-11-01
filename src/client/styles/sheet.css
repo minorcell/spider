@@ -48,6 +48,7 @@ body {
 #trace,
 #settings,
 #memory,
+#usage,
 #leave {
   color: #1b1714;
   font:
@@ -234,6 +235,7 @@ body {
 #memory textarea,
 #memory select,
 #memory button,
+#usage button,
 #leave button {
   border: 1px solid #1b1714;
   background: #f3efe6;
@@ -246,6 +248,7 @@ body {
 #pilot button,
 #settings button,
 #memory button,
+#usage button,
 #leave button {
   padding: 0 0.55em;
   cursor: pointer;
@@ -266,6 +269,7 @@ body {
 #pilot button:focus,
 #settings button:focus,
 #memory button:focus,
+#usage button:focus,
 #leave button:focus {
   outline: 1px solid #1b1714;
   outline-offset: 2px;
@@ -273,6 +277,7 @@ body {
 
 #settings,
 #memory,
+#usage,
 #leave {
   width: min(26rem, calc(100% - 32px));
   padding: 22px 24px;
@@ -282,12 +287,14 @@ body {
 
 #settings::backdrop,
 #memory::backdrop,
+#usage::backdrop,
 #leave::backdrop {
   background: rgba(243, 239, 230, 0.78);
 }
 
 #settings h2,
 #memory h2,
+#usage h2,
 #leave h2 {
   margin: 0 0 12px;
   font-size: 16px;
@@ -321,6 +328,7 @@ body {
 
 #settings p,
 #memory p,
+#usage p,
 #leave p {
   margin: 0 0 14px;
   opacity: 0.8;
@@ -328,12 +336,30 @@ body {
 
 #settings menu,
 #memory menu,
+#usage menu,
 #leave menu {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin: 0;
   padding: 0;
+}
+
+#usage .usage-figure {
+  opacity: 1;
+  white-space: pre-line;
+}
+
+#usage-days {
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+#usage-days li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 @media (max-width: 800px) {

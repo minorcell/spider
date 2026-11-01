@@ -104,6 +104,7 @@
         <menu id="corner-menu" hidden>
           <button id="menu-model" type="button">模型</button>
           <button id="menu-memory" type="button">记忆</button>
+          <button id="menu-usage" type="button">用量</button>
         </menu>
       </div>
       <ol id="trace" hidden></ol>
@@ -187,6 +188,23 @@
           <menu>
             <button id="memory-close" type="button" value="cancel">关闭</button>
             <button type="submit" value="default">保存</button>
+          </menu>
+        </form>
+      </dialog>
+
+      <dialog id="usage">
+        <form method="dialog">
+          <h2>用量</h2>
+          <p>今天</p>
+          <p id="usage-today" class="usage-figure"></p>
+          <p>累计</p>
+          <p id="usage-total" class="usage-figure"></p>
+          <p>按天</p>
+          <ol id="usage-days"></ol>
+          <p id="usage-empty" hidden>还没有用量。</p>
+          <p>更早的调用没有数。</p>
+          <menu>
+            <button id="usage-close" type="button" value="cancel">关闭</button>
           </menu>
         </form>
       </dialog>

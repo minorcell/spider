@@ -25,7 +25,7 @@ vi.mock('@ai-sdk/openai-compatible', () => ({
 
 import { runAgent, type AgentEvent } from '../../../src/client/agent/loop.js';
 
-function stream(parts: unknown[]): void {
+function stream(parts: unknown[], usage: unknown = undefined, failUsage = false): void {
   aiControl.streamText.mockReturnValue({
     fullStream: (async function* generate() {
       for (const part of parts) {
@@ -33,6 +33,9 @@ function stream(parts: unknown[]): void {
         yield part;
       }
     })(),
+    get usage() {
+      return failUsage ? Promise.reject(new Error('no usage')) : Promise.resolve(usage);
+    },
   });
 }
 
@@ -67,7 +70,8 @@ describe('runAgent', () => {
       settings,
       onEvent: (event) => events.push(event),
     });
-    expect(answer).toBe('ab');
+    expect(answer.text).toBe('ab');
+    expect(answer.usage).toBeNull();
     expect(events).toEqual([
       { type: 'text', text: 'a' },
       { type: 'text', text: 'b' },
@@ -103,6 +107,7 @@ describe('runAgent', () => {
       name: 'openai-compatible',
       baseURL: settings.baseURL,
       apiKey: settings.apiKey,
+      includeUsage: true,
     });
     expect(aiControl.provider!).toHaveBeenCalledWith('model-1');
     const options = aiControl.streamText.mock.calls[0][0] as Record<string, unknown>;
@@ -154,7 +159,7 @@ describe('runAgent', () => {
       signal: controller.signal,
     });
     controller.abort();
-    await expect(promise).resolves.toBe('');
+    await expect(promise).resolves.toMatchObject({ text: '' });
     expect((session.cancel as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
   });
 
@@ -170,18 +175,49 @@ describe('runAgent', () => {
       signal: controller.signal,
       onEvent: (event) => events.push(event),
     });
-    expect(answer).toBe('');
+    expect(answer.text).toBe('');
     expect(events).toEqual([]);
   });
 
   it('runs without an event handler', async () => {
     stream([{ type: 'text-delta', text: 'a' }]);
-    await expect(runAgent({ goal: 'go', session: fakeSession(), settings })).resolves.toBe('a');
+    await expect(runAgent({ goal: 'go', session: fakeSession(), settings })).resolves.toMatchObject(
+      {
+        text: 'a',
+      },
+    );
     const options = aiControl.streamText.mock.calls[0][0] as {
       onToolExecutionStart: (event: { toolCall: { toolName: string; input: unknown } }) => void;
     };
     expect(() =>
       options.onToolExecutionStart({ toolCall: { toolName: 'walk', input: null } }),
     ).not.toThrow();
+  });
+
+  it('returns usage reported by the stream', async () => {
+    const usage = {
+      inputTokens: 3,
+      outputTokens: 1,
+      totalTokens: 4,
+      inputTokenDetails: { noCacheTokens: 3, cacheReadTokens: 0, cacheWriteTokens: undefined },
+      outputTokenDetails: { textTokens: 1, reasoningTokens: 0 },
+    };
+    stream([{ type: 'text-delta', text: 'a' }], usage);
+    await expect(runAgent({ goal: 'go', session: fakeSession(), settings })).resolves.toMatchObject(
+      {
+        text: 'a',
+        usage,
+      },
+    );
+  });
+
+  it('drops usage when the stream cannot report it', async () => {
+    stream([{ type: 'text-delta', text: 'a' }], undefined, true);
+    await expect(runAgent({ goal: 'go', session: fakeSession(), settings })).resolves.toMatchObject(
+      {
+        text: 'a',
+        usage: null,
+      },
+    );
   });
 });

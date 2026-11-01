@@ -57,4 +57,18 @@ describe('summarizeDiary', () => {
     const prompt = String(ai.generateText.mock.calls[0]?.[0]?.prompt);
     expect(prompt).toContain('（无）');
   });
+
+  it('keeps the usage reported with the note', async () => {
+    const reported = {
+      inputTokens: 5,
+      outputTokens: 2,
+      totalTokens: 7,
+      inputTokenDetails: { noCacheTokens: 5, cacheReadTokens: 0, cacheWriteTokens: undefined },
+      outputTokenDetails: { textTokens: 2, reasoningTokens: 0 },
+    };
+    ai.generateText.mockResolvedValueOnce({ text: '散文', usage: reported });
+    compat.create.mockReturnValue(vi.fn(() => 'model-1'));
+    const note = await summarizeDiary({ settings, transcript: '对话', noted: '', prior: '' });
+    expect(note).toMatchObject({ line: '散文', summary: '散文', usage: reported });
+  });
 });
