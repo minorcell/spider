@@ -17,11 +17,12 @@ walk 只顺着你现在的朝向走一段，不会绕。用它来探路，或者
 
 turn 和 turn_to 只在原地转。drive 只有别的行动都说不清你要做什么时才用。路程大约超过 2 个单位时，walk、move_to、approach 把 fast 设为 true。不然你只会慢慢挪。
 
-一格是一个单位。原点是你出生的巢。朝向 0 是世界的 -Z，角度顺时针增大。y 朝上。self.y 是你的高度，self.ground 是你脚下的地面；self.height 只是你离地面抬起的那一点。self.home 为真时你在巢里，可以在那里睡觉。self.carrying 是你背上的东西，先背上的在前，空着是 []，最多 ${CARRY_LIMIT} 件。走路跟着地面起伏。坡你爬得过去，只有近乎竖直的地方才停。走下落差你会掉下去。ways 是已经算好的短句：相对朝向转多少度之后能走多远。任何墙、任何口都用这同一句话。solid 的东西走不过去，也会挡住视线，那些记在 hidden 里。草丛进得去；进去之后视线变短，self.cover 是 grass。self.view 是这一次实际看见的距离，没有办法一次看完这片地方。超出视线的数目在 beyond 里。每次行动都带回你现在感知到的情形，以它为准，不要靠自己估算。已经离开这里的东西不会再出现。
+一格是一个单位。原点是你出生的巢。朝向 0 是世界的 -Z，角度顺时针增大。y 朝上。self.y 是你的高度，self.ground 是你脚下的地面；self.height 只是你离地面抬起的那一点。self.home 为真时你在巢里，可以在那里睡觉。self.carrying 是你背上的东西，先背上的在前，空着是 []，最多 ${CARRY_LIMIT} 件。走路跟着地面起伏。坡你爬得过去，只有近乎竖直的地方才停。走下落差你会掉下去。ways 是已经算好的短句：相对朝向转多少度之后能走多远。任何墙、任何口都用这同一句话。solid 的东西走不过去，也会挡住视线，那些记在 hidden 里。草丛进得去；进去之后视线变短，self.cover 是 grass。self.view 是这一次实际看见的距离，没有办法一次看完这片地方。超出视线的数目在 beyond 里。每次行动的结果里都有那时的情形。一次回复里只有一条时以它为准；有好几条时以最后一条为准。不要靠自己估算。已经离开这里的东西不会再出现。
 不要叙述还没做的计划。不要编造位置、距离或方位：用最近一次的结果。你或别的东西可能动过，就再看一次。
 读每个行动自己的说明和它返回的字段。你看见的每样东西带着 properties：能做的事以这些属性为准。结果里没写的效果，就没有发生。要花时间的事会给出 stage；结果没说完成，就还没完成。消失了的东西不会再回来。背上满了再搬，reason 是 full。drop 和 store 不填 id，就放下最后背上的那件；填了就放下那一件。吃也一样，不填就吃够得着的、最近的能吃的，背上的也算。
+一次回复里可以写多个行动。它们按你写的顺序做完，结果再一起回来。这是在做，不是在叙述计划。身边有几件够得着、能搬的，就在这一次里对每件各写一次 pick_up，每次填它自己的 id。背上有几件要放，就在这一次里对每件各写一次 drop，每次填它自己的 id。不要拆成一次回复只做一件。move_to、approach、walk 不要和 pick_up、drop 写在同一次里：先走到，看完结果，再搬或者再放。
 每次行动都要有 description：一句第一人称的短话，用用户的语言，说你在做什么。这句话出现在你旁边。不要写坐标，也不要写行动的名字。
-某次行动返回 ok: false 时，看 reason 和已经做到的值，换一种做法。不要用相同的参数再做一次同样的事。
+某次行动返回 ok: false 时，看 reason 和已经做到的值，换一种做法。不要用相同的参数再试一次失败的行动。换一个 id 是另一件东西，可以写在同一次回复里。
 做成了，或者已经确定做不成，就停。然后用用户的语言回一句短话。`;
 
 export type AgentEvent =
@@ -39,8 +40,8 @@ export interface RunAgentOptions {
 }
 
 /**
- * One agent turn in the page. The model calls the local tools; each tool
- * drives the simulation until it finishes, then the loop continues.
+ * One agent turn in the page. One reply may call several tools. They run in
+ * the order written, each until it finishes, and then the loop continues.
  */
 export async function runAgent({
   goal,
@@ -64,7 +65,15 @@ export async function runAgent({
     tools: spiderTools(session),
     stopWhen: isStepCount(MAX_STEPS),
     abortSignal: signal,
+    // One body. A second call started early would cancel the goal still running.
     toolCallConcurrency: 1,
+    onToolExecutionStart(event) {
+      onEvent?.({
+        type: 'tool-call',
+        name: event.toolCall.toolName,
+        input: event.toolCall.input,
+      });
+    },
   });
 
   let answer = '';
@@ -74,9 +83,6 @@ export async function runAgent({
       case 'text-delta':
         answer += part.text;
         onEvent?.({ type: 'text', text: part.text });
-        break;
-      case 'tool-call':
-        onEvent?.({ type: 'tool-call', name: part.toolName, input: part.input });
         break;
       case 'tool-result':
         onEvent?.({ type: 'tool-result', name: part.toolName, output: part.output });

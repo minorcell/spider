@@ -118,7 +118,9 @@ export function spiderTools(session: SimSession) {
       execute: async ({ id }) => finish(await session.eat(id)),
     }),
     pick_up: tool({
-      description: `搬起一件 properties 里有 carryable 的东西。背上最多 ${CARRY_LIMIT} 件，满了再搬的原因是 full。返回 carrying，是背上全部的 id，先背上的在前。`,
+      description:
+        `搬起一件 properties 里有 carryable 的东西。背上最多 ${CARRY_LIMIT} 件，满了再搬的原因是 full。返回 carrying，是背上全部的 id，先背上的在前。` +
+        '够得着的能搬的有几件，就在同一次回复里对每件各调用一次，每次填那个 id。',
       inputSchema: call({
         id: z.string().optional().describe('观察里的 id。不填就搬最近的、够得着的、能搬的。'),
       }),
@@ -126,7 +128,8 @@ export function spiderTools(session: SimSession) {
     }),
     drop: tool({
       description:
-        '把背上的一件放在面前。不填 id 就放最后背上的那件。放下的那件不再在 carrying 里。',
+        '把背上的一件放在面前。不填 id 就放最后背上的那件。放下的那件不再在 carrying 里。' +
+        '有几件要放，就在同一次回复里对每件各调用一次，每次填那个 id。',
       inputSchema: call({
         id: z.string().optional().describe('背上某一件的 id。不填就放最后背上的那件。'),
       }),
