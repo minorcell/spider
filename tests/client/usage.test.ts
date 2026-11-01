@@ -148,4 +148,21 @@ describe('openSpiderDb', () => {
     const db = await openSpiderDb();
     expect([...db.objectStoreNames].filter((name) => name === 'usage')).toEqual(['usage']);
   });
+
+  it('keeps a snapshots store that was created ahead of the upgrade', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('spider', 2);
+      request.addEventListener('upgradeneeded', () => {
+        request.result.createObjectStore('snapshots', { keyPath: 'id' });
+      });
+      request.addEventListener('success', () => {
+        request.result.close();
+        resolve();
+      });
+      request.addEventListener('error', () => reject(request.error ?? new Error('open failed')));
+    });
+    const db = await openSpiderDb();
+    expect(db.objectStoreNames.contains('snapshots')).toBe(true);
+    expect(db.objectStoreNames.contains('usage')).toBe(true);
+  });
 });

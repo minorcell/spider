@@ -135,6 +135,21 @@ export class Stage {
     this.#renderer.setAnimationLoop(this.#frame);
   }
 
+  /** The ground mesh is baked once. A restored seed needs a new island. */
+  retile(): void {
+    if (this.#island) {
+      this.#scene.remove(this.#island);
+      this.#island = null;
+    }
+    for (const [id, prop] of this.#props) {
+      this.#scene.remove(prop);
+      this.#props.delete(id);
+      this.#stages.delete(id);
+    }
+    this.#carried = null;
+    this.#syncWorld();
+  }
+
   #syncWorld(): void {
     const world = this.#world?.();
     if (!world) return;

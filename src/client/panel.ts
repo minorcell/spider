@@ -1,4 +1,5 @@
 import { Diary } from './journal/diary.js';
+import { flushWorld, onRestore, setPending, type BootNote } from './worldStore.js';
 import { localDate } from './journal/dates.js';
 import type { Trace } from './journal/session.js';
 import { formatTokens, readUsage, recordUsage, type UsageSnapshot } from './journal/usage.js';
@@ -13,7 +14,12 @@ export const AUTO_MEMORY_IDLE_MS = 30 * 60 * 1000;
 const AUTO_MEMORY_CHECK_MS = 60 * 1000;
 
 /** Settings, the instruction box, and the bubble that follows the spider. */
-export function mountPanel(doc: Document, session: SimSession, stage: Stage): void {
+export function mountPanel(
+  doc: Document,
+  session: SimSession,
+  stage: Stage,
+  note?: BootNote,
+): void {
   const form = doc.querySelector<HTMLFormElement>('#pilot');
   const goal = doc.querySelector<HTMLInputElement>('#goal');
   const send = doc.querySelector<HTMLButtonElement>('#pilot-send');
@@ -102,6 +108,11 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   let live: HTMLLIElement | null = null;
   let hideAt = 0;
 
+  let touched = false;
+  goal.addEventListener('input', () => {
+    touched = true;
+  });
+
   const paint = (): void => {
     const settings = readPilot();
     const ready = pilotReady(settings);
@@ -124,6 +135,19 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
     touch();
     if (kind === 'speech' || kind === 'thought') stage.voice();
   };
+
+  if (note?.cause === 'format') show('这只蜘蛛是更新的页面留下的，这个页面接不上。', 'note');
+  else if (note?.cause === 'malformed') show('上次的地方读不出来，这是一片新的。', 'note');
+  else if (note?.pendingText) {
+    goal.value = note.pendingText;
+    show('上次没做完。这句话还在框里。', 'note');
+  }
+  onRestore((arrived) => {
+    stage.retile();
+    if (touched || !arrived.pendingText) return;
+    goal.value = arrived.pendingText;
+    show('上次没做完。这句话还在框里。', 'note');
+  });
 
   const say = (chunk: string): void => {
     if (!chunk) return;
@@ -355,6 +379,12 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
     void diary?.save();
   });
 
+  const release = (controller: AbortController): void => {
+    if (replaced.has(controller)) return;
+    setPending(null);
+    flushWorld('poke');
+  };
+
   const run = async (
     controller: AbortController,
     text: string,
@@ -363,10 +393,14 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
     let sawText = false;
     const traces: Trace[] = [];
     let pending: { name: string; input: unknown } | null = null;
+    lastActivity = Date.now();
+    setPending({ text, tool: null });
+    flushWorld('poke');
     try {
       const opened = diary ?? (await diaryReady);
       if (controller.signal.aborted) {
         if (!replaced.has(controller)) show('已停止', 'note');
+        release(controller);
         return;
       }
       const { runAgent } = await import('./agent/loop.js');
@@ -387,6 +421,8 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
               break;
             case 'tool-call':
               pending = { name: event.name, input: event.input };
+              setPending({ text, tool: event.name });
+              flushWorld('poke');
               show(thoughtOf(event.input), 'thought');
               break;
             case 'tool-result':
@@ -396,6 +432,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
                 output: event.output,
               });
               pending = null;
+              flushWorld('poke');
               break;
             case 'error':
               show(explain(event.message), 'note');
@@ -407,20 +444,27 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
       });
       const answer = reply.text;
       await recordUsage(reply.usage);
-      if (opened && !controller.signal.aborted) {
-        try {
-          await opened.record(text, answer, traces, settings);
-        } catch (error) {
-          show(explain(error instanceof Error ? error.message : String(error)), 'note');
-        }
-      }
-      if (usageDialog.open) await refreshUsage();
       if (controller.signal.aborted) {
         if (!replaced.has(controller)) show('已停止', 'note');
-      } else if (!sawText && answer.trim()) show(answer.trim(), 'speech');
+        release(controller);
+      } else {
+        let recorded = !opened;
+        if (opened) {
+          try {
+            await opened.record(text, answer, traces, settings);
+            recorded = true;
+          } catch (error) {
+            show(explain(error instanceof Error ? error.message : String(error)), 'note');
+          }
+        }
+        if (recorded) release(controller);
+        if (!sawText && answer.trim()) show(answer.trim(), 'speech');
+      }
+      if (usageDialog.open) await refreshUsage();
     } catch (error) {
       if (controller.signal.aborted || isAbort(error)) {
         if (!replaced.has(controller)) show('已停止', 'note');
+        release(controller);
       } else show(explain(error instanceof Error ? error.message : String(error)), 'note');
     } finally {
       if (current === controller) {

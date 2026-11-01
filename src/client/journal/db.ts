@@ -1,4 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import type { WorldRecord } from '../../shared/sim/snapshot.js';
 import type { ChatSession } from './session.js';
 
 export interface MemoryPage {
@@ -24,10 +25,11 @@ interface SpiderDB extends DBSchema {
   sessions: { key: string; value: ChatSession };
   memories: { key: string; value: MemoryPage };
   usage: { key: string; value: UsageDay };
+  snapshots: { key: string; value: WorldRecord };
 }
 
 const DB_NAME = 'spider';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let opening: Promise<IDBPDatabase<SpiderDB>> | null = null;
 
@@ -42,6 +44,9 @@ export function openSpiderDb(): Promise<IDBPDatabase<SpiderDB>> {
       }
       if (!db.objectStoreNames.contains('usage')) {
         db.createObjectStore('usage', { keyPath: 'date' });
+      }
+      if (!db.objectStoreNames.contains('snapshots')) {
+        db.createObjectStore('snapshots', { keyPath: 'id' });
       }
     },
   });

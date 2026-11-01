@@ -1,0 +1,505 @@
+import { openSpiderDb } from './journal/db.js';
+import { localDate } from '../shared/dates.js';
+import {
+  captureBody,
+  chooseRecord,
+  classify,
+  newer,
+  type Classify,
+  type Restorable,
+  type SimBody,
+  type WorldRecord,
+} from '../shared/sim/snapshot.js';
+
+const BUFFER_KEY = 'p5-art.world';
+const OWNER_KEY = 'p5-art.world.owner';
+const SAVE_MS = 2000;
+const LEASE_MS = 6000;
+const APPLE_DIRTY_S = 5;
+const MOVE_M = 0.05;
+const YAW_M = 0.02;
+/** A version-2 tab holds the database open. Do not sit on a blank page. */
+const OPEN_MS = 1500;
+
+export interface BootNote {
+  restored: boolean;
+  /** Unknown format, or JSON that could not be loaded. Expired and first visits are false. */
+  unreadable: boolean;
+  cause: 'format' | 'malformed' | null;
+  pendingText: string | null;
+}
+
+type Reason = 'interval' | 'hide' | 'poke';
+
+let installed = false;
+let readonly = false;
+let dbDeferred = false;
+let owner = '';
+let seenSeq = 0;
+let lastBody: SimBody | null = null;
+let pending: SimBody['pending'] = null;
+let pendingGen = 0;
+let timer: ReturnType<typeof setInterval> | undefined;
+let sessionRef: Restorable | null = null;
+let listener: ((note: BootNote) => void) | null = null;
+let onVis: (() => void) | null = null;
+let inflight = 0;
+const idle: Array<() => void> = [];
+
+export function setPending(next: SimBody['pending']): number {
+  pendingGen += 1;
+  pending = next && next.text !== '' ? { text: next.text, tool: next.tool } : null;
+  return pendingGen;
+}
+
+export function pendingNow(): SimBody['pending'] {
+  return pending;
+}
+
+export function onRestore(listen: (note: BootNote) => void): void {
+  listener = listen;
+}
+
+export function flushWorld(reason: Reason): void {
+  if (!installed || readonly || !sessionRef) return;
+  track(write(reason));
+}
+
+export function writesDone(): Promise<void> {
+  if (inflight === 0) return Promise.resolve();
+  return new Promise((resolve) => idle.push(resolve));
+}
+
+/** Tests drop the timer and the visibility listener between cases. */
+export function resetWorldStore(): void {
+  if (timer) clearInterval(timer);
+  timer = undefined;
+  if (onVis) document.removeEventListener('visibilitychange', onVis);
+  onVis = null;
+  installed = false;
+  readonly = false;
+  dbDeferred = false;
+  owner = '';
+  try {
+    sessionStorage.removeItem(OWNER_KEY);
+  } catch {
+    // A blocked session store just means the next launch mints an owner.
+  }
+  seenSeq = 0;
+  lastBody = null;
+  pending = null;
+  pendingGen = 0;
+  sessionRef = null;
+  listener = null;
+}
+
+export async function restoreWorld(session: Restorable, now = new Date()): Promise<BootNote> {
+  const today = localDate(now);
+  const ls = classify(readBuffer(), today);
+  const loaded = await loadIdb(today);
+  dbDeferred = loaded.deferred;
+  const idb = loaded.idb;
+  const dbOpen = loaded.opened;
+  if (ls.status === 'format' || idb.status === 'format') {
+    readonly = true;
+    return { restored: false, unreadable: true, cause: 'format', pendingText: null };
+  }
+  await forget(ls, 'local', today, dbOpen);
+  await forget(idb, 'idb', today, dbOpen);
+  const chosen = chooseRecord(
+    ls.status === 'ok' ? ls.record : null,
+    idb.status === 'ok' ? idb.record : null,
+    today,
+  );
+  if (!chosen) {
+    const broken = ls.status === 'malformed' || idb.status === 'malformed';
+    return {
+      restored: false,
+      unreadable: broken,
+      cause: broken ? 'malformed' : null,
+      pendingText: null,
+    };
+  }
+  session.adopt(strip(chosen));
+  pending = chosen.pending;
+  seenSeq = chosen.seq;
+  lastBody = captureBody(session, pending);
+  if (dbOpen) await mirror(chosen, ls, idb);
+  return {
+    restored: true,
+    unreadable: false,
+    cause: null,
+    pendingText: chosen.pending?.text ?? null,
+  };
+}
+
+export function installWorldStore(session: Restorable): void {
+  sessionRef = session;
+  installed = true;
+  if (!owner) owner = pageOwner();
+  if (readonly) return;
+  if (!lastBody) lastBody = captureBody(session, pending);
+  onVis = () => {
+    if (document.visibilityState === 'hidden') {
+      flushWorld('hide');
+      if (timer) clearInterval(timer);
+      timer = undefined;
+      return;
+    }
+    track(catchUp().then(() => arm()));
+  };
+  document.addEventListener('visibilitychange', onVis);
+  if (dbDeferred) {
+    track(reconcile().then(() => arm()));
+    return;
+  }
+  arm();
+}
+
+async function write(reason: Reason): Promise<void> {
+  if (!sessionRef || readonly) return;
+  const now = Date.now();
+  const today = localDate(new Date(now));
+  const body = captureBody(sessionRef, pending);
+  const slack = reason === 'interval' ? APPLE_DIRTY_S : 0.05;
+  const dirty = !lastBody || changed(lastBody, body, slack);
+
+  const local = classify(readBuffer(), today);
+  if (local.status === 'format') {
+    readonly = true;
+    return;
+  }
+  const localRec = local.status === 'ok' ? local.record : undefined;
+
+  // pagehide cannot wait for IndexedDB. The buffer is written before any await.
+  let staged: WorldRecord | null = null;
+  if (reason === 'hide' || dbDeferred) {
+    if (dirty && mayWrite(localRec, owner, now)) {
+      const seq = Math.max(localRec?.seq ?? 0, seenSeq) + 1;
+      staged = stamp(body, seq, now, today);
+      if (bufferPut(staged)) {
+        seenSeq = seq;
+        lastBody = body;
+      } else staged = null;
+    }
+  }
+  if (dbDeferred) return;
+
+  let idbRec: WorldRecord | undefined;
+  try {
+    const idb = classify(await readIdb(), today);
+    if (idb.status === 'format') {
+      readonly = true;
+      return;
+    }
+    if (idb.status === 'ok') idbRec = idb.record;
+  } catch {
+    // The buffer is the copy when the database cannot be opened.
+  }
+
+  const blocker = prefer(idbRec, localRec);
+  if (blocker && !mayWrite(blocker, owner, now)) return;
+
+  const held = idbRec ?? localRec;
+  const renew =
+    !dirty &&
+    reason === 'interval' &&
+    held != null &&
+    held.owner === owner &&
+    held.leaseUntil - now < SAVE_MS;
+  if (!dirty && !renew && !staged) return;
+
+  const kept = dirty ? body : (lastBody ?? body);
+  const floor = Math.max(idbRec?.seq ?? 0, localRec?.seq ?? 0, seenSeq);
+  const record = staged && staged.seq > (idbRec?.seq ?? 0) ? staged : stamp(kept, floor + 1, now, today);
+  const storedLocal = bufferPut(record);
+  let storedDb = false;
+  try {
+    const db = await openSpiderDb();
+    await db.put('snapshots', record);
+    storedDb = true;
+    await sweep(today);
+  } catch {
+    // The walk continues when the ledger cannot be written.
+  }
+  if (!storedLocal && !storedDb) return;
+  seenSeq = record.seq;
+  lastBody = kept;
+}
+
+async function catchUp(): Promise<void> {
+  if (!sessionRef || readonly) return;
+  const today = localDate(new Date());
+  const chosen = await currentRecord(today);
+  if (chosen === 'format') {
+    readonly = true;
+    return;
+  }
+  if (!chosen || chosen.seq <= seenSeq || chosen.owner === owner) return;
+  sessionRef.adopt(strip(chosen));
+  pending = chosen.pending;
+  seenSeq = chosen.seq;
+  lastBody = captureBody(sessionRef, pending);
+  listener?.({
+    restored: true,
+    unreadable: false,
+    cause: null,
+    pendingText: chosen.pending?.text ?? null,
+  });
+}
+
+async function currentRecord(today: string): Promise<WorldRecord | 'format' | undefined> {
+  const ls = classify(readBuffer(), today);
+  let idb: Classify = { status: 'empty' };
+  try {
+    idb = classify(await readIdb(), today);
+  } catch {
+    // Use the buffer alone when the database cannot be opened.
+  }
+  if (ls.status === 'format' || idb.status === 'format') return 'format';
+  return (
+    chooseRecord(ls.status === 'ok' ? ls.record : null, idb.status === 'ok' ? idb.record : null, today) ??
+    undefined
+  );
+}
+
+async function mirror(chosen: WorldRecord, ls: Classify, idb: Classify): Promise<void> {
+  const lsSame = ls.status === 'ok' && ls.record.seq === chosen.seq && ls.record.savedAt === chosen.savedAt;
+  const idbSame = idb.status === 'ok' && idb.record.seq === chosen.seq && idb.record.savedAt === chosen.savedAt;
+  if (!lsSame) {
+    try {
+      localStorage.setItem(BUFFER_KEY, JSON.stringify(chosen));
+    } catch {
+      // The database copy is enough for the next quiet launch.
+    }
+  }
+  if (!idbSame) {
+    try {
+      const db = await openSpiderDb();
+      await db.put('snapshots', chosen);
+    } catch {
+      // The buffer still wins on the next launch.
+    }
+  }
+}
+
+async function forget(item: Classify, side: 'local' | 'idb', today: string, dbOpen: boolean): Promise<void> {
+  if (item.status !== 'expired' && item.status !== 'malformed') return;
+  if (side === 'local') {
+    try {
+      localStorage.removeItem(BUFFER_KEY);
+    } catch {
+      // Leave a blocked buffer alone.
+    }
+    return;
+  }
+  if (!dbOpen) return;
+  try {
+    const db = await openSpiderDb();
+    await sweep(today);
+    if (item.status === 'malformed' || item.status === 'expired') await db.delete('snapshots', 'current');
+  } catch {
+    // A failed delete still leaves the page on a fresh island.
+  }
+}
+
+async function sweep(today: string): Promise<void> {
+  const db = await openSpiderDb();
+  const rows = await db.getAll('snapshots');
+  for (const row of rows) {
+    const status = classify(row, today).status;
+    if (row.id !== 'current' || status === 'expired' || status === 'malformed') {
+      await db.delete('snapshots', row.id);
+    }
+  }
+}
+
+async function loadIdb(today: string): Promise<{ idb: Classify; opened: boolean; deferred: boolean }> {
+  let deferred = false;
+  let opened = true;
+  const ready = await new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      deferred = true;
+      resolve(false);
+    }, OPEN_MS);
+    openSpiderDb().then(
+      () => {
+        clearTimeout(timer);
+        resolve(true);
+      },
+      () => {
+        clearTimeout(timer);
+        deferred = false;
+        opened = false;
+        resolve(false);
+      },
+    );
+  });
+  if (!ready) return { idb: { status: 'empty' }, opened, deferred };
+  try {
+    return { idb: classify(await readIdb(), today), opened: true, deferred: false };
+  } catch {
+    return { idb: { status: 'empty' }, opened: false, deferred: false };
+  }
+}
+
+async function reconcile(): Promise<void> {
+  if (!sessionRef) return;
+  const today = localDate(new Date());
+  let idb: Classify = { status: 'empty' };
+  try {
+    idb = classify(await readIdb(), today);
+  } catch {
+    dbDeferred = false;
+    return;
+  }
+  dbDeferred = false;
+  if (idb.status === 'format') {
+    readonly = true;
+    if (timer) clearInterval(timer);
+    timer = undefined;
+    return;
+  }
+  if (idb.status !== 'ok' || idb.record.seq <= seenSeq) return;
+  sessionRef.adopt(strip(idb.record));
+  pending = idb.record.pending;
+  seenSeq = idb.record.seq;
+  lastBody = captureBody(sessionRef, pending);
+  listener?.({
+    restored: true,
+    unreadable: false,
+    cause: null,
+    pendingText: idb.record.pending?.text ?? null,
+  });
+}
+
+async function readIdb(): Promise<unknown> {
+  const db = await openSpiderDb();
+  return (await db.get('snapshots', 'current')) ?? null;
+}
+
+function pageOwner(): string {
+  try {
+    const saved = sessionStorage.getItem(OWNER_KEY);
+    if (saved) return saved;
+    const created = globalThis.crypto.randomUUID();
+    sessionStorage.setItem(OWNER_KEY, created);
+    return created;
+  } catch {
+    return globalThis.crypto.randomUUID();
+  }
+}
+
+function stamp(body: SimBody, seq: number, now: number, today: string): WorldRecord {
+  return {
+    ...body,
+    id: 'current',
+    format: 1,
+    savedAt: now,
+    day: today,
+    owner,
+    seq,
+    leaseUntil: now + LEASE_MS,
+  };
+}
+
+function bufferPut(record: WorldRecord): boolean {
+  try {
+    localStorage.setItem(BUFFER_KEY, JSON.stringify(record));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function prefer(a?: WorldRecord, b?: WorldRecord): WorldRecord | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return newer(a, b);
+}
+
+function readBuffer(): unknown {
+  try {
+    return localStorage.getItem(BUFFER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function mayWrite(existing: WorldRecord | undefined, page: string, now: number): boolean {
+  if (!existing) return true;
+  if (existing.owner === page) return true;
+  return existing.leaseUntil <= now;
+}
+
+function changed(prev: SimBody, next: SimBody, appleSlack: number): boolean {
+  const dx = next.spider.position.x - prev.spider.position.x;
+  const dz = next.spider.position.z - prev.spider.position.z;
+  if (Math.hypot(dx, dz) > MOVE_M) return true;
+  if (yawGap(prev.spider.yaw, next.spider.yaw) > YAW_M) return true;
+  if (prev.sprouts !== next.sprouts) return true;
+  if (prev.seed !== next.seed) return true;
+  if ((prev.pending?.text ?? '') !== (next.pending?.text ?? '') || (prev.pending?.tool ?? null) !== (next.pending?.tool ?? null)) {
+    return true;
+  }
+  if (prev.appleIn - next.appleIn >= appleSlack) return true;
+  return !sameList(prev.entities, next.entities) || !sameList(prev.carrying, next.carrying);
+}
+
+function sameList(a: SimBody['entities'], b: SimBody['entities']): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
+    return (
+      item.id === other.id &&
+      item.stage === other.stage &&
+      quant(item.x) === quant(other.x) &&
+      quant(item.z) === quant(other.z) &&
+      sameFoot(item.footprint, other.footprint)
+    );
+  });
+}
+
+function sameFoot(a: SimBody['entities'][number]['footprint'], b: SimBody['entities'][number]['footprint']): boolean {
+  if (!a && !b) return true;
+  if (!a || !b || a.kind !== b.kind) return false;
+  if (a.kind === 'circle' && b.kind === 'circle') return a.r === b.r;
+  return a.kind === 'box' && b.kind === 'box' && a.hx === b.hx && a.hz === b.hz;
+}
+
+function yawGap(a: number, b: number): number {
+  return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+}
+
+function quant(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+function strip(record: WorldRecord): SimBody {
+  return {
+    seed: record.seed,
+    appleIn: record.appleIn,
+    sprouts: record.sprouts,
+    entities: record.entities,
+    carrying: record.carrying,
+    spider: record.spider,
+    pending: record.pending,
+  };
+}
+
+function arm(): void {
+  if (timer) clearInterval(timer);
+  timer = undefined;
+  if (document.visibilityState !== 'visible' || readonly) return;
+  timer = setInterval(() => flushWorld('interval'), SAVE_MS);
+}
+
+function track(work: Promise<void>): void {
+  inflight += 1;
+  void work.finally(() => {
+    inflight -= 1;
+    if (inflight === 0) {
+      for (const done of idle.splice(0)) done();
+    }
+  });
+}

@@ -10,6 +10,17 @@ const control = vi.hoisted(() => ({
   panels: [] as unknown[][],
 }));
 
+const world = vi.hoisted(() => ({
+  restoreWorld: vi.fn(async () => ({
+    restored: false,
+    unreadable: false,
+    cause: null,
+    pendingText: null,
+  })),
+  installWorldStore: vi.fn(),
+  flushWorld: vi.fn(),
+}));
+
 vi.mock('../../src/client/stage.js', () => ({
   Stage: class {
     bind = control.bind;
@@ -27,6 +38,12 @@ vi.mock('../../src/client/panel.js', () => ({
   mountPanel: (...args: unknown[]) => {
     control.panels.push(args);
   },
+}));
+
+vi.mock('../../src/client/worldStore.js', () => ({
+  restoreWorld: world.restoreWorld,
+  installWorldStore: world.installWorldStore,
+  flushWorld: world.flushWorld,
 }));
 
 vi.mock('../../src/shared/sim/session.js', () => ({
@@ -52,6 +69,15 @@ beforeEach(() => {
   control.stages = [];
   control.sessions = [];
   control.panels = [];
+  world.restoreWorld.mockClear();
+  world.installWorldStore.mockClear();
+  world.flushWorld.mockClear();
+  world.restoreWorld.mockResolvedValue({
+    restored: false,
+    unreadable: false,
+    cause: null,
+    pendingText: null,
+  });
 });
 
 describe('main', () => {
@@ -74,6 +100,12 @@ describe('main', () => {
     expect(control.panels[0][0]).toBe(document);
     expect(control.panels[0][1]).toBe(session);
     expect(control.panels[0][2]).toBe(stage);
+    expect(world.restoreWorld.mock.invocationCallOrder[0]).toBeLessThan(
+      control.start.mock.invocationCallOrder[0],
+    );
+    expect(control.start.mock.invocationCallOrder[0]).toBeLessThan(
+      world.installWorldStore.mock.invocationCallOrder[0],
+    );
 
     const [step, world] = control.bind.mock.calls[0] as [(dt: number) => void, () => unknown];
     step(0.016);
@@ -81,7 +113,11 @@ describe('main', () => {
     expect(world()).toBe(session.world);
 
     window.dispatchEvent(new Event('pagehide'));
-    expect((session as unknown as { stop: ReturnType<typeof vi.fn> }).stop).toHaveBeenCalled();
+    const stop = (session as unknown as { stop: ReturnType<typeof vi.fn> }).stop;
+    expect(world.flushWorld).toHaveBeenCalledWith('hide');
+    expect(world.flushWorld.mock.invocationCallOrder[0]).toBeLessThan(stop.mock.invocationCallOrder[0]);
+    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(control.dispose.mock.invocationCallOrder[0]);
+    expect(stop).toHaveBeenCalled();
     expect(control.dispose).toHaveBeenCalled();
   });
 });

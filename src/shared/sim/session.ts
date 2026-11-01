@@ -24,6 +24,7 @@ import { TERRAIN } from '../terrain.js';
 import { CARRY_LIMIT } from '../config.js';
 import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal, type Goal } from './goals.js';
 import { planRoute } from '../route.js';
+import { applyBody, type SimBody } from './snapshot.js';
 import { Spider } from './Spider.js';
 
 const STEP = 1 / 60;
@@ -93,6 +94,11 @@ export class SimSession {
 
   snapshot(): { state: SpiderState; world: WorldState } {
     return { state: this.spider.capture(), world: this.world };
+  }
+
+  /** Load a saved island into this same world object. */
+  adopt(body: SimBody): void {
+    applyBody(this, body);
   }
 
   /**

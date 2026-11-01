@@ -43,6 +43,22 @@ describe('Spider', () => {
     expect(spider.time).toBe(0);
   });
 
+  it('stands still after a saved pose is settled', () => {
+    const spider = new Spider();
+    spider.bindGround(() => 0);
+    spider.update(0.2, { throttle: 1, turn: 0.2, lift: 0, boost: 0 });
+    const saved = spider.capture();
+    saved.position.x = 2;
+    saved.position.z = -1;
+    saved.speed = 3;
+    spider.settle(saved);
+    const parked = spider.root.position.clone();
+    spider.update(0.016, IDLE);
+    expect(spider.speed).toBe(0);
+    expect(spider.root.position.distanceTo(parked)).toBeLessThan(1e-6);
+    expect(spider.legs.every((leg) => leg.lifted === false)).toBe(true);
+  });
+
   it('adopts an authoritative state', () => {
     const spider = new Spider();
     const feet = Array.from({ length: 8 }, (_, i) => ({ x: i, y: 0.2, z: -i }));

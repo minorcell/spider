@@ -160,6 +160,27 @@ export class Spider {
     this.#pose();
   }
 
+  /** Put a saved pose back and stop. The saved speed is not resumed. */
+  settle(state: SpiderState): void {
+    this.applyState(state);
+    this.speed = 0;
+    this.yawRate = 0;
+    this.fall = 0;
+    this.stuckFor = 0;
+    this.halt = 'clear';
+    this.headYaw = state.headYaw;
+    for (const leg of this.legs) {
+      leg.plant.copy(leg.foot);
+      leg.swingFrom.copy(leg.foot);
+      leg.swingTo.copy(leg.foot);
+      leg.lifted = false;
+    }
+    this.#seeded = true;
+    this.#stepping = false;
+    this.#stillFor = 0;
+    this.#pose();
+  }
+
   #buildBody(): Mesh[] {
     const solid = (geo: BufferGeometry, x: number, y: number, z: number) =>
       addSolid(this.chassis, geo, x, y, z);

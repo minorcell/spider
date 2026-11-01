@@ -5,6 +5,7 @@ import { localDate, shiftDate } from '../../src/client/journal/dates.js';
 import * as usageLedger from '../../src/client/journal/usage.js';
 import { summarizeDiary } from '../../src/client/journal/summarize.js';
 import { AUTO_MEMORY_IDLE_MS, mountPanel } from '../../src/client/panel.js';
+import { pendingNow, resetWorldStore } from '../../src/client/worldStore.js';
 import { readPilot, writePilot, type PilotSettings } from '../../src/client/settings.js';
 import type { Stage } from '../../src/client/stage.js';
 import type { SimSession } from '../../src/shared/sim/session.js';
@@ -135,7 +136,8 @@ beforeEach(() => {
   localStorage.clear();
   history.replaceState(null, '', '/');
   loop.runAgent.mockReset();
-  stage = { setOverlook: vi.fn(), voice: vi.fn(), follow: vi.fn() };
+  stage = { setOverlook: vi.fn(), voice: vi.fn(), follow: vi.fn(), retile: vi.fn() };
+  resetWorldStore();
 });
 
 describe('mountPanel chrome', () => {
@@ -1217,5 +1219,99 @@ describe('usage dialog', () => {
       '输入 0\n输出 0\n合计 0\n0 次',
     );
     expect(document.querySelector('#usage-empty')!.hidden).toBe(false);
+  });
+});
+
+describe('saved sentence', () => {
+  it('puts an unfinished sentence back in the box', () => {
+    document.body.innerHTML = CHROME;
+    mountPanel(document, fakeSession(), fakeStage(), {
+      restored: true,
+      unreadable: false,
+      cause: null,
+      pendingText: '去巢边',
+    });
+    expect(document.querySelector<HTMLInputElement>('#goal')!.value).toBe('去巢边');
+    expect(document.querySelector('#trace')!.textContent).toBe('上次没做完。这句话还在框里。');
+  });
+
+  it('says when the snapshot cannot be read', () => {
+    document.body.innerHTML = CHROME;
+    mountPanel(document, fakeSession(), fakeStage(), {
+      restored: false,
+      unreadable: true,
+      cause: 'malformed',
+      pendingText: null,
+    });
+    expect(document.querySelector('#trace')!.textContent).toBe('上次的地方读不出来，这是一片新的。');
+    document.body.innerHTML = CHROME;
+    mountPanel(document, fakeSession(), fakeStage(), {
+      restored: false,
+      unreadable: true,
+      cause: 'format',
+      pendingText: null,
+    });
+    expect(document.querySelector('#trace')!.textContent).toBe('这只蜘蛛是更新的页面留下的，这个页面接不上。');
+  });
+
+  it('keeps the sentence until the diary write lands', async () => {
+    ready();
+    loop.runAgent.mockImplementation(async ({ onEvent }: { onEvent: (event: unknown) => void }) => {
+      expect(pendingNow()?.text).toBe('去巢边');
+      onEvent({ type: 'tool-call', name: 'look', input: { description: '看' } });
+      expect(pendingNow()?.tool).toBe('look');
+      onEvent({ type: 'tool-result', name: 'look', output: {} });
+      return { text: '到了', usage: null };
+    });
+    vi.spyOn(Diary.prototype, 'record').mockRejectedValueOnce(new Error('disk'));
+    mount();
+    document.querySelector<HTMLInputElement>('#goal')!.value = '去巢边';
+    submit();
+    await flush();
+    expect(pendingNow()?.text).toBe('去巢边');
+    expect(document.querySelector('#trace')!.textContent).toBe('disk');
+  });
+
+  it('does not let a replaced run clear the new sentence', async () => {
+    ready();
+    let finishFirst: ((value: { text: string; usage: null }) => void) | undefined;
+    let call = 0;
+    loop.runAgent.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          call += 1;
+          if (call === 1) finishFirst = resolve;
+        }),
+    );
+    mount();
+    const goal = document.querySelector<HTMLInputElement>('#goal')!;
+    goal.value = '第一句';
+    submit();
+    await flush();
+    goal.value = '第二句';
+    submit();
+    await flush();
+    expect(pendingNow()?.text).toBe('第二句');
+    finishFirst?.({ text: '', usage: null });
+    await flush();
+    expect(pendingNow()?.text).toBe('第二句');
+  });
+
+  it('clears the sentence when the user stops', async () => {
+    ready();
+    loop.runAgent.mockImplementation(
+      ({ signal }: { signal: AbortSignal }) =>
+        new Promise((resolve) => {
+          signal.addEventListener('abort', () => resolve({ text: '', usage: null }));
+        }),
+    );
+    mount();
+    document.querySelector<HTMLInputElement>('#goal')!.value = '停下';
+    submit();
+    await flush();
+    expect(pendingNow()?.text).toBe('停下');
+    clickButton('#pilot-send', 1);
+    await flush();
+    expect(pendingNow()).toBeNull();
   });
 });

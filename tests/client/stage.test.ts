@@ -204,6 +204,19 @@ describe('world sync', () => {
     expect(sound.take).toHaveBeenCalled();
   });
 
+  it('retile drops the baked island and builds it again', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    stage.retile();
+    const apple = entity({ id: 'apple-1', x: 2, y: 0.5, z: 0 });
+    const current = makeWorld({ entities: [apple] });
+    stage.bind(vi.fn(), () => current);
+    stage.start();
+    frame();
+    stage.retile();
+    frame();
+    expect(sound.take).not.toHaveBeenCalled();
+  });
+
   it('rebuilds a prop without a bite when the stage goes backwards', () => {
     const stage = new Stage(makeHost(), new RealSpider());
     const apple = entity({ id: 'apple-1', x: 2, y: 0.5, z: 0, stage: 1 });
