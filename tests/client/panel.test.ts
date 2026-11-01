@@ -917,6 +917,13 @@ describe('diary panel', () => {
     expect(document.querySelector('#trace')!.textContent).not.toContain('已停止');
   });
 
+  it('keeps going when the morning backfill fails', async () => {
+    vi.spyOn(Diary.prototype, 'backfill').mockRejectedValueOnce(new Error('no model'));
+    mount();
+    await flush();
+    expect(document.querySelector<HTMLDialogElement>('#memory')!.open).toBe(false);
+  });
+
   it('runs without a diary', async () => {
     ready();
     const spy = vi.spyOn(Diary, 'open').mockRejectedValueOnce(new Error('no db'));
