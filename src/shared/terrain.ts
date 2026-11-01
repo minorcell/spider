@@ -8,8 +8,8 @@ export const TERRAIN = {
   /** Hills are back to full height past this radius. */
   pad: 6,
   /**
-   * Level disk around the birth nest. The nest dome is about 3.55 across,
-   * so this has to clear that rim or the shell sits inside the hill.
+   * Level disk around the birth nest. The woven nest reaches about 3 from the
+   * middle, so this has to clear that rim or the reeds sit inside the hill.
    */
   flat: 4.4,
   /** Ground mesh divisions. `surfaceAt` has to use this same grid. */

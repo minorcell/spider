@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Group, Mesh } from 'three';
+import { Group, LineSegments, Mesh } from 'three';
 import { buildProp, drapeGrass } from '../../src/client/props.js';
 
 describe('buildProp', () => {
@@ -11,8 +11,16 @@ describe('buildProp', () => {
     }
   });
 
-  it('builds the nest shell', () => {
-    expect(buildProp('nest', 0)).toBeInstanceOf(Group);
+  it('builds the nest as one paper mesh and one ink line set', () => {
+    const nest = buildProp('nest', 0)!;
+    expect(nest).toBeInstanceOf(Group);
+    expect(nest.children).toHaveLength(2);
+    const paper = nest.children[0];
+    const ink = nest.children[1];
+    expect(paper).toBeInstanceOf(Mesh);
+    expect(ink).toBeInstanceOf(LineSegments);
+    expect(paper.geometry.getAttribute('position').count).toBeGreaterThan(0);
+    expect(ink.geometry.getAttribute('position').count).toBeGreaterThan(0);
   });
 
   it('builds grass from the footprint radius, or a default', () => {

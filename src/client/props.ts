@@ -4,24 +4,18 @@ import {
   CylinderGeometry,
   EdgesGeometry,
   Group,
-  DoubleSide,
   Float32BufferAttribute,
   LatheGeometry,
   LineSegments,
   Mesh,
   Shape,
   ShapeGeometry,
-  SphereGeometry,
   Vector2,
 } from 'three';
 import type { Footprint } from '../shared/state.js';
 import { surfaceAt } from '../shared/terrain.js';
 import { inkMat, paperMat } from '../shared/sim/parts.js';
-
-// The nest is a room. Front faces alone are culled from inside, so the far wall
-// disappears and the outside shows through. This one faces both ways.
-const nestMat = paperMat.clone();
-nestMat.side = DoubleSide;
+import { buildNest } from './nest.js';
 
 /** Line-art prop. The apple's origin is its bottom. Nest and grass sit on the ground. */
 export function buildProp(kind: string, stage: number, footprint?: Footprint): Group | null {
@@ -144,20 +138,6 @@ function appleLeaf(): BufferGeometry {
   shape.bezierCurveTo(0.05, 0.04, 0.16, 0.05, 0.22, 0);
   shape.bezierCurveTo(0.16, -0.045, 0.05, -0.03, 0, 0);
   return new ShapeGeometry(shape);
-}
-
-function buildNest(): Group {
-  const nest = new Group();
-  const radius = 3.55;
-  const gap = 1.05;
-  // phi 0 faces -X. The missing wedge is centered on -Z, the door you are born facing.
-  // One shell. A second, smaller dome reads as another nest with a gap between them.
-  const phiStart = -Math.PI / 2 + gap / 2;
-  const shell = new SphereGeometry(radius, 36, 16, phiStart, Math.PI * 2 - gap, 0, Math.PI / 2);
-  const mound = new Mesh(shell, nestMat);
-  mound.add(new LineSegments(new EdgesGeometry(shell, 16), inkMat));
-  nest.add(mound);
-  return nest;
 }
 
 function buildGrass(radius: number): Group {
