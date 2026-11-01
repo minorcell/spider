@@ -24,16 +24,16 @@ import { nestBlocks } from '../shared/world.js';
 // ink line set. A whole nest is two draw calls.
 
 const UP = new Vector3(0, 1, 0);
-const boxGeo = new BoxGeometry(1, 1, 1);
+const boxGeo = new BoxGeometry(1, 1, 1).toNonIndexed();
 const boxEdges = new EdgesGeometry(boxGeo);
-const twigGeo = new CylinderGeometry(0.72, 1, 1, 6, 1);
+const twigGeo = new CylinderGeometry(0.72, 1, 1, 6, 1).toNonIndexed();
 const twigEdges = new EdgesGeometry(twigGeo, 12);
 
 const leafShape = new Shape();
 leafShape.moveTo(0, 0);
 leafShape.bezierCurveTo(0.07, 0.09, 0.2, 0.11, 0.28, 0.02);
 leafShape.bezierCurveTo(0.19, -0.06, 0.07, -0.05, 0, 0);
-const leafGeo = new ShapeGeometry(leafShape);
+const leafGeo = new ShapeGeometry(leafShape).toNonIndexed();
 const leafEdges = new EdgesGeometry(leafGeo, 1);
 
 /** Door half-angle that clears the 2.5-wide gap in the square wall. */
@@ -101,11 +101,8 @@ class PaperBatch {
 
   addGeometry(geo: BufferGeometry, edges: BufferGeometry, matrix: Matrix4): void {
     const position = geo.getAttribute('position');
-    const index = geo.getIndex();
-    const count = index ? index.count : position.count;
-    for (let i = 0; i < count; i++) {
-      const vertex = index ? index.getX(i) : i;
-      this.#position.fromBufferAttribute(position, vertex).applyMatrix4(matrix);
+    for (let i = 0; i < position.count; i++) {
+      this.#position.fromBufferAttribute(position, i).applyMatrix4(matrix);
       this.#faces.push(this.#position.x, this.#position.y, this.#position.z);
     }
     const edge = edges.getAttribute('position');
@@ -157,7 +154,6 @@ class PaperBatch {
   addTwig(a: Vector3, b: Vector3, radius: number): void {
     this.#dir.subVectors(b, a);
     const length = this.#dir.length();
-    if (length < 1e-4) return;
     this.#quaternion.setFromUnitVectors(UP, this.#dir.normalize());
     this.#matrix.compose(
       this.#position.addVectors(a, b).multiplyScalar(0.5),
@@ -179,16 +175,12 @@ class PaperBatch {
 
   build(): Group {
     const nest = new Group();
-    if (this.#faces.length > 0) {
-      const geo = new BufferGeometry();
-      geo.setAttribute('position', new Float32BufferAttribute(this.#faces, 3));
-      nest.add(new Mesh(geo, paperMat));
-    }
-    if (this.#lines.length > 0) {
-      const geo = new BufferGeometry();
-      geo.setAttribute('position', new Float32BufferAttribute(this.#lines, 3));
-      nest.add(new LineSegments(geo, inkMat));
-    }
+    const paper = new BufferGeometry();
+    paper.setAttribute('position', new Float32BufferAttribute(this.#faces, 3));
+    nest.add(new Mesh(paper, paperMat));
+    const ink = new BufferGeometry();
+    ink.setAttribute('position', new Float32BufferAttribute(this.#lines, 3));
+    nest.add(new LineSegments(ink, inkMat));
     return nest;
   }
 }
@@ -234,7 +226,6 @@ function addBand(
     const dx = b.x - a.x;
     const dz = b.z - a.z;
     const length = Math.hypot(dx, dz);
-    if (length < 1e-4) continue;
     batch.addBox(length * 1.15, height, thickness, mx, y, mz, Math.atan2(-dz, dx));
   }
 }
@@ -252,7 +243,6 @@ function addRim(batch: PaperBatch, half: number, baseY: number): void {
     const dx = b.x - a.x;
     const dz = b.z - a.z;
     const length = Math.hypot(dx, dz);
-    if (length < 1e-4) continue;
     const grain = rnd(i * 7.1);
     const back = Math.max(0, -Math.cos(angle));
     batch.addBox(
@@ -277,7 +267,7 @@ function addWallReeds(batch: PaperBatch): void {
     const grain = rnd(seed);
     seed += 1;
     const height = 0.4 + grain * 0.28;
-    const radius = Math.hypot(point.x, point.z) || 1;
+    const radius = Math.hypot(point.x, point.z);
     batch.addReed(
       0.05 + grain * 0.025,
       height,
@@ -309,7 +299,7 @@ function addReeds(batch: PaperBatch): void {
       seed += 1;
       const back = Math.max(0, -Math.cos(angle));
       const height = row.low + (row.high - row.low) * grain + back * 0.44;
-      const radius = Math.hypot(point.x, point.z) || 1;
+      const radius = Math.hypot(point.x, point.z);
       const nx = point.x / radius;
       const nz = point.z / radius;
       const side = (i % 2 === 0 ? 1 : -1) * row.side * (0.5 + grain);
