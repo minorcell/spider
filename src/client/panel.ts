@@ -262,6 +262,8 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
   });
 
   window.addEventListener('beforeunload', (event) => {
+    // Vite reloads this page on each save. That is not the user leaving.
+    if (import.meta.env.MODE === 'development') return;
     if (!diary?.behind()) return;
     event.preventDefault();
     window.setTimeout(() => {

@@ -116,6 +116,7 @@ async function flush(): Promise<void> {
 }
 
 beforeEach(() => {
+  vi.unstubAllEnvs();
   localStorage.clear();
   history.replaceState(null, '', '/');
   loop.runAgent.mockReset();
@@ -707,6 +708,18 @@ describe('diary panel', () => {
     clickButton('#leave-summarize');
     await flush();
     expect(document.querySelector('#trace')!.textContent).toContain('boom');
+  });
+
+  it('does not ask to leave when Vite is serving the dev page', async () => {
+    vi.stubEnv('MODE', 'development');
+    await seedDay();
+    mount();
+    await flush();
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    await flush();
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.querySelector<HTMLDialogElement>('#leave')!.open).toBe(false);
   });
 
   it('opens the leave dialog on unload when the day is behind', async () => {
