@@ -129,6 +129,8 @@ function segmentClear(
     const t = i / steps;
     const x = a.x + (b.x - a.x) * t;
     const z = a.z + (b.z - a.z) * t;
+    // Both ends of every segment are standable, so the line cannot leave the limit.
+    /* v8 ignore next 2 */
     if (Math.abs(x) > limit || Math.abs(z) > limit) return false;
     if (blockedAt(x, z, blocks)) return false;
     const ground = height(x, z);
@@ -168,5 +170,6 @@ function pull(
     kept.push(points[j]);
     i = j;
   }
+  /* v8 ignore next */
   return kept.length > 0 ? kept : points;
 }

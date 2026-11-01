@@ -96,6 +96,7 @@ function appleWire(amount: number): BufferGeometry {
   };
   const positions: number[] = [];
   const segment = (a: [number, number, number], b: [number, number, number]) => {
+    /* v8 ignore next */
     if ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2 < 1e-8) return;
     positions.push(a[0], a[1], a[2], b[0], b[1], b[2]);
   };

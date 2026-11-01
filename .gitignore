@@ -4,3 +4,5 @@ dist-server/
 config.yaml
 *.local
 .DS_Store
+coverage/
+coverage-json/

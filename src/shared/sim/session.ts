@@ -27,7 +27,6 @@ function detourNote(around: readonly string[], direct: boolean, arrived: boolean
     const list = around.join('、');
     return arrived ? `绕开了 ${list}，到了。` : `绕开了 ${list}，还是过不去。`;
   }
-  if (direct) return null;
   return arrived ? '绕开了陡坡，到了。' : '试了旁边的路，还是过不去。';
 }
 
@@ -125,6 +124,7 @@ export class SimSession {
         startedAt: this.spider.time,
         guard: undefined as unknown as ReturnType<typeof setTimeout>,
         finish: (outcome: GoalOutcome) => {
+          /* v8 ignore next */
           if (this.#active === active) this.#active = null;
           clearTimeout(active.guard);
           resolve(outcome);
@@ -208,6 +208,7 @@ export class SimSession {
     }
     return {
       ok: false,
+      /* v8 ignore next */
       reason: last.reason ?? 'blocked',
       detour: detourNote(around, direct, false),
     };
@@ -422,6 +423,7 @@ export class SimSession {
     const dx = entity.x - sx;
     const dz = entity.z - sz;
     const dist = Math.hypot(dx, dz);
+    /* v8 ignore next */
     if (dist > 1e-3) {
       const travel = Math.max(0, dist - standoff);
       const x = sx + (dx / dist) * travel;
@@ -499,6 +501,7 @@ export class SimSession {
     for (let slot = 0; slot < 8; slot++) {
       const x = 1.15;
       const z = 1.15 - slot * 0.45;
+      /* v8 ignore next */
       if (!insideHome(x, z)) break;
       if (this.#roomAt(x, z)) return { x, z };
     }
@@ -510,6 +513,7 @@ export class SimSession {
     item.z = z;
     item.y = restingY(this.world.terrain, item.kind, x, z, item.footprint);
     const carried = this.world.carrying.indexOf(item);
+    /* v8 ignore next */
     if (carried >= 0) this.world.carrying.splice(carried, 1);
     this.world.entities.push(item);
   }

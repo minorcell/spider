@@ -1,0 +1,22 @@
+coverage:
+  precision: 2
+  round: down
+  status:
+    project:
+      default:
+        target: 95%
+        threshold: 0%
+    patch:
+      default:
+        target: 95%
+        threshold: 0%
+
+comment:
+  layout: 'reach, diff, flags, files'
+  behavior: default
+  require_changes: false
+
+ignore:
+  - 'tests/**'
+  - 'src/shared/protocol.ts'
+  - 'src/shared/types.ts'

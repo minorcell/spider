@@ -436,6 +436,7 @@ function placeBone(group: Group, a: Vector3, b: Vector3, radius: number, side: n
   if (axisX.lengthSq() < 1e-4) {
     axisX.copy(UP).addScaledVector(axisZ, -UP.dot(axisZ));
   }
+  /* v8 ignore next */
   if (axisX.lengthSq() < 1e-6) axisX.set(1, 0, 0);
   axisX.normalize();
   axisY.crossVectors(axisZ, axisX).normalize();

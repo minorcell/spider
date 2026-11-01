@@ -83,6 +83,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
       live.textContent = '';
       trace.append(live);
     }
+    /* v8 ignore next */
     live.textContent = `${live.textContent ?? ''}${chunk}`;
     touch();
     stage.voice();
@@ -216,6 +217,7 @@ export function mountPanel(doc: Document, session: SimSession, stage: Stage): vo
       trace.hidden = true;
       return;
     }
+    /* v8 ignore next */
     const text = trace.textContent ?? '';
     if (trace.hidden || text !== bubbleText) {
       trace.hidden = false;

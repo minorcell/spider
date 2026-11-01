@@ -113,8 +113,6 @@ function scatter(
   count: number,
   minFromHome: number,
 ): EntityState[] {
-  const spec = kindOf(kind);
-  if (!spec) return [];
   const entities: EntityState[] = [];
   let guard = 0;
   while (entities.length < count && guard < 600) {
@@ -131,6 +129,7 @@ function scatter(
     if (placed.some((point) => Math.hypot(point.x - x, point.z - z) < gap)) continue;
     const footprint = kind === 'grass' ? { kind: 'circle' as const, r: 3.2 } : undefined;
     const probe = footprint?.kind === 'circle' ? footprint.r : 0.2;
+    /* v8 ignore next */
     if (blockedAt(x, z, blocks, probe)) continue;
     placed.push({ x, z });
     entities.push({

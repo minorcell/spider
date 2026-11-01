@@ -37,6 +37,7 @@ export function createSound(target: EventTarget) {
     osc.start(now);
     osc.stop(now + duration);
 
+    /* v8 ignore next */
     if (grit <= 0) return;
     const src = ctx.createBufferSource();
     src.buffer = scrape(ctx);

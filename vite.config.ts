@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 const inferenceProxy = {
   '/inference': {
@@ -26,5 +26,25 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: inferenceProxy,
+  },
+  test: {
+    environment: 'jsdom',
+    include: ['tests/**/*.test.ts'],
+    setupFiles: ['tests/setup.ts'],
+    restoreMocks: true,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}', 'worker/src/**/*.js'],
+      // Type-only modules carry no runtime statements.
+      exclude: ['src/shared/protocol.ts', 'src/shared/types.ts'],
+      reporter: ['text', 'lcov'],
+      reportsDirectory: 'coverage',
+      thresholds: {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+    },
   },
 });
