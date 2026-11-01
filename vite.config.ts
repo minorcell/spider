@@ -16,6 +16,20 @@ export default defineConfig({
   build: {
     outDir: 'dist/client',
     emptyOutDir: true,
+    minify: 'oxc',
+    cssMinify: true,
+    // three is one tightly coupled graph; keep the warning above its size.
+    chunkSizeWarningLimit: 600,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: 'three', test: /node_modules[\\/]three[\\/]/, priority: 20 },
+            { name: 'ai', test: /node_modules[\\/](ai|@ai-sdk|zod)[\\/]/, priority: 15 },
+          ],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

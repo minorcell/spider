@@ -13,7 +13,6 @@ import {
   type CompactLimits,
   type Trace,
 } from './session.js';
-import { summarizeDiary } from './summarize.js';
 import { recordUsage } from './usage.js';
 
 const INDEX_DAYS = 60;
@@ -140,6 +139,7 @@ export class Diary {
     if (action.kind === 'summarize') {
       try {
         const page = await this.db.get('memories', this.date);
+        const { summarizeDiary } = await import('./summarize.js');
         const note = await summarizeDiary({
           settings,
           transcript: transcript(action.session),
@@ -178,6 +178,7 @@ export class Diary {
 
   private async digestSession(session: ChatSession, settings: PilotSettings): Promise<void> {
     const page = (await this.db.get('memories', session.date)) ?? blankMemory(session.date);
+    const { summarizeDiary } = await import('./summarize.js');
     const note = await summarizeDiary({
       settings,
       transcript: transcript(session),
