@@ -67,12 +67,12 @@ export interface BoneSpec {
   readonly radius: number;
 }
 
-/** Four segments per leg, from the shoulder out to the claw. */
+/** Four segments per leg, from the shoulder out to the claw. `radius` is the drawn thickness. */
 export const BONES: readonly BoneSpec[] = [
-  { len: 0.34, radius: 0.07 },
-  { len: 0.86, radius: 0.055 },
-  { len: 0.98, radius: 0.04 },
-  { len: 0.46, radius: 0.028 },
+  { len: 0.34, radius: 0.048 },
+  { len: 0.86, radius: 0.036 },
+  { len: 0.98, radius: 0.026 },
+  { len: 0.46, radius: 0.015 },
 ];
 
 export const GAIT = {

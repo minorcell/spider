@@ -1,26 +1,15 @@
-import {
-  BoxGeometry,
-  CylinderGeometry,
-  EdgesGeometry,
-  Euler,
-  Group,
-  LineSegments,
-  MathUtils,
-  Matrix4,
-  Mesh,
-  SphereGeometry,
-  Vector3,
-  type BufferGeometry,
-} from 'three';
-import { BONES, DECK_Y, GAIT, MOUNTS } from '../config.js';
+import { Euler, Group, MathUtils, Matrix4, Mesh, Vector3 } from 'three';
+import { BONES, GAIT, MOUNTS } from '../config.js';
 import { TERRAIN } from '../terrain.js';
 import type { SpiderState } from '../state.js';
 import { IDLE_CONTROLS, type Controls } from '../types.js';
 import { Leg } from './Leg.js';
-import { addSolid, ballEdges, ballGeo, eyeMat, inkMat, spiderMat } from './parts.js';
+import { ballGeo, ballShell, inkSolidMat, spiderMat } from './parts.js';
+import { buildSpiderBody } from './spiderBody.js';
 
-// Mechanical spider: a cephalothorax on eight jointed legs, an abdomen hung
-// behind it, and an alternating tetrapod gait.
+// A cephalothorax on eight jointed legs, an abdomen hung behind it, and an
+// alternating tetrapod gait. The drawn shell is finer than these two clearance
+// ellipsoids; the ellipsoids stay the walkable body.
 
 const UP = new Vector3(0, 1, 0);
 
@@ -203,46 +192,13 @@ export class Spider {
   }
 
   #buildBody(): Mesh[] {
-    const solid = (geo: BufferGeometry, x: number, y: number, z: number) =>
-      addSolid(this.chassis, geo, x, y, z, 0, 0, spiderMat);
-    const shell = (sx: number, sy: number, sz: number, x: number, y: number, z: number) => {
-      const geo = new SphereGeometry(1, 12, 8);
-      geo.scale(sx, sy, sz);
-      return solid(geo, x, y, z);
-    };
-
-    // Small cephalothorax, gap, then the abdomen. They do not share a volume.
-    shell(0.55, 0.18, 0.46, 0, DECK_Y, -0.12);
-    solid(new BoxGeometry(0.36, 0.03, 0.55), 0, DECK_Y + 0.16, -0.14);
-    // 腰从胸部伸进腹部，两头都咬住，不再露出一截空隙。
-    const waist = new CylinderGeometry(0.13, 0.08, 0.32, 8);
-    waist.rotateX(Math.PI / 2);
-    solid(waist, 0, DECK_Y, 0.42);
-    shell(0.46, 0.32, 0.62, 0, DECK_Y + 0.06, 1.08);
-
-    const head = new Group();
-    head.position.set(0, DECK_Y + 0.02, -0.52);
-    this.chassis.add(head);
-    const eye = (x: number, y: number, r: number) => {
-      const geo = new CylinderGeometry(r, r, 0.05, 8);
-      geo.rotateX(Math.PI / 2);
-      const mesh = new Mesh(geo, eyeMat);
-      mesh.position.set(x, y, 0);
-      mesh.add(new LineSegments(new EdgesGeometry(geo, 18), inkMat));
-      head.add(mesh);
-      return mesh;
-    };
-    eye(-0.1, 0.05, 0.035);
-    eye(0.1, 0.05, 0.035);
-    eye(-0.05, -0.02, 0.022);
-    eye(0.05, -0.02, 0.022);
-    this.#head = head;
-
+    this.#head = buildSpiderBody(this.chassis);
     return MOUNTS.map((spec) => {
       const ball = new Mesh(ballGeo, spiderMat);
-      ball.scale.setScalar(0.06);
+      ball.name = 'coxa';
+      ball.scale.setScalar(0.05);
       ball.position.set(spec.x, spec.y, spec.z);
-      ball.add(new LineSegments(ballEdges, inkMat));
+      ball.add(new Mesh(ballShell, inkSolidMat));
       this.chassis.add(ball);
       return ball;
     });

@@ -1,14 +1,16 @@
 import { Group, LineSegments, Mesh, Vector3 } from 'three';
 import { BONES, type MountSpec } from '../config.js';
 import {
-  ballEdges,
   ballGeo,
-  clawEdges,
+  ballShell,
   clawGeo,
+  clawShell,
   inkMat,
+  inkSolidMat,
   spiderMat,
-  tubeEdges,
+  tubeCrest,
   tubeGeo,
+  tubeShell,
 } from './parts.js';
 
 export class Leg {
@@ -31,23 +33,25 @@ export class Leg {
     for (const bone of BONES) {
       const group = new Group();
       const mesh = new Mesh(tubeGeo, spiderMat);
-      mesh.add(new LineSegments(tubeEdges, inkMat));
+      mesh.add(new Mesh(tubeShell, inkSolidMat));
+      mesh.add(new LineSegments(tubeCrest, inkMat));
       group.add(mesh);
       rig.add(group);
       this.bones.push(group);
 
       const joint = new Mesh(ballGeo, spiderMat);
       joint.scale.setScalar(bone.radius * 1.35);
-      joint.add(new LineSegments(ballEdges, inkMat));
+      joint.add(new Mesh(ballShell, inkSolidMat));
       rig.add(joint);
       this.joints.push(joint);
     }
 
     for (const sign of [-1, 1]) {
       const mesh = new Mesh(clawGeo, spiderMat);
-      mesh.position.x = sign * 0.03;
-      mesh.rotation.y = sign * 0.35;
-      mesh.add(new LineSegments(clawEdges, inkMat));
+      mesh.position.x = sign * 0.012;
+      mesh.rotation.y = sign * 0.5;
+      mesh.rotation.z = sign * 0.2;
+      mesh.add(new Mesh(clawShell, inkSolidMat));
       this.claw.add(mesh);
     }
     rig.add(this.claw);
