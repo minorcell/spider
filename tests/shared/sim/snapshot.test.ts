@@ -168,6 +168,12 @@ describe('snapshot', () => {
         { ...apple!, id: 'apple-d' },
       ]),
     ).toBe('malformed');
+    expect(
+      status(
+        base.entities,
+        Array.from({ length: 8 }, (_, index) => ({ ...apple!, id: `carry-${index}` })),
+      ),
+    ).toBe('malformed');
     expect(status([{ ...home, kind: 'nope' }])).toBe('malformed');
     expect(status([{ ...home, id: 'bad id' }])).toBe('malformed');
     expect(status([{ ...home, x: Number.NaN }])).toBe('malformed');
