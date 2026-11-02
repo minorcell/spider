@@ -1,6 +1,8 @@
 import {
+  BackSide,
   BoxGeometry,
   CylinderGeometry,
+  DoubleSide,
   EdgesGeometry,
   LineBasicMaterial,
   LineSegments,
@@ -22,6 +24,34 @@ export const paperMat = new MeshBasicMaterial({
 });
 
 export const inkMat = new LineBasicMaterial({ color: PALETTE.ink });
+
+/** 丝线：比墨淡，压在土和纸上不会抢主线条。 */
+export const silkMat = new LineBasicMaterial({
+  color: PALETTE.ink,
+  transparent: true,
+  opacity: 0.42,
+});
+
+/** 实心墨壳，用来给圆润的果子勾外轮廓。 */
+export const inkSolidMat = new MeshBasicMaterial({ color: PALETTE.ink, side: BackSide });
+
+/** 草叶要双面，纸面填色。 */
+export const grassMat = new MeshBasicMaterial({
+  color: PALETTE.grass,
+  side: DoubleSide,
+  polygonOffset: true,
+  polygonOffsetFactor: 1,
+  polygonOffsetUnits: 1,
+});
+
+/** 巢穴的土面。 */
+export const soilMat = new MeshBasicMaterial({
+  color: PALETTE.soil,
+  side: DoubleSide,
+  polygonOffset: true,
+  polygonOffsetFactor: 1,
+  polygonOffsetUnits: 1,
+});
 
 export const tubeGeo = new CylinderGeometry(0.85, 1, 1, 6);
 tubeGeo.rotateX(-Math.PI / 2);

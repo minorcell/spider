@@ -27,7 +27,7 @@ const VIEW = {
   pitch: 0.32,
   distance: 9.8,
   minDistance: 6,
-  maxDistance: 24,
+  maxDistance: 30,
   minPitch: 0.12,
   maxPitch: 1.15,
   dragYaw: 0.005,
@@ -215,7 +215,7 @@ export class Stage {
       if (previous != null && entity.stage > previous) this.#sound.bite();
     }
     if (!prop) {
-      const built = buildProp(entity.kind, entity.stage, entity.footprint);
+      const built = buildProp(entity.kind, entity.stage, entity.footprint, entity.id);
       if (!built) return;
       prop = built;
       this.#props.set(entity.id, prop);
@@ -315,6 +315,18 @@ export class Stage {
       desired.copy(this.#spider.root.position).add(local);
       look.copy(this.#spider.root.position);
       look.y += VIEW.lookUp;
+      // 地形有起伏，镜头不能钻进山腹；沿视线把机位抬到山脊之上。
+      const world = this.#world?.();
+      if (world) {
+        for (let k = 1; k <= 6; k++) {
+          const t = k / 6;
+          const gx = look.x + (desired.x - look.x) * t;
+          const gz = look.z + (desired.z - look.z) * t;
+          const ground = world.terrain.height(gx, gz) + 1.2;
+          const y = look.y + (desired.y - look.y) * t;
+          if (ground > y) desired.y = look.y + (ground - look.y) / t;
+        }
+      }
     }
 
     if (!this.#camReady) {

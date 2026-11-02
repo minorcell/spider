@@ -25,7 +25,7 @@ function good(): WorldRecord {
   return {
     ...body,
     id: 'current',
-    format: 1,
+    format: 2,
     savedAt: 1_700_000_000_000,
     day: today,
     owner: 'tab',
@@ -113,7 +113,7 @@ describe('snapshot', () => {
     expect(classify('{', today).status).toBe('malformed');
     expect(classify([], today).status).toBe('malformed');
     expect(classify(1, today).status).toBe('malformed');
-    expect(classify({ ...good(), format: 2 }, today).status).toBe('format');
+    expect(classify({ ...good(), format: 3 }, today).status).toBe('format');
     expect(classify({ ...good(), format: undefined }, today).status).toBe('format');
 
     const bad = (patch: Record<string, unknown>) => classify({ ...good(), ...patch }, today).status;
@@ -157,7 +157,7 @@ describe('snapshot', () => {
     expect(status([], [])).toBe('malformed');
     const crowd = [
       home,
-      ...Array.from({ length: 40 }, (_, index) => ({ ...apple!, id: `apple-${index}` })),
+      ...Array.from({ length: 70 }, (_, index) => ({ ...apple!, id: `apple-${index}` })),
     ];
     expect(status(crowd)).toBe('malformed');
     expect(

@@ -2,6 +2,10 @@
 
 export const PALETTE = {
   paper: 0xf3efe6,
+  /** 巢穴翻出来的土，比纸稍微暗一点。 */
+  soil: 0xe8e1d4,
+  /** 草叶的纸色，带一点旧纸的灰绿。 */
+  grass: 0xe3e0d1,
   ink: 0x1b1714,
   grid: 0xc8bfb2,
 } as const;

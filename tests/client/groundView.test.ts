@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Group, Mesh } from 'three';
+import { Group, LineSegments, Mesh } from 'three';
 import { buildIsland, groundGeometry } from '../../src/client/groundView.js';
 
 describe('groundGeometry', () => {
@@ -19,11 +19,23 @@ describe('buildIsland', () => {
     const height = (x: number, z: number): number => x * 0.1 + z * 0.2;
     const island = buildIsland(height);
     expect(island).toBeInstanceOf(Group);
-    expect(island.children).toHaveLength(2);
+    expect(island.children).toHaveLength(3);
     expect(island.children[0]).toBeInstanceOf(Mesh);
     const grid = island.children[1];
     const position = (grid as Mesh).geometry.getAttribute('position');
     expect(position.count).toBeGreaterThan(0);
     expect(position.getY(0)).toBeCloseTo(height(position.getX(0), position.getZ(0)) + 0.02);
+    const contours = island.children[2] as Group;
+    expect(contours).toBeInstanceOf(Group);
+    expect(contours.children).toHaveLength(2);
+    const lines = (contours.children[0] as LineSegments).geometry.getAttribute('position');
+    expect(lines.count).toBeGreaterThan(0);
+  });
+
+  it('draws contours across a saddle', () => {
+    const height = (x: number, z: number): number => x * z * 0.01;
+    const contours = buildIsland(height).children[2] as Group;
+    const lines = (contours.children[0] as LineSegments).geometry.getAttribute('position');
+    expect(lines.count).toBeGreaterThan(0);
   });
 });

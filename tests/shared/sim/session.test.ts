@@ -225,7 +225,7 @@ describe('moveTo', () => {
 
   it('reports no path for a point off the island', async () => {
     const session = new SimSession(5);
-    await expect(session.moveTo(0, 40)).resolves.toMatchObject({
+    await expect(session.moveTo(0, 60)).resolves.toMatchObject({
       ok: false,
       reason: 'no-path',
       detour: null,

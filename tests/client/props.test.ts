@@ -11,16 +11,15 @@ describe('buildProp', () => {
     }
   });
 
-  it('builds the nest as one paper mesh and one ink line set', () => {
+  it('builds the nest as paper meshes and ink line sets', () => {
     const nest = buildProp('nest', 0)!;
     expect(nest).toBeInstanceOf(Group);
-    expect(nest.children).toHaveLength(2);
-    const paper = nest.children[0];
-    const ink = nest.children[1];
-    expect(paper).toBeInstanceOf(Mesh);
-    expect(ink).toBeInstanceOf(LineSegments);
-    expect(paper.geometry.getAttribute('position').count).toBeGreaterThan(0);
-    expect(ink.geometry.getAttribute('position').count).toBeGreaterThan(0);
+    const meshes = nest.children.filter((child) => child instanceof Mesh);
+    const lines = nest.children.filter((child) => child instanceof LineSegments);
+    expect(meshes.length).toBeGreaterThan(0);
+    expect(lines).toHaveLength(2);
+    expect(meshes[0].geometry.getAttribute('position').count).toBeGreaterThan(0);
+    expect(lines[0].geometry.getAttribute('position').count).toBeGreaterThan(0);
   });
 
   it('builds grass as one paper mesh and one ink line set', () => {
@@ -31,11 +30,25 @@ describe('buildProp', () => {
     const ink = patch.children[1];
     expect(paper).toBeInstanceOf(Mesh);
     expect(ink).toBeInstanceOf(LineSegments);
-    expect(paper.geometry.getAttribute('position').count).toBeGreaterThan(64 * 3);
-    expect(ink.geometry.getAttribute('position').count).toBeGreaterThan(64 * 2);
+    expect(paper.geometry.getAttribute('position').count).toBeGreaterThan(0);
+    expect(ink.geometry.getAttribute('position').count).toBeGreaterThan(0);
+    // 草成堆而不是一根根散着：每片草的叶片数压在一个小数目里。
+    const blades = patch.userData.blades as unknown[];
+    expect(blades.length).toBeGreaterThan(10);
+    expect(blades.length).toBeLessThan(80);
     const fallback = buildProp('grass', 0, { kind: 'box', hx: 1, hz: 1 });
     expect(fallback).toBeInstanceOf(Group);
     expect(buildProp('grass', 0)).toBeInstanceOf(Group);
+  });
+
+  it('gives each patch one of the three grass styles', () => {
+    const ids = ['grass-1', 'grass-2', 'grass-3', 'grass-4'];
+    const counts = ids.map(
+      (id) => (buildProp('grass', 0, undefined, id)!.userData.blades as unknown[]).length,
+    );
+    expect(counts.every((count) => count > 0)).toBe(true);
+    expect(new Set(counts).size).toBeGreaterThan(1);
+    expect(buildProp('grass', 0, undefined, 'grass-x')).toBeInstanceOf(Group);
   });
 
   it('returns null for an unknown kind', () => {
@@ -47,7 +60,7 @@ describe('drapeGrass', () => {
   it('lifts the merged blades onto the ground under the patch', () => {
     const patch = buildProp('grass', 0)!;
     patch.add(new Group());
-    const height = (x: number, z: number): number => x * 0.1 + z * 0.2;
+    const height = (x: number, z: number): number => 0.5 + x * 0.01 + z * 0.02;
     drapeGrass(patch, 3, -1, height);
     expect(patch.position.toArray()).toEqual([3, 0, -1]);
     const paper = (patch.children[0] as Mesh).geometry.getAttribute('position');

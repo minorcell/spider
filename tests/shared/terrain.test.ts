@@ -29,7 +29,7 @@ describe('Terrain', () => {
 
   it('is flat past the island rim', () => {
     const terrain = new Terrain(5);
-    expect(terrain.height(30, 0)).toBe(0);
+    expect(terrain.height(TERRAIN.island + 1, 0)).toBe(0);
     expect(terrain.height(100, 100)).toBe(0);
   });
 });

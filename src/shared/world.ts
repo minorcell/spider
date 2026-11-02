@@ -16,8 +16,8 @@ export const GRASS_VIEW = 4.5;
 /** Something this far above or below you cannot be acted on. */
 export const REACH_Y = 1.6;
 
-const APPLES = 5;
-const GRASS = 5;
+const APPLES = 20;
+const GRASS = 24;
 const MIN_GAP = 3.4;
 
 /** Quiet seconds after the ground is short an apple, before one more grows. */
@@ -143,27 +143,38 @@ export function nextPropId(world: Pick<WorldState, 'entities' | 'carrying'>, kin
   return `${kind}-${next}`;
 }
 
-/** The nest is a low square of walls with a door on -Z, the way you face at birth. */
+/**
+ * The nest is a round earth bank with a door on -Z, the way you face at birth.
+ * The visual mound is built from the same radius, so the wall you hit sits at
+ * the foot of the slope. A ring of AABBs is the cheapest way to keep the
+ * serialized world the same shape it always was.
+ */
 export function nestBlocks(): Block[] {
-  const o = 2.35;
-  const t = 0.5;
-  const door = 1.25;
-  const h = 0.72;
-  const wall = (id: string, minX: number, maxX: number, minZ: number, maxZ: number): Block => ({
-    id,
-    minX,
-    maxX,
-    minZ,
-    maxZ,
-    height: h,
-  });
-  return [
-    wall('nest-w', -o - t, -o, -o - t, o + t),
-    wall('nest-e', o, o + t, -o - t, o + t),
-    wall('nest-n', -o, o, o, o + t),
-    wall('nest-s-w', -o, -door, -o - t, -o),
-    wall('nest-s-e', door, o, -o - t, -o),
-  ];
+  const segments = 22;
+  const radius = 2.62;
+  const half = 0.42;
+  const thickness = 0.24;
+  const door = -Math.PI / 2;
+  const gap = 0.62;
+  const blocks: Block[] = [];
+  for (let i = 0; i < segments; i++) {
+    const angle = (i / segments) * Math.PI * 2;
+    const away = Math.abs(Math.atan2(Math.sin(angle - door), Math.cos(angle - door)));
+    if (away < gap) continue;
+    const cx = Math.cos(angle) * radius;
+    const cz = Math.sin(angle) * radius;
+    const ex = Math.abs(Math.sin(angle) * half) + Math.abs(Math.cos(angle) * thickness);
+    const ez = Math.abs(Math.cos(angle) * half) + Math.abs(Math.sin(angle) * thickness);
+    blocks.push({
+      id: `nest-ring-${i}`,
+      minX: cx - ex,
+      maxX: cx + ex,
+      minZ: cz - ez,
+      maxZ: cz + ez,
+      height: 1,
+    });
+  }
+  return blocks;
 }
 
 function scatter(
@@ -177,7 +188,7 @@ function scatter(
 ): EntityState[] {
   const entities: EntityState[] = [];
   let guard = 0;
-  while (entities.length < count && guard < 600) {
+  while (entities.length < count && guard < 1000) {
     guard += 1;
     const spot = roll(rng, terrain, placed, blocks, kind, minFromHome);
     if (!spot) continue;
@@ -206,15 +217,15 @@ function roll(
   minFromHome: number,
   avoid?: { x: number; z: number },
 ): { x: number; z: number } | null {
-  const x = quantize((rng() * 2 - 1) * TERRAIN.island * 0.62);
-  const z = quantize((rng() * 2 - 1) * TERRAIN.island * 0.62);
+  const x = quantize((rng() * 2 - 1) * TERRAIN.island * 0.8);
+  const z = quantize((rng() * 2 - 1) * TERRAIN.island * 0.8);
   const radius = Math.hypot(x, z);
-  if (radius < minFromHome || radius > TERRAIN.island * 0.6) return null;
+  if (radius < minFromHome || radius > TERRAIN.island * 0.72) return null;
   const ground = terrain.height(x, z);
   const slope =
     Math.hypot(terrain.height(x + 0.8, z) - ground, terrain.height(x, z + 0.8) - ground) / 0.8;
   if (slope > 0.32) return null;
-  const gap = kind === 'grass' ? 7 : MIN_GAP;
+  const gap = kind === 'grass' ? 6 : MIN_GAP;
   if (placed.some((point) => Math.hypot(point.x - x, point.z - z) < gap)) return null;
   if (avoid && Math.hypot(avoid.x - x, avoid.z - z) < SPROUT_CLEAR) return null;
   const probe = kind === 'grass' ? 3.2 : 0.2;

@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { blockedAt } from '../../src/shared/sight.js';
 import { Terrain, TERRAIN } from '../../src/shared/terrain.js';
 import {
   APPLE_EVERY,
@@ -32,7 +33,7 @@ const quantized = (value: number): number => Math.round(value * 10) / 10;
 
 /** The scatter helper draws x and z from this same mapping. */
 function toRng(value: number): number {
-  return (quantized(value) / (TERRAIN.island * 0.62) + 1) / 2;
+  return (quantized(value) / (TERRAIN.island * 0.8) + 1) / 2;
 }
 
 function findSlope(seed: number, minRadius: number): { x: number; z: number } | null {
@@ -119,18 +120,34 @@ describe('restingY', () => {
 });
 
 describe('nestBlocks', () => {
-  it('builds four walls and a gated south side', () => {
+  it('builds a ring of walls with a door at -Z', () => {
     const blocks = nestBlocks();
-    expect(blocks.map((wall) => wall.id)).toEqual([
-      'nest-w',
-      'nest-e',
-      'nest-n',
-      'nest-s-w',
-      'nest-s-e',
-    ]);
-    expect(blocks.every((wall) => wall.height === 0.72)).toBe(true);
-    expect(blocks.at(-2)!.maxX).toBe(-1.25);
-    expect(blocks.at(-1)!.minX).toBe(1.25);
+    expect(blocks.length).toBeGreaterThan(12);
+    expect(blocks.length).toBeLessThan(24);
+    expect(blocks.every((wall) => wall.height === 1)).toBe(true);
+    for (const wall of blocks) {
+      const cx = (wall.minX + wall.maxX) / 2;
+      const cz = (wall.minZ + wall.maxZ) / 2;
+      expect(Math.hypot(cx, cz)).toBeCloseTo(2.62, 1);
+      const away = Math.abs(
+        Math.atan2(
+          Math.sin(Math.atan2(cz, cx) + Math.PI / 2),
+          Math.cos(Math.atan2(cz, cx) + Math.PI / 2),
+        ),
+      );
+      expect(away).toBeGreaterThan(0.6);
+      expect(wall.maxX).toBeGreaterThan(wall.minX);
+      expect(wall.maxZ).toBeGreaterThan(wall.minZ);
+    }
+    expect(new Set(blocks.map((wall) => wall.id)).size).toBe(blocks.length);
+  });
+
+  it('leaves a body-wide door on -Z', () => {
+    const blocks = nestBlocks();
+    for (let z = -0.5; z >= -3.2; z -= 0.1) {
+      expect(blockedAt(0, z, blocks)).toBe(false);
+    }
+    expect(blockedAt(2.62, 0, blocks)).toBe(true);
   });
 });
 
@@ -156,7 +173,7 @@ describe('createWorld', () => {
   it('scatters grass and apples inside the island', () => {
     const world = createWorld(99);
     for (const entity of world.entities.slice(1)) {
-      expect(Math.hypot(entity.x, entity.z)).toBeLessThanOrEqual(TERRAIN.island * 0.6);
+      expect(Math.hypot(entity.x, entity.z)).toBeLessThanOrEqual(TERRAIN.island * 0.72);
       expect(entity.id.startsWith(`${entity.kind}-`)).toBe(true);
       expect(Number.isFinite(entity.y)).toBe(true);
     }
