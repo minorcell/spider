@@ -81,8 +81,11 @@ describe('dress', () => {
     paintTrace(trace, tail);
     placeTail(tail, 20, 40, 30, true);
     expect(tail.style.borderBottomWidth).toBe('1px');
+    expect(tail.style.left).toBe('30px');
+    expect(tail.style.top).toBe('55px');
     placeTail(tail, 20, 40, 30, false);
     expect(tail.style.borderTopWidth).toBe('1px');
+    expect(tail.style.top).toBe('15px');
     const layer = document.createElement('div');
     const readout = document.createElement('div');
     const pins = document.createElement('div');

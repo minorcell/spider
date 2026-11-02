@@ -235,11 +235,28 @@ describe('Spider', () => {
     expect(spider.legs.every((leg) => !leg.lifted)).toBe(true);
   });
 
-  it('shifts weight once still for a while', () => {
+  it('breathes in place instead of swaying', () => {
     const spider = new Spider();
-    spider.update(0.01);
-    for (let i = 0; i < 120; i++) spider.update(0.05);
-    expect(Number.isFinite(spider.chassis.rotation.z)).toBe(true);
+    spider.bindGround(() => 0);
+    const height: number[] = [];
+    let maxRoll = 0;
+    let maxPitch = 0;
+    for (let i = 0; i < 400; i++) {
+      spider.update(0.05);
+      height.push(spider.chassis.position.y);
+      maxRoll = Math.max(maxRoll, Math.abs(spider.chassis.rotation.z));
+      maxPitch = Math.max(maxPitch, Math.abs(spider.chassis.rotation.x));
+    }
+    expect(maxRoll).toBeLessThan(0.01);
+    expect(maxPitch).toBeLessThan(0.01);
+    expect(Math.max(...height) - Math.min(...height)).toBeGreaterThan(0.03);
+    expect(Math.max(...height)).toBeLessThan(0.05);
+    expect(spider.legs.every((leg) => !leg.lifted)).toBe(true);
+    for (const leg of spider.legs) expect(leg.foot.y).toBeCloseTo(GAIT.footY);
+    expect(Math.abs(spider.headYaw)).toBeLessThan(0.02);
+
+    spider.update(0.05, { ...IDLE, throttle: 1 });
+    expect(spider.chassis.position.y).toBe(0);
   });
 
   it('handles a foot with no horizontal reach from its shoulder', () => {

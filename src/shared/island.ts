@@ -2,7 +2,6 @@ import { Color, MathUtils } from 'three';
 import { PALETTE } from './config.js';
 import { TERRAIN } from './terrain.js';
 
-const LINE_STEP = 2;
 /** 等高线间距。地形越高，线越密，噪声的形状就露出来了。 */
 const CONTOUR_STEP = 0.6;
 const CONTOUR_TOP = 6.4;
@@ -34,7 +33,7 @@ export interface IslandBuffers {
   contourMajor: Float32Array;
 }
 
-/** Ground, ink grid, and contours. Plain arrays so a worker can transfer them. */
+/** Ground, slope curves, and contours. Plain arrays so a worker can transfer them. */
 export function islandBuffers(
   height: (x: number, z: number) => number,
   half = TERRAIN.half,
@@ -42,7 +41,7 @@ export function islandBuffers(
 ): IslandBuffers {
   return {
     ...groundAttributes(height, half, segments),
-    grid: gridLines(height, half),
+    grid: flowLines(height, half),
     ...contourLines(height, half, segments),
   };
 }
@@ -97,21 +96,39 @@ export function groundAttributes(
   return { groundPosition: position, groundColor: color, groundIndex: index };
 }
 
-function gridLines(height: (x: number, z: number) => number, half: number): Float32Array {
+/** Curves that follow the slope, with a small bow so a plane does not turn back into a ruler grid. */
+function flowLines(height: (x: number, z: number) => number, half: number): Float32Array {
   const points: number[] = [];
-  const push = (x: number, z: number): void => {
-    points.push(x, height(x, z) + 0.02, z);
-  };
-  for (let x = -half; x <= half; x += LINE_STEP) {
-    for (let z = -half; z < half; z += LINE_STEP) {
-      push(x, z);
-      push(x, z + LINE_STEP);
+  const spacing = 4.5;
+  const step = 0.7;
+  const steps = 10;
+  const lift = 0.02;
+  const e = 0.55;
+  let n = 0;
+  const trace = (x0: number, z0: number, sign: number): void => {
+    let x = x0;
+    let z = z0;
+    for (let i = 0; i < steps; i++) {
+      const gx = height(x + e, z) - height(x - e, z);
+      const gz = height(x, z + e) - height(x, z - e);
+      const glen = Math.hypot(gx, gz);
+      const flat = glen < 1e-4;
+      const wx = flat ? Math.cos(n * 0.17) : gx / glen;
+      const wz = flat ? Math.sin(n * 0.17) : gz / glen;
+      const bow = 0.16 * Math.sin(i * 0.85 + n);
+      const nx = x + sign * wx * step - wz * bow;
+      const nz = z + sign * wz * step + wx * bow;
+      if (nx < -half || nx > half || nz < -half || nz > half) break;
+      points.push(x, height(x, z) + lift, z, nx, height(nx, nz) + lift, nz);
+      x = nx;
+      z = nz;
     }
-  }
-  for (let z = -half; z <= half; z += LINE_STEP) {
-    for (let x = -half; x < half; x += LINE_STEP) {
-      push(x, z);
-      push(x + LINE_STEP, z);
+  };
+  for (let x = -half; x <= half; x += spacing) {
+    for (let z = -half; z <= half; z += spacing) {
+      n += 1;
+      trace(x, z, 1);
+      trace(x, z, -1);
     }
   }
   return Float32Array.from(points);

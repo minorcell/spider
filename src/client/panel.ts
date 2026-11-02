@@ -480,7 +480,7 @@ export function mountPanel(
     const tailX = Math.max(14, Math.min(width - 14, point.x - left));
     trace.style.setProperty('--tail', `${tailX}px`);
     trace.dataset.tail = tail;
-    placeTail(tailNode, top, height, tailX, tail === 'down');
+    placeTail(tailNode, top, height, left + tailX, tail === 'down');
   });
 
   paint();

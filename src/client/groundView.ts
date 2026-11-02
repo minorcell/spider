@@ -18,7 +18,7 @@ const contourMajor = new LineBasicMaterial({
   opacity: 0.34,
 });
 
-/** Paper island with ink grid lines draped over the same height function. */
+/** Paper island. Ink follows the slope in curves, plus the contour lines. */
 export function buildIsland(height: (x: number, z: number) => number): Group {
   return islandGroup(islandBuffers(height));
 }

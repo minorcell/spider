@@ -15,7 +15,7 @@ function grassStyle(id: string): { style: GrassStyle; seed: number } {
   return { style: STYLES[n % 3], seed: (n * 977 + 13) >>> 0 };
 }
 
-/** Line-art prop. The apple's origin is its bottom. Nest and grass sit on the ground. */
+/** Curved paper prop. The apple's origin is its bottom. Nest and grass sit on the ground. */
 export function buildProp(
   kind: string,
   stage: number,

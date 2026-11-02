@@ -188,6 +188,7 @@ export class Spider {
     this.#seeded = true;
     this.#stepping = false;
     this.#stillFor = 0;
+    this.chassis.position.y = 0;
     this.#pose();
   }
 
@@ -351,11 +352,16 @@ export class Spider {
 
     const freq = this.#stepping ? (boost ? GAIT.freqBoost : GAIT.freq) : 0;
     const stride = freq > 0 ? this.speed * (GAIT.strideScale / freq) : 0;
-    if (freq === 0) this.#stillFor += dt;
+    if (freq === 0) {
+      this.#stillFor += dt;
+      this.#breathe();
+    } else {
+      this.chassis.position.y = 0;
+    }
 
     for (const leg of this.legs) {
       if (freq === 0) {
-        this.#idle(leg);
+        this.#plant(leg);
         continue;
       }
 
@@ -381,17 +387,15 @@ export class Spider {
     }
   }
 
-  /** A slow weight shift after the body has been still for a few seconds. */
-  #idle(leg: Leg): void {
+  /** After a few still seconds the deck rises and settles. The feet stay down. */
+  #breathe(): void {
     const blend = Math.min(1, Math.max(0, (this.#stillFor - 4) / 1.5));
-    const sway = Math.sin(this.time * 0.55) * blend;
-    this.chassis.rotation.z = sway * 0.07;
-    this.chassis.rotation.x = Math.sin(this.time * 0.35) * 0.035 * blend;
-    this.#head.rotation.y = this.headYaw + Math.sin(this.time * 0.3) * 0.22 * blend;
+    this.chassis.position.y = Math.sin(this.time * 0.8) * 0.035 * blend;
+  }
 
+  #plant(leg: Leg): void {
     this.#idealFoot(leg.plant, leg, 0);
     leg.foot.copy(leg.plant);
-    leg.foot.y += Math.max(0, sway * leg.spec.side) * 0.07;
     leg.swingFrom.copy(leg.plant);
     leg.swingTo.copy(leg.plant);
     leg.lifted = false;

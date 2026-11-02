@@ -11,6 +11,25 @@ describe('buildProp', () => {
     }
   });
 
+  it('gives the apple a curved stem and the nest a shelled pebble', () => {
+    const apple = buildProp('apple', 0)!;
+    const stem = apple.getObjectByName('stem') as Mesh;
+    expect(stem).toBeInstanceOf(Mesh);
+    expect(stem.geometry.getAttribute('position').count).toBeGreaterThan(16);
+    const shell = stem.children.find((child) => child instanceof Mesh) as Mesh;
+    const tube = stem.geometry.getAttribute('position');
+    const grown = shell.geometry.getAttribute('position');
+    let tubeSpan = 0;
+    let shellSpan = 0;
+    for (let i = 0; i < tube.count; i++) tubeSpan = Math.max(tubeSpan, Math.abs(tube.getX(i)));
+    for (let i = 0; i < grown.count; i++) shellSpan = Math.max(shellSpan, Math.abs(grown.getX(i)));
+    expect(shellSpan).toBeGreaterThan(tubeSpan);
+
+    const nest = buildProp('nest', 0)!;
+    const pebble = nest.getObjectByName('pebble') as Mesh;
+    expect(pebble.children.some((child) => child instanceof Mesh)).toBe(true);
+  });
+
   it('builds the nest as paper meshes and ink line sets', () => {
     const nest = buildProp('nest', 0)!;
     expect(nest).toBeInstanceOf(Group);

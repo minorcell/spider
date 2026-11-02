@@ -1,21 +1,29 @@
 import {
   BufferGeometry,
   CylinderGeometry,
-  DodecahedronGeometry,
-  EdgesGeometry,
   Float32BufferAttribute,
   Group,
   LineSegments,
   Mesh,
+  SphereGeometry,
   Vector3,
   type Material,
 } from 'three';
 import { mulberry32 } from '../shared/noise.js';
-import { inkMat, silkMat, soilMat, stemMat, stoneMat } from '../shared/sim/parts.js';
+import {
+  growShell,
+  inkMat,
+  inkSolidMat,
+  paperMat,
+  silkMat,
+  soilMat,
+  stemMat,
+  stoneMat,
+} from '../shared/sim/parts.js';
 import { buildGrass } from './grassMesh.js';
 
 // 巢穴是一圈土丘：背后堆得高、门口压得低，中间是一个浅坑。
-// 坑底织一张收在坑里的网，辐条拉上穴壁；坑口的丝线垂进窝里。
+// 土、石和木桩用薄墨壳勾边，丝和抓痕走曲线，跟蜘蛛的形体线同一套。
 // 土丘整体放大到 1.35 倍，好让蜘蛛的八条腿在坑里站得开。
 
 const TAU = Math.PI * 2;
@@ -52,41 +60,49 @@ function segment(out: number[], a: Vector3, b: Vector3): void {
   out.push(a.x, a.y, a.z, b.x, b.y, b.z);
 }
 
+/** 二次曲线，步数够了就读成一根弯丝，而不是一条直尺。 */
+function bend(out: number[], a: Vector3, b: Vector3, control: Vector3, steps = 6): void {
+  let prev = a;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const u = 1 - t;
+    const p = new Vector3(
+      u * u * a.x + 2 * u * t * control.x + t * t * b.x,
+      u * u * a.y + 2 * u * t * control.y + t * t * b.y,
+      u * u * a.z + 2 * u * t * control.z + t * t * b.z,
+    );
+    segment(out, prev, p);
+    prev = p;
+  }
+}
+
 function lineFrom(flat: readonly number[], material: Material = inkMat): LineSegments {
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(flat, 3));
   return new LineSegments(geometry, material);
 }
 
-/** 一颗小石子：削过的十二面体，压扁一点。 */
+/** 一颗圆石：压扁的球，薄墨壳勾边。 */
 function pebble(x: number, z: number, size: number, rand: () => number): Mesh {
-  const geometry = new DodecahedronGeometry(1, 0);
-  const position = geometry.getAttribute('position');
-  const wobble = 0.7 + rand() * 0.5;
-  for (let i = 0; i < position.count; i++) {
-    const s = 0.82 + rand() * 0.36;
-    position.setXYZ(
-      i,
-      position.getX(i) * s,
-      position.getY(i) * s * 0.7 * wobble,
-      position.getZ(i) * s,
-    );
-  }
+  const geometry = new SphereGeometry(1, 12, 8);
+  geometry.scale(0.85 + rand() * 0.3, 0.55 + rand() * 0.15, 0.8 + rand() * 0.25);
   geometry.computeVertexNormals();
   const mesh = new Mesh(geometry, stoneMat);
+  mesh.name = 'pebble';
   mesh.scale.setScalar(size);
-  mesh.position.set(x, size * 0.32, z);
-  mesh.rotation.y = rand() * TAU;
-  mesh.add(new LineSegments(new EdgesGeometry(geometry, 12), inkMat));
+  mesh.position.set(x, size * 0.28, z);
+  mesh.rotation.set(rand() * 0.4, rand() * TAU, rand() * 0.3);
+  mesh.add(new Mesh(growShell(geometry, 0.08), inkSolidMat));
   return mesh;
 }
 
-/** 一根拴丝的小木桩。 */
+/** 一根拴丝的小木桩，收成细圆杆。 */
 function peg(x: number, z: number): Mesh {
-  const geometry = new CylinderGeometry(0.012, 0.02, 0.16, 4);
+  const geometry = new CylinderGeometry(0.008, 0.016, 0.16, 8);
+  geometry.computeVertexNormals();
   const mesh = new Mesh(geometry, stemMat);
   mesh.position.set(x, 0.06, z);
-  mesh.add(new LineSegments(new EdgesGeometry(geometry, 1), inkMat));
+  mesh.add(new Mesh(growShell(geometry, 0.003), inkSolidMat));
   return mesh;
 }
 
@@ -159,14 +175,19 @@ function buildNest(): Group {
     const r = 1.55 + rand() * (RO - 1.75);
     if (door(a) > 0.35) continue;
     const y = height(r, a);
-    const dr = 0.06 + rand() * 0.08;
-    const da = (rand() - 0.5) * 0.05;
+    const dr = 0.08 + rand() * 0.1;
+    const da = (rand() - 0.5) * 0.12;
     const a2 = a + da;
-    segment(
-      silk,
-      new Vector3(Math.cos(a) * r, y + 0.015, Math.sin(a) * r),
-      new Vector3(Math.cos(a2) * (r + dr), height(r + dr, a2) + 0.015, Math.sin(a2) * (r + dr)),
+    const start = new Vector3(Math.cos(a) * r, y + 0.015, Math.sin(a) * r);
+    const end = new Vector3(
+      Math.cos(a2) * (r + dr),
+      height(r + dr, a2) + 0.015,
+      Math.sin(a2) * (r + dr),
     );
+    const control = start.clone().lerp(end, 0.5);
+    control.y += 0.025;
+    control.add(new Vector3(-Math.sin(a), 0, Math.cos(a)).multiplyScalar((rand() - 0.5) * 0.06));
+    bend(silk, start, end, control, 4);
   }
 
   // 丘顶轮廓、外脚线、内缘。
@@ -198,29 +219,28 @@ function buildNest(): Group {
     (r, a) => height(r, a),
   );
 
-  // 外坡的两条等高碎线，读出体积。
-  for (const r of [2.42, 2.72]) {
-    for (let j = 0; j < ANGLES; j += 2) {
-      const a = (j / ANGLES) * TAU;
-      if (door(a) > 0.3 || rand() < 0.35) continue;
-      const a2 = ((j + 1.6) / ANGLES) * TAU;
-      segment(
-        silk,
-        new Vector3(Math.cos(a) * r, height(r, a) + 0.012, Math.sin(a) * r),
-        new Vector3(Math.cos(a2) * r, height(r, a2) + 0.012, Math.sin(a2) * r),
-      );
-    }
-  }
+  // 外坡上两道完整的形体线，顺着丘面走。
+  loop(
+    (a) => rimRadius(a) * 0.78,
+    (r, a) => height(r, a),
+  );
+  loop(
+    (a) => rimRadius(a) * 0.58,
+    (r, a) => height(r, a),
+  );
 
-  // 门洞两侧的切边。
+  // 门洞两侧沿坡面弯下来。
   for (const side of [-1, 1]) {
     const a = DOOR + side * (DOOR_HALF + 0.16);
-    const inner = RI + 0.2;
-    segment(
-      ink,
-      new Vector3(Math.cos(a) * inner, height(inner, a) + 0.01, Math.sin(a) * inner),
-      new Vector3(Math.cos(a) * (RO - 0.1), 0.03, Math.sin(a) * (RO - 0.1)),
-    );
+    let prev: Vector3 | null = null;
+    for (let s = 0; s <= 8; s++) {
+      const t = s / 8;
+      const r = RI + 0.2 + (RO - 0.1 - (RI + 0.2)) * t;
+      const aa = a + side * 0.1 * Math.sin(Math.PI * t);
+      const point = new Vector3(Math.cos(aa) * r, height(r, aa) + 0.01, Math.sin(aa) * r);
+      if (prev) segment(ink, prev, point);
+      prev = point;
+    }
   }
 
   // 门口只留几颗石子，不放石板。
@@ -240,15 +260,18 @@ function buildNest(): Group {
     const a = (i / spokes) * TAU + 0.13 + 0.05 * Math.sin(i * 3.7);
     const edgeR = 1.12 + 0.09 * Math.sin(i * 2.3) + 0.04 * Math.sin(i * 5.1);
     const edge = new Vector3(hub.x + Math.cos(a) * edgeR, hub.y, hub.z + Math.sin(a) * edgeR);
-    segment(ink, hub.clone().add(new Vector3(Math.cos(a) * 0.06, 0, Math.sin(a) * 0.06)), edge);
-    // 从网边拉上穴壁，锚点高一点，网就不是摊平的靶盘。
+    const start = hub.clone().add(new Vector3(Math.cos(a) * 0.06, 0, Math.sin(a) * 0.06));
+    const spoke = start.clone().lerp(edge, 0.5);
+    spoke.y += 0.015;
+    spoke.add(new Vector3(-Math.sin(a), 0, Math.cos(a)).multiplyScalar(0.045 * Math.sin(i)));
+    bend(ink, start, edge, spoke, 5);
+    // 从网边拉上穴壁，中间下垂，网就不是摊平的靶盘。
     const anchorR = 1.36 + 0.05 * Math.sin(i * 1.7);
     const anchorY = Math.max(hub.y + 0.06, height(anchorR, a) + 0.03);
     const anchor = new Vector3(Math.cos(a) * anchorR, anchorY, Math.sin(a) * anchorR);
-    const mid = edge.clone().lerp(anchor, 0.5);
-    mid.y = edge.y + (anchor.y - edge.y) * 0.55;
-    segment(ink, edge, mid);
-    segment(ink, mid, anchor);
+    const sag = edge.clone().lerp(anchor, 0.5);
+    sag.y = edge.y + (anchor.y - edge.y) * 0.32;
+    bend(ink, edge, anchor, sag, 5);
   }
 
   // 螺旋丝：圈距忽宽忽窄，偶尔断开。
@@ -280,15 +303,12 @@ function buildNest(): Group {
     const cz = hub.z + Math.sin(a) * r;
     const cy = hub.y + 0.02 + 0.03 * (r / rMax);
     const size = 0.018 + (k % 3) * 0.006;
-    for (let j = 0; j < 10; j++) {
-      const b = (j / 10) * TAU;
-      const b2 = ((j + 1) / 10) * TAU;
-      segment(
-        silk,
-        new Vector3(cx + Math.cos(b) * size, cy, cz + Math.sin(b) * size),
-        new Vector3(cx + Math.cos(b2) * size, cy, cz + Math.sin(b2) * size),
-      );
-    }
+    const drop = new SphereGeometry(size, 8, 6);
+    drop.computeVertexNormals();
+    const bead = new Mesh(drop, paperMat);
+    bead.position.set(cx, cy, cz);
+    bead.add(new Mesh(growShell(drop, size * 0.35), inkSolidMat));
+    group.add(bead);
   }
 
   // 圆心的小退路。
@@ -311,10 +331,9 @@ function buildNest(): Group {
     if (door(a) > 0.25) continue;
     const rr = rimRadius(a);
     const top = new Vector3(Math.cos(a) * rr, height(rr, a) + 0.02, Math.sin(a) * rr);
-    const mid = new Vector3(Math.cos(a) * (RI + 0.3), FLOOR + 0.42, Math.sin(a) * (RI + 0.3));
     const low = new Vector3(Math.cos(a) * (RI - 0.15), FLOOR + 0.05, Math.sin(a) * (RI - 0.15));
-    segment(ink, top, mid);
-    segment(ink, mid, low);
+    const sag = new Vector3(Math.cos(a) * (RI + 0.45), FLOOR + 0.18, Math.sin(a) * (RI + 0.45));
+    bend(ink, top, low, sag, 8);
   }
 
   // 警戒丝：从丘顶拉到外面的草脚。
@@ -325,10 +344,9 @@ function buildNest(): Group {
     const from = new Vector3(Math.cos(a) * rr, height(rr, a) + 0.03, Math.sin(a) * rr);
     const out = 2.9 + rand() * 0.2;
     const to = new Vector3(Math.cos(a) * out, 0.03, Math.sin(a) * out);
-    const mid = from.clone().lerp(to, 0.55);
-    mid.y = Math.max(0.12, mid.y - 0.18);
-    segment(silk, from, mid);
-    segment(silk, mid, to);
+    const sag = from.clone().lerp(to, 0.55);
+    sag.y = Math.max(0.08, Math.min(from.y, sag.y) - 0.22);
+    bend(silk, from, to, sag, 7);
     group.add(peg(to.x, to.z));
   }
 

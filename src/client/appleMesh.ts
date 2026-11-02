@@ -1,7 +1,5 @@
 import {
   BufferGeometry,
-  CylinderGeometry,
-  EdgesGeometry,
   Float32BufferAttribute,
   Group,
   LatheGeometry,
@@ -12,10 +10,17 @@ import {
   Vector2,
   Vector3,
 } from 'three';
-import { appleMat, inkMat, inkSolidMat, leafMat, paperMat, stemMat } from '../shared/sim/parts.js';
+import {
+  appleMat,
+  growShell,
+  inkMat,
+  inkSolidMat,
+  leafMat,
+  paperMat,
+  stemMat,
+} from '../shared/sim/parts.js';
 
-// 苹果不再是一圈圈车出来的灯笼：轮廓靠一层薄薄的墨壳勾出来，
-// 果面只留两三道短纹；咬口有果肉、两粒种子和一点切面线。
+// 和蜘蛛一样：车出来的果身，薄墨壳勾轮廓，果面、梗和叶子走曲线，不画直棱。
 
 /** 苹果的剖面：从果底的萼洼，绕到果顶的梗洼。x 是半径，y 是高度。 */
 function appleProfile(): Vector2[] {
@@ -76,6 +81,53 @@ function lineFrom(flat: readonly number[]): LineSegments {
   return new LineSegments(geometry, inkMat);
 }
 
+function quad(
+  out: number[],
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  scale: number,
+): void {
+  const steps = 6;
+  for (let i = 0; i < steps; i++) {
+    const t0 = i / steps;
+    const t1 = (i + 1) / steps;
+    const p = at(t0);
+    const q = at(t1);
+    out.push(p[0] * scale, p[1] * scale, 0.001, q[0] * scale, q[1] * scale, 0.001);
+  }
+  function at(t: number): [number, number] {
+    const u = 1 - t;
+    return [u * u * ax + 2 * u * t * bx + t * t * cx, u * u * ay + 2 * u * t * by + t * t * cy];
+  }
+}
+
+function cubic(
+  out: number[],
+  p0: readonly [number, number],
+  p1: readonly [number, number],
+  p2: readonly [number, number],
+  p3: readonly [number, number],
+  scale: number,
+): void {
+  const steps = 7;
+  for (let i = 0; i < steps; i++) {
+    const a = at(i / steps);
+    const b = at((i + 1) / steps);
+    out.push(a[0] * scale, a[1] * scale, 0.001, b[0] * scale, b[1] * scale, 0.001);
+  }
+  function at(t: number): [number, number] {
+    const u = 1 - t;
+    return [
+      u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+      u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
+    ];
+  }
+}
+
 function appleLeaf(scale: number): Mesh {
   const shape = new Shape();
   shape.moveTo(0, 0);
@@ -84,27 +136,77 @@ function appleLeaf(scale: number): Mesh {
   const geometry = new ShapeGeometry(shape);
   geometry.scale(scale, scale, scale);
   const mesh = new Mesh(geometry, leafMat);
-  const ink: number[] = [0.005 * scale, 0.003 * scale, 0.001, 0.225 * scale, 0.004 * scale, 0.001];
-  for (let i = 1; i <= 3; i++) {
-    const t = i / 4;
-    ink.push(
-      (0.24 * t + 0.005) * scale,
-      0.002,
-      0.001,
-      (0.24 * t + 0.04) * scale,
-      0.035 * scale,
-      0.001,
-    );
-    ink.push(
-      (0.24 * t + 0.005) * scale,
-      0.002,
-      0.001,
-      (0.24 * t + 0.04) * scale,
-      -0.035 * scale,
-      0.001,
+  const ink: number[] = [];
+  cubic(ink, [0, 0], [0.05, 0.06], [0.16, 0.07], [0.24, 0.01], scale);
+  cubic(ink, [0.24, 0.01], [0.16, -0.05], [0.05, -0.045], [0, 0], scale);
+  quad(ink, 0.01, 0, 0.1, 0.02, 0.22, 0.008, scale);
+  quad(ink, 0.06, 0.004, 0.12, 0.045, 0.18, 0.02, scale);
+  quad(ink, 0.06, 0.004, 0.12, -0.03, 0.18, -0.012, scale);
+  mesh.add(lineFrom(ink));
+  return mesh;
+}
+
+/** A bent stem: rings along a curve, the same language as a leg. */
+function curvedStem(): Mesh {
+  const spine = [
+    new Vector3(0, 0, 0),
+    new Vector3(0.03, 0.045, 0.012),
+    new Vector3(0.075, 0.08, 0.02),
+    new Vector3(0.05, 0.14, 0.004),
+  ];
+  const radial = 8;
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const up = new Vector3();
+  const side = new Vector3();
+  const bin = new Vector3();
+  const tangent = new Vector3();
+  for (let i = 0; i < spine.length; i++) {
+    const prev = spine[Math.max(0, i - 1)];
+    const next = spine[Math.min(spine.length - 1, i + 1)];
+    tangent.subVectors(next, prev).normalize();
+    up.set(Math.abs(tangent.y) > 0.9 ? 1 : 0, Math.abs(tangent.y) > 0.9 ? 0 : 1, 0);
+    side.crossVectors(tangent, up).normalize();
+    bin.crossVectors(side, tangent).normalize();
+    const radius = 0.02 - i * 0.003;
+    for (let k = 0; k < radial; k++) {
+      const a = (k / radial) * Math.PI * 2;
+      const p = spine[i]
+        .clone()
+        .addScaledVector(side, Math.cos(a) * radius)
+        .addScaledVector(bin, Math.sin(a) * radius);
+      positions.push(p.x, p.y, p.z);
+    }
+  }
+  for (let i = 0; i < spine.length - 1; i++) {
+    for (let k = 0; k < radial; k++) {
+      const k2 = (k + 1) % radial;
+      const a = i * radial + k;
+      const b = i * radial + k2;
+      const c = (i + 1) * radial + k;
+      const d = (i + 1) * radial + k2;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const mesh = new Mesh(geometry, stemMat);
+  mesh.name = 'stem';
+  mesh.add(new Mesh(growShell(geometry, 0.003), inkSolidMat));
+  const crest: number[] = [];
+  for (let i = 0; i < spine.length - 1; i++) {
+    crest.push(
+      spine[i].x,
+      spine[i].y + 0.018 - i * 0.002,
+      spine[i].z,
+      spine[i + 1].x,
+      spine[i + 1].y + 0.016 - i * 0.002,
+      spine[i + 1].z,
     );
   }
-  mesh.add(lineFrom(ink));
+  mesh.add(lineFrom(crest));
   return mesh;
 }
 
@@ -163,13 +265,29 @@ export function buildApple(stage: number): Group {
       shape.rotateY(Math.PI / 2);
       const mesh = new Mesh(shape, paperMat);
       mesh.position.set(cut + 0.002, 0.33 + dy, dz);
-      mesh.add(new LineSegments(new EdgesGeometry(shape, 1), inkMat));
+      const outline: number[] = [];
+      cubic(outline, [0, -0.026], [0.018, -0.01], [0.016, 0.018], [0, 0.026], 1);
+      cubic(outline, [0, 0.026], [-0.016, 0.018], [-0.018, -0.01], [0, -0.026], 1);
+      const ink = lineFrom(outline);
+      ink.rotation.y = Math.PI / 2;
+      mesh.add(ink);
       group.add(mesh);
     }
-    for (let k = 0; k < 5; k++) {
-      const y = 0.2 + k * 0.045;
-      const z = 0.04 + 0.04 * Math.sin(k * 2.1);
-      cutLines.push(cut + 0.003, y, z - 0.04, cut + 0.003, y + 0.012, z + 0.04);
+    for (let k = 0; k < 4; k++) {
+      const y = 0.22 + k * 0.07;
+      const z = 0.02 * Math.sin(k * 1.7);
+      for (let s = 0; s < 4; s++) {
+        const t0 = s / 4;
+        const t1 = (s + 1) / 4;
+        cutLines.push(
+          cut + 0.003,
+          y + Math.sin(Math.PI * t0) * 0.018,
+          z - 0.05 + t0 * 0.1,
+          cut + 0.003,
+          y + Math.sin(Math.PI * t1) * 0.018,
+          z - 0.05 + t1 * 0.1,
+        );
+      }
     }
     group.add(lineFrom(cutLines));
   }
@@ -178,12 +296,12 @@ export function buildApple(stage: number): Group {
   apple.add(outlineShell(geometry, 0.008));
   group.add(apple);
 
-  // 果面只留短纹，不画经线。
+  // 果面上的曲线顺着果身走，不画直经线。
   const face: number[] = [];
   const curveLine = (phi: number, y0: number, y1: number, bulge: number): void => {
     const points: Vector3[] = [];
-    for (let i = 0; i <= 6; i++) {
-      const t = i / 6;
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
       const y = y0 + (y1 - y0) * t;
       const r = radiusAtY(y) * (1 + bulge * Math.sin(Math.PI * t));
       points.push(new Vector3(Math.cos(phi) * r - 0.004, y, Math.sin(phi) * r + 0.002));
@@ -199,21 +317,32 @@ export function buildApple(stage: number): Group {
       );
     }
   };
+  const ring = (y: number, from: number, span: number): void => {
+    const r = radiusAtY(y);
+    const steps = 8;
+    for (let i = 0; i < steps; i++) {
+      const a0 = from + (span * i) / steps;
+      const a1 = from + (span * (i + 1)) / steps;
+      face.push(Math.cos(a0) * r, y, Math.sin(a0) * r, Math.cos(a1) * r, y, Math.sin(a1) * r);
+    }
+  };
   if (stage <= 0) {
-    curveLine(0.5, 0.2, 0.48, 0.004);
-    curveLine(-0.5, 0.17, 0.4, 0.004);
-    curveLine(2.4, 0.3, 0.5, 0.002);
+    curveLine(0.5, 0.16, 0.55, 0.012);
+    curveLine(-0.7, 0.14, 0.5, 0.01);
+    curveLine(2.2, 0.22, 0.58, 0.008);
+    curveLine(3.4, 0.18, 0.46, 0.008);
+    ring(0.58, -0.4, 1.4);
+    ring(0.16, 0.8, 1.2);
   } else {
-    curveLine(Math.PI - 0.6, 0.2, 0.45, 0.003);
-    curveLine(Math.PI + 0.4, 0.26, 0.48, 0.003);
+    curveLine(Math.PI - 0.6, 0.16, 0.52, 0.01);
+    curveLine(Math.PI + 0.5, 0.2, 0.55, 0.01);
+    curveLine(Math.PI + 1.6, 0.18, 0.48, 0.008);
+    ring(0.16, Math.PI - 0.4, 1.3);
   }
   group.add(lineFrom(face));
 
-  const stem = new Mesh(new CylinderGeometry(0.014, 0.024, 0.15, 5), stemMat);
-  stem.position.set(0.012, 0.715, 0);
-  stem.rotation.z = -0.22;
-  stem.rotation.x = 0.1;
-  stem.add(new LineSegments(new EdgesGeometry(stem.geometry, 1), inkMat));
+  const stem = curvedStem();
+  stem.position.set(0.01, 0.66, 0);
   group.add(stem);
 
   const leaf = appleLeaf(0.85);

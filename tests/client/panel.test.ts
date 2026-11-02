@@ -515,10 +515,13 @@ describe('speech bubble follow', () => {
   it('hides the bubble with no anchor or no text', () => {
     mount();
     const trace = document.querySelector<HTMLElement>('#trace')!;
+    const tail = document.querySelector<HTMLElement>('#trace-tail')!;
     anchor()(null);
     expect(trace.hidden).toBe(true);
+    expect(tail.hidden).toBe(true);
     anchor()({ x: 400, y: 300 });
     expect(trace.hidden).toBe(true);
+    expect(tail.hidden).toBe(true);
   });
 
   it('places and clamps the bubble above the spider', async () => {
@@ -533,6 +536,10 @@ describe('speech bubble follow', () => {
     expect(trace.style.top).toBe('244px');
     expect(trace.dataset.tail).toBe('down');
     expect(trace.style.getPropertyValue('--tail')).toBe('50px');
+    const tail = document.querySelector<HTMLElement>('#trace-tail')!;
+    expect(tail.hidden).toBe(false);
+    expect(tail.style.left).toBe('400px');
+    expect(tail.style.top).toBe('279px');
   });
 
   it('flips the tail below when the bubble would leave the top', async () => {
@@ -544,6 +551,9 @@ describe('speech bubble follow', () => {
     anchor()({ x: 400, y: 10 });
     expect(trace.dataset.tail).toBe('up');
     expect(trace.style.top).toBe('26px');
+    const tail = document.querySelector<HTMLElement>('#trace-tail')!;
+    expect(tail.style.left).toBe('400px');
+    expect(tail.style.top).toBe('21px');
   });
 
   it('clamps to the viewport edges', async () => {
@@ -559,6 +569,7 @@ describe('speech bubble follow', () => {
     anchor()({ x: 0, y: 300 });
     expect(trace.style.left).toBe('8px');
     expect(trace.style.getPropertyValue('--tail')).toBe('14px');
+    expect(document.querySelector<HTMLElement>('#trace-tail')!.style.left).toBe('22px');
   });
 
   it('clears the bubble after it has been idle', async () => {
