@@ -1,5 +1,5 @@
 import { openJournal, type Journal, type OpenedJournal } from './journal/api.js';
-import { flushWorld, onRestore, setPending, type BootNote } from './worldStore.js';
+import { flushSoon, flushWorld, onRestore, setPending, type BootNote } from './worldStore.js';
 import { localDate } from './journal/dates.js';
 import type { Trace } from './journal/session.js';
 import { formatTokens } from './journal/tokens.js';
@@ -427,7 +427,7 @@ export function mountPanel(
             case 'tool-call':
               pending = { name: event.name, input: event.input };
               setPending({ text, tool: event.name });
-              flushWorld('poke');
+              flushSoon('poke');
               show(thoughtOf(event.input), 'thought');
               break;
             case 'tool-result':
@@ -437,7 +437,7 @@ export function mountPanel(
                 output: event.output,
               });
               pending = null;
-              flushWorld('poke');
+              flushSoon('poke');
               break;
             case 'error':
               show(explain(event.message), 'note');

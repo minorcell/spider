@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { openSpiderDb, resetSpiderDb } from '../../src/client/journal/db.js';
 import {
+  flushSoon,
   flushWorld,
   installWorldStore,
   onRestore,
@@ -34,6 +35,7 @@ vi.mock('../../src/client/journal/db.js', async () => {
 });
 
 const KEY = 'p5-art.world';
+const LEASE = 'p5-art.world.lease';
 
 function stamp(session: SimSession, over: Partial<WorldRecord> = {}): WorldRecord {
   const body = captureBody(session, null);
@@ -284,6 +286,7 @@ describe('flushWorld', () => {
       KEY,
       JSON.stringify(stamp(session, { seq: 8, owner: 'other', leaseUntil: Date.now() + 60_000 })),
     );
+    localStorage.setItem(LEASE, JSON.stringify({ owner: 'other', until: Date.now() + 60_000 }));
     session.spider.root.position.x += 0.4;
     flushWorld('poke');
     await writesDone();
@@ -297,26 +300,36 @@ describe('flushWorld', () => {
     const stale = stamp(session, { seq: 3, owner: 'other', leaseUntil: Date.now() - 10 });
     await put(stale);
     localStorage.setItem(KEY, JSON.stringify(stale));
+    localStorage.setItem(LEASE, JSON.stringify({ owner: 'other', until: Date.now() - 10 }));
     session.spider.root.position.x += 0.4;
     flushWorld('interval');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(4);
   });
 
-  it('renews its own lease while standing still', async () => {
+  it('renews the lease key without rewriting the snapshot', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
     const session = new SimSession(2);
-    await restoreWorld(session);
-    installWorldStore(session);
+    await restoreWorld(session, new Date(), store);
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    installWorldStore(session, store);
     session.spider.root.position.x += 0.2;
     flushWorld('poke');
     await writesDone();
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? '') as WorldRecord;
-    raw.leaseUntil = Date.now() + 500;
-    localStorage.setItem(KEY, JSON.stringify(raw));
-    await put(raw);
-    flushWorld('interval');
+    const seq = (JSON.parse(localStorage.getItem(KEY) ?? '') as WorldRecord).seq;
+    const first = JSON.parse(localStorage.getItem(LEASE) ?? '') as { owner: string; until: number };
+    expect(first.owner).toBe((JSON.parse(localStorage.getItem(KEY) ?? '') as WorldRecord).owner);
+
+    await vi.advanceTimersByTimeAsync(20_000);
     await writesDone();
-    expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(raw.seq + 1);
+    const next = JSON.parse(localStorage.getItem(LEASE) ?? '') as { owner: string; until: number };
+    expect(next.until).toBeGreaterThan(first.until);
+    expect((JSON.parse(localStorage.getItem(KEY) ?? '') as WorldRecord).seq).toBe(seq);
+    vi.useRealTimers();
   });
 
   it('puts the buffer down before IndexedDB answers', async () => {
@@ -667,7 +680,7 @@ describe('injected snapshot store', () => {
     installWorldStore(session, store);
     installWorldStore(session, store);
     session.spider.root.position.x += 0.2;
-    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(10_000);
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBeGreaterThan(0);
 
@@ -839,5 +852,156 @@ describe('injected snapshot store', () => {
     expect(note.restored).toBe(true);
     const after = await openSpiderDb();
     expect(await after.get('snapshots', 'current')).toMatchObject({ seq: 2 });
+  });
+});
+
+describe('write cadence and leases', () => {
+  it('coalesces quick pokes into one write', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    session.spider.root.position.x += 0.2;
+    flushSoon('poke');
+    session.spider.root.position.x += 0.2;
+    flushSoon('poke');
+    await vi.advanceTimersByTimeAsync(399);
+    expect(store.calls).not.toContain('put');
+    await vi.advanceTimersByTimeAsync(1);
+    await writesDone();
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('cancels a pending poke when an immediate flush lands', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    session.spider.root.position.x += 0.2;
+    flushSoon('poke');
+    flushWorld('hide');
+    await writesDone();
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(400);
+    await writesDone();
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('drops the poke timer and the lease on reset', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    flushSoon('poke');
+    localStorage.setItem(LEASE, JSON.stringify({ owner: 'tab', until: Date.now() + 60_000 }));
+    resetWorldStore();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(localStorage.getItem(LEASE)).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it('falls back to the snapshot lease when the key is missing', async () => {
+    sessionStorage.setItem('p5-art.world.owner', 'tab-a');
+    const store = memoryStore();
+    const saved = stamp(new SimSession(4), {
+      seq: 2,
+      owner: 'tab-a',
+      leaseUntil: Date.now() + 60_000,
+    });
+    store.value = saved;
+    const session = new SimSession(1);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    localStorage.removeItem(LEASE);
+    session.spider.root.position.x += 0.3;
+    flushWorld('poke');
+    await writesDone();
+    expect(store.calls).toContain('put');
+  });
+
+  it('writes when neither a lease nor a record exists', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    localStorage.removeItem(LEASE);
+    session.spider.root.position.x += 0.3;
+    flushWorld('poke');
+    await writesDone();
+    expect(store.calls).toContain('put');
+  });
+
+  it('ignores an unreadable lease key', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    for (const raw of ['{', '{"owner":4,"until":1}', '{"owner":"x","until":"y"}']) {
+      localStorage.setItem(LEASE, raw);
+      session.spider.root.position.x += 0.3;
+      flushWorld('poke');
+      await writesDone();
+    }
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(3);
+  });
+
+  it('leaves a missing or foreign lease alone while idle', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    installWorldStore(session, store);
+    localStorage.removeItem(LEASE);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await writesDone();
+    expect(localStorage.getItem(LEASE)).toBeNull();
+
+    localStorage.setItem(LEASE, JSON.stringify({ owner: 'other', until: Date.now() + 60_000 }));
+    await vi.advanceTimersByTimeAsync(10_000);
+    await writesDone();
+    expect((JSON.parse(localStorage.getItem(LEASE) ?? '') as { owner: string }).owner).toBe(
+      'other',
+    );
+    vi.useRealTimers();
+  });
+
+  it('keeps an existing lease and stages with the buffer lease', async () => {
+    sessionStorage.setItem('p5-art.world.owner', 'tab-a');
+    const store = memoryStore();
+    const saved = stamp(new SimSession(4), {
+      seq: 2,
+      owner: 'tab-a',
+      leaseUntil: Date.now() + 60_000,
+    });
+    store.value = saved;
+    localStorage.setItem(LEASE, JSON.stringify({ owner: 'other', until: saved.leaseUntil }));
+    const session = new SimSession(1);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    expect((JSON.parse(localStorage.getItem(LEASE) ?? '') as { owner: string }).owner).toBe(
+      'other',
+    );
+    localStorage.removeItem(LEASE);
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    session.spider.root.position.x += 0.3;
+    flushWorld('hide');
+    await writesDone();
+    expect((JSON.parse(localStorage.getItem(KEY) ?? '') as WorldRecord).seq).toBe(3);
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
   });
 });

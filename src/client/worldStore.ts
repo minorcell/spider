@@ -13,8 +13,10 @@ import {
 
 const BUFFER_KEY = 'p5-art.world';
 const OWNER_KEY = 'p5-art.world.owner';
-const SAVE_MS = 2000;
-const LEASE_MS = 6000;
+const LEASE_KEY = 'p5-art.world.lease';
+const SAVE_MS = 10_000;
+const LEASE_MS = 30_000;
+const POKE_MS = 400;
 const APPLE_DIRTY_S = 5;
 const MOVE_M = 0.05;
 const YAW_M = 0.02;
@@ -31,6 +33,11 @@ export interface BootNote {
 
 type Reason = 'interval' | 'hide' | 'poke';
 
+interface Lease {
+  owner: string;
+  until: number;
+}
+
 let installed = false;
 let readonly = false;
 let dbDeferred = false;
@@ -40,6 +47,7 @@ let lastBody: SimBody | null = null;
 let pending: SimBody['pending'] = null;
 let pendingGen = 0;
 let timer: ReturnType<typeof setInterval> | undefined;
+let pokeTimer: ReturnType<typeof setTimeout> | undefined;
 let sessionRef: Restorable | null = null;
 let listener: ((note: BootNote) => void) | null = null;
 let onVis: (() => void) | null = null;
@@ -53,6 +61,43 @@ function resolveStore(): Promise<SnapshotStore> {
   if (providedStore) return Promise.resolve(providedStore);
   storePromise ??= import('./journal/store.js').then((module) => module.dbSnapshotStore());
   return storePromise;
+}
+
+/**
+ * Ownership is a tiny separate key. The snapshot is only written when the
+ * world changes; a quiet tab renews this key instead of the whole record.
+ */
+function readLease(): Lease | null {
+  try {
+    const raw = localStorage.getItem(LEASE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<Lease>;
+    if (typeof parsed.owner !== 'string' || !Number.isFinite(parsed.until)) return null;
+    return { owner: parsed.owner, until: parsed.until as number };
+  } catch {
+    return null;
+  }
+}
+
+function setLease(page: string, until: number): void {
+  try {
+    localStorage.setItem(LEASE_KEY, JSON.stringify({ owner: page, until }));
+  } catch {
+    // The snapshot still carries an owner and a lease.
+  }
+}
+
+function leaseOf(record?: WorldRecord): Lease | null {
+  return record ? { owner: record.owner, until: record.leaseUntil } : null;
+}
+
+/** Keep a quiet tab's ownership without rewriting the snapshot. */
+function touchLease(): void {
+  const lease = readLease();
+  if (!lease || lease.owner !== owner) return;
+  const now = Date.now();
+  if (lease.until - now > LEASE_MS / 2) return;
+  setLease(owner, now + LEASE_MS);
 }
 
 export function setPending(next: SimBody['pending']): number {
@@ -71,7 +116,21 @@ export function onRestore(listen: (note: BootNote) => void): void {
 
 export function flushWorld(reason: Reason): void {
   if (!installed || readonly || !sessionRef) return;
+  if (pokeTimer) {
+    clearTimeout(pokeTimer);
+    pokeTimer = undefined;
+  }
   track(write(reason));
+}
+
+/** Coalesce bursts of tool calls into one write. Hide and submit still flush now. */
+export function flushSoon(reason: Reason): void {
+  if (!installed || readonly || !sessionRef) return;
+  if (pokeTimer) clearTimeout(pokeTimer);
+  pokeTimer = setTimeout(() => {
+    pokeTimer = undefined;
+    flushWorld(reason);
+  }, POKE_MS);
 }
 
 export function writesDone(): Promise<void> {
@@ -83,6 +142,8 @@ export function writesDone(): Promise<void> {
 export function resetWorldStore(): void {
   if (timer) clearInterval(timer);
   timer = undefined;
+  if (pokeTimer) clearTimeout(pokeTimer);
+  pokeTimer = undefined;
   if (onVis) document.removeEventListener('visibilitychange', onVis);
   onVis = null;
   installed = false;
@@ -93,6 +154,11 @@ export function resetWorldStore(): void {
     sessionStorage.removeItem(OWNER_KEY);
   } catch {
     // A blocked session store just means the next launch mints an owner.
+  }
+  try {
+    localStorage.removeItem(LEASE_KEY);
+  } catch {
+    // A blocked buffer is replaced by the next write anyway.
   }
   seenSeq = 0;
   lastBody = null;
@@ -136,6 +202,7 @@ export async function restoreWorld(
       pendingText: null,
     };
   }
+  if (!readLease()) setLease(chosen.owner, chosen.leaseUntil);
   session.adopt(strip(chosen));
   pending = chosen.pending;
   seenSeq = chosen.seq;
@@ -155,6 +222,7 @@ export function installWorldStore(session: Restorable, store?: SnapshotStore): v
   installed = true;
   if (!owner) owner = pageOwner();
   if (readonly) return;
+  if (!readLease()) setLease(owner, Date.now() + LEASE_MS);
   if (!lastBody) lastBody = captureBody(session, pending);
   if (onVis) document.removeEventListener('visibilitychange', onVis);
   onVis = () => {
@@ -176,6 +244,7 @@ export function installWorldStore(session: Restorable, store?: SnapshotStore): v
 
 async function write(reason: Reason): Promise<void> {
   // flushWorld checked readonly and sessionRef before calling.
+  if (reason === 'interval') touchLease();
   const session = sessionRef as Restorable;
   const now = Date.now();
   const today = localDate(new Date(now));
@@ -193,7 +262,8 @@ async function write(reason: Reason): Promise<void> {
   // pagehide cannot wait for IndexedDB. The buffer is written before any await.
   let staged: WorldRecord | null = null;
   if (reason === 'hide' || dbDeferred) {
-    if (dirty && mayWrite(localRec, owner, now)) {
+    const stagingLease = readLease() ?? leaseOf(localRec);
+    if (dirty && mayWrite(stagingLease, owner, now)) {
       const seq = Math.max(localRec?.seq ?? 0, seenSeq) + 1;
       staged = stamp(body, seq, now, today);
       if (bufferPut(staged)) {
@@ -216,23 +286,14 @@ async function write(reason: Reason): Promise<void> {
     // The buffer is the copy when the database cannot be opened.
   }
 
-  const blocker = prefer(idbRec, localRec);
-  if (blocker && !mayWrite(blocker, owner, now)) return;
+  const held = prefer(idbRec, localRec);
+  const lease = readLease() ?? leaseOf(held);
+  if (!mayWrite(lease, owner, now)) return;
+  if (!dirty && !staged) return;
 
-  const held = idbRec ?? localRec;
-  const renew =
-    !dirty &&
-    reason === 'interval' &&
-    held != null &&
-    held.owner === owner &&
-    held.leaseUntil - now < SAVE_MS;
-  if (!dirty && !renew && !staged) return;
-
-  // Not dirty implies a previous write left the body behind.
-  const kept = dirty ? body : (lastBody as SimBody);
   const floor = Math.max(idbRec?.seq ?? 0, localRec?.seq ?? 0, seenSeq);
   const record =
-    staged && staged.seq > (idbRec?.seq ?? 0) ? staged : stamp(kept, floor + 1, now, today);
+    staged && staged.seq > (idbRec?.seq ?? 0) ? staged : stamp(body, floor + 1, now, today);
   const storedLocal = bufferPut(record);
   let storedDb = false;
   try {
@@ -244,8 +305,9 @@ async function write(reason: Reason): Promise<void> {
     // The walk continues when the ledger cannot be written.
   }
   if (!storedLocal && !storedDb) return;
+  setLease(record.owner, record.leaseUntil);
   seenSeq = record.seq;
-  lastBody = kept;
+  lastBody = body;
 }
 
 async function catchUp(): Promise<void> {
@@ -258,6 +320,7 @@ async function catchUp(): Promise<void> {
     return;
   }
   if (!chosen || chosen.seq <= seenSeq || chosen.owner === owner) return;
+  setLease(chosen.owner, chosen.leaseUntil);
   session.adopt(strip(chosen));
   pending = chosen.pending;
   seenSeq = chosen.seq;
@@ -372,6 +435,7 @@ async function reconcile(): Promise<void> {
     return;
   }
   if (idb.status !== 'ok' || idb.record.seq <= seenSeq) return;
+  setLease(idb.record.owner, idb.record.leaseUntil);
   session.adopt(strip(idb.record));
   pending = idb.record.pending;
   seenSeq = idb.record.seq;
@@ -435,10 +499,10 @@ function readBuffer(): unknown {
   }
 }
 
-function mayWrite(existing: WorldRecord | undefined, page: string, now: number): boolean {
-  if (!existing) return true;
-  if (existing.owner === page) return true;
-  return existing.leaseUntil <= now;
+function mayWrite(lease: Lease | null, page: string, now: number): boolean {
+  if (!lease) return true;
+  if (lease.owner === page) return true;
+  return lease.until <= now;
 }
 
 function changed(prev: SimBody, next: SimBody, appleSlack: number): boolean {
