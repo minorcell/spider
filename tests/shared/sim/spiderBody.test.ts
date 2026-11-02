@@ -76,16 +76,23 @@ describe('spider body', () => {
     expect(tubeGeo.parameters.radiusTop).toBeLessThan(tubeGeo.parameters.radiusBottom);
     expect(tubeCrest.getAttribute('position').count).toBeGreaterThanOrEqual(2);
     expect(BONES[0].radius).toBeLessThan(0.06);
-    expect(BONES[3].radius).toBeLessThan(0.02);
+    expect(BONES[3].radius).toBeGreaterThan(0.02);
+    expect(BONES[3].radius).toBeLessThan(BONES[2].radius);
     const claw = clawGeo.getAttribute('position');
     let clawMinY = Number.POSITIVE_INFINITY;
     let clawMinZ = Number.POSITIVE_INFINITY;
+    let clawNear = Number.POSITIVE_INFINITY;
     for (let i = 0; i < claw.count; i++) {
-      clawMinY = Math.min(clawMinY, claw.getY(i));
-      clawMinZ = Math.min(clawMinZ, claw.getZ(i));
+      const x = claw.getX(i);
+      const y = claw.getY(i);
+      const z = claw.getZ(i);
+      clawMinY = Math.min(clawMinY, y);
+      clawMinZ = Math.min(clawMinZ, z);
+      clawNear = Math.min(clawNear, Math.hypot(x, y, z));
     }
     expect(clawMinY).toBeLessThan(0);
     expect(clawMinZ).toBeLessThan(0);
-    expect(spider.legs[0].claw.children).toHaveLength(2);
+    expect(clawNear).toBeLessThan(0.012);
+    expect(spider.legs[0].claw.children).toHaveLength(3);
   });
 });

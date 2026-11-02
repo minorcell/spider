@@ -48,12 +48,15 @@ export class Leg {
 
     for (const sign of [-1, 1]) {
       const mesh = new Mesh(clawGeo, spiderMat);
-      mesh.position.x = sign * 0.012;
-      mesh.rotation.y = sign * 0.5;
-      mesh.rotation.z = sign * 0.2;
+      mesh.position.x = sign * 0.004;
+      mesh.rotation.y = sign * 0.28;
       mesh.add(new Mesh(clawShell, inkSolidMat));
       this.claw.add(mesh);
     }
+    const knuckle = new Mesh(ballGeo, spiderMat);
+    knuckle.scale.setScalar(BONES[3].radius * 1.15);
+    knuckle.add(new Mesh(ballShell, inkSolidMat));
+    this.claw.add(knuckle);
     rig.add(this.claw);
   }
 }

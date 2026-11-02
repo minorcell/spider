@@ -72,7 +72,7 @@ export const BONES: readonly BoneSpec[] = [
   { len: 0.34, radius: 0.048 },
   { len: 0.86, radius: 0.036 },
   { len: 0.98, radius: 0.026 },
-  { len: 0.46, radius: 0.015 },
+  { len: 0.46, radius: 0.024 },
 ];
 
 export const GAIT = {

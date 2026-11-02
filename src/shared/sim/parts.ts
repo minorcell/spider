@@ -95,11 +95,11 @@ export const tubeCrest = crestLine(tubeGeo);
 export const ballGeo = new SphereGeometry(1, 16, 12);
 export const ballShell = growShell(ballGeo, 0.08);
 
-/** A thin hooked tarsal claw. The tip sits below and beyond the local origin. */
-export const clawGeo = new CylinderGeometry(0.011, 0.0025, 0.11, 8);
-clawGeo.rotateX(-0.7);
-clawGeo.translate(0, -0.028, -0.05);
-export const clawShell = growShell(clawGeo, 0.003);
+/** Hooked claw. The wide base is the local origin, which is the end of the tarsus. */
+export const clawGeo = new CylinderGeometry(0.0022, 0.009, 0.08, 8);
+clawGeo.translate(0, 0.04, 0);
+clawGeo.rotateX(-2);
+export const clawShell = growShell(clawGeo, 0.0025);
 
 /** Push a copy out along its normals. Radial shells stay put along local z, so a scaled bone does not grow a long cap. */
 export function growShell(
