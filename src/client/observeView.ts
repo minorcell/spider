@@ -9,8 +9,9 @@ import {
   type Camera,
 } from 'three';
 import { PALETTE } from '../shared/config.js';
+import { aheadAt } from '../shared/sense.js';
 import { grassHere } from '../shared/sight.js';
-import { toObservation, type Observation, type WorldState } from '../shared/state.js';
+import { toHeading, toObservation, type Observation, type WorldState } from '../shared/state.js';
 import { surfaceAt } from '../shared/terrain.js';
 import { GRASS_VIEW, REACH, REACH_Y, VIEW_DISTANCE } from '../shared/world.js';
 import type { Spider } from '../shared/sim/Spider.js';
@@ -117,9 +118,10 @@ export class ObserveOverlay {
     }
 
     const yaw = spider.yaw;
-    const open = Math.max(observation.self.ahead.open, 0.6);
     const ahead = this.#aheadAt;
-    if (ahead.x !== x || ahead.z !== z || ahead.heading !== yaw || ahead.open !== open) {
+    if (ahead.x !== x || ahead.z !== z || ahead.heading !== yaw) {
+      const felt = aheadAt(x, z, toHeading(yaw), height, world.blocks);
+      const open = Math.max(felt.open, 0.6);
       ahead.x = x;
       ahead.z = z;
       ahead.heading = yaw;

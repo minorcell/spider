@@ -13,27 +13,41 @@ export interface Lease {
   until: number;
 }
 
-function moveKey(storage: Storage, from: string, to: string): void {
+let migrated = false;
+
+function copyKey(storage: Storage, from: string, to: string): void {
+  if (storage.getItem(to) != null) return;
+  const legacy = storage.getItem(from);
+  if (legacy == null) return;
+  storage.setItem(to, legacy);
+  storage.removeItem(from);
+}
+
+/** Copy the previous p5-art keys once when the new key is empty. */
+export function migrateWorldKeys(): void {
+  if (migrated) return;
   try {
-    const current = storage.getItem(to);
-    const legacy = storage.getItem(from);
-    if (current != null) {
-      if (legacy != null) storage.removeItem(from);
-      return;
-    }
-    if (legacy == null) return;
-    storage.setItem(to, legacy);
-    storage.removeItem(from);
+    copyKey(localStorage, LEGACY_BUFFER, BUFFER_KEY);
+    copyKey(localStorage, LEGACY_LEASE, LEASE_KEY);
+    copyKey(sessionStorage, LEGACY_OWNER, OWNER_KEY);
   } catch {
     // A blocked store is read as empty on the next launch.
   }
+  migrated = true;
 }
 
-/** Copy the previous p5-art keys once, then drop them. */
-export function migrateWorldKeys(): void {
-  moveKey(localStorage, LEGACY_BUFFER, BUFFER_KEY);
-  moveKey(localStorage, LEGACY_LEASE, LEASE_KEY);
-  moveKey(sessionStorage, LEGACY_OWNER, OWNER_KEY);
+/** Tests re-run migration against a fresh store. */
+export function resetWorldMigration(): void {
+  migrated = false;
+}
+
+/** The leftover p5-art buffer, if a new-key value failed to classify. */
+export function peekLegacyBuffer(): unknown {
+  try {
+    return localStorage.getItem(LEGACY_BUFFER);
+  } catch {
+    return null;
+  }
 }
 
 export function readLease(): Lease | null {

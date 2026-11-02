@@ -225,10 +225,10 @@ describe('Diary', () => {
     expect(await today.read(today.date)).toMatchObject({ noted: '不要吃红的' });
 
     const yesterday = await Diary.open(new Date(2026, 10, 1, 12));
-    await yesterday.record('昨天搬了苹果', '搬了。', [], {
+    await yesterday.record('一'.repeat(200), '二'.repeat(200), [], {
       ...settings,
       compact: true,
-      contextTokens: 1,
+      compactKb: 1,
     });
     expect(yesterday.session.summary).toBe('记下了偏好。');
 
@@ -288,16 +288,20 @@ describe('Diary', () => {
       settings,
     );
     expect(diary.session.turns[1]?.tools).toHaveLength(1);
-    await diary.record('再拿', '好。', [], { ...settings, contextTokens: 1, compact: false });
+    await diary.record('一'.repeat(1200), '好。', [], {
+      ...settings,
+      contextTokens: 1,
+      compact: false,
+    });
     expect(diary.session.summary).toBe('');
   });
 
   it('drops the oldest turns when summarizing fails', async () => {
     const diary = await Diary.open(new Date(2026, 10, 7, 8));
     vi.mocked(summarizeDiary).mockRejectedValueOnce(new Error('no model'));
-    await diary.record('一'.repeat(80), '二'.repeat(80), [], {
+    await diary.record('一'.repeat(200), '二'.repeat(200), [], {
       ...settings,
-      contextTokens: 1,
+      compactKb: 1,
       compact: true,
     });
     expect(diary.session.summary).toBe('');
@@ -337,10 +341,14 @@ describe('Diary', () => {
     diary.session = {
       ...diary.session,
       summary: '更早的摘要',
-      turns: [{ role: 'user', text: '一'.repeat(80) }],
+      turns: [{ role: 'user', text: '一'.repeat(200) }],
     };
     vi.mocked(summarizeDiary).mockResolvedValueOnce({ line: '新目录句', summary: '' });
-    await diary.record('再走', '好。', [], { ...settings, contextTokens: 1, compact: true });
+    await diary.record('一'.repeat(200), '二'.repeat(200), [], {
+      ...settings,
+      compactKb: 1,
+      compact: true,
+    });
     expect(diary.session.summary).toBe('更早的摘要');
   });
 
@@ -357,9 +365,9 @@ describe('Diary', () => {
         outputTokenDetails: { textTokens: 2, reasoningTokens: 0 },
       },
     });
-    await diary.record('一'.repeat(80), '二'.repeat(80), [], {
+    await diary.record('一'.repeat(200), '二'.repeat(200), [], {
       ...settings,
-      contextTokens: 1,
+      compactKb: 1,
       compact: true,
     });
     expect((await readUsage(localDate(new Date()))).today).toMatchObject({
@@ -408,9 +416,9 @@ describe('Diary', () => {
         outputTokenDetails: { textTokens: 1, reasoningTokens: 0 },
       },
     });
-    await diary.record('一'.repeat(80), '二'.repeat(80), [], {
+    await diary.record('一'.repeat(200), '二'.repeat(200), [], {
       ...settings,
-      contextTokens: 1,
+      compactKb: 1,
       compact: true,
     });
     expect(diary.session.summary).toBe('摘要');

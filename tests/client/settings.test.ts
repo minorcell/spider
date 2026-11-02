@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { pilotReady, readPilot, writePilot } from '../../src/client/settings.js';
+import { contextTokensOf, pilotReady, readPilot, writePilot } from '../../src/client/settings.js';
 
 beforeEach(() => {
   localStorage.clear();
@@ -35,11 +35,11 @@ describe('pilot settings', () => {
       baseURL: 'https://example.com',
       model: 'gpt',
       apiKey: 'key',
-      contextTokens: 8192,
+      contextTokens: 8,
       compact: true,
       compactKb: 400,
     });
-    expect(readPilot()).toMatchObject({ contextTokens: 8192, compact: true, compactKb: 400 });
+    expect(readPilot()).toMatchObject({ contextTokens: 8, compact: true, compactKb: 400 });
     writePilot({
       baseURL: 'https://example.com',
       model: 'gpt',
@@ -67,10 +67,10 @@ describe('pilot settings', () => {
       baseURL: 'https://example.com',
       model: 'gpt',
       apiKey: 'key',
-      contextTokens: '4096' as unknown as number,
+      contextTokens: '8' as unknown as number,
       compactKb: '128' as unknown as number,
     });
-    expect(readPilot()).toMatchObject({ contextTokens: 4096, compactKb: 128 });
+    expect(readPilot()).toMatchObject({ contextTokens: 8, compactKb: 128 });
   });
 
   it('ignores fields of the wrong type', () => {
@@ -84,6 +84,21 @@ describe('pilot settings', () => {
   it('falls back to empty on malformed JSON', () => {
     localStorage.setItem('spider.pilot', '{nope');
     expect(readPilot()).toEqual(EMPTY);
+  });
+
+  it('keeps the legacy key when the new record is unusable', () => {
+    localStorage.setItem('spider.pilot', '{nope');
+    localStorage.setItem(
+      'p5-art.pilot',
+      JSON.stringify({ baseURL: 'https://old.example', model: 'o', apiKey: 'old' }),
+    );
+    expect(readPilot()).toMatchObject({
+      baseURL: 'https://old.example',
+      model: 'o',
+      apiKey: 'old',
+    });
+    expect(localStorage.getItem('p5-art.pilot')).toBeNull();
+    expect(localStorage.getItem('spider.pilot')).toContain('old.example');
   });
 
   it('migrates the previous p5-art key', () => {
@@ -132,5 +147,11 @@ describe('pilot settings', () => {
     expect(pilotReady({ baseURL: '', model: 'b', apiKey: 'c' })).toBe(false);
     expect(pilotReady({ baseURL: 'a', model: '', apiKey: 'c' })).toBe(false);
     expect(pilotReady({ baseURL: 'a', model: 'b', apiKey: '' })).toBe(false);
+  });
+
+  it('turns k token into tokens on the 1000 scale vendors publish', () => {
+    expect(contextTokensOf(null)).toBeNull();
+    expect(contextTokensOf(8)).toBe(8000);
+    expect(contextTokensOf(128)).toBe(128_000);
   });
 });

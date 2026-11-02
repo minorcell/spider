@@ -144,6 +144,19 @@ describe('restoreWorld', () => {
     expect(sessionStorage.getItem('spider.world.owner')).toBe('tab-a');
   });
 
+  it('restores the legacy buffer when the new key is unusable', async () => {
+    const saved = new SimSession(9);
+    saved.spider.root.position.set(3, saved.spider.root.position.y, 1);
+    const record = stamp(saved, { seq: 2, pending: { text: '旧钥匙', tool: null } });
+    localStorage.setItem(KEY, '{nope');
+    localStorage.setItem('p5-art.world', JSON.stringify(record));
+    const session = new SimSession(1);
+    const note = await restoreWorld(session);
+    expect(note.restored).toBe(true);
+    expect(note.pendingText).toBe('旧钥匙');
+    expect(JSON.parse(String(localStorage.getItem(KEY))).seq).toBe(2);
+  });
+
   it('drops a broken buffer and keeps a good database copy', async () => {
     const saved = new SimSession(4);
     await put(stamp(saved, { seq: 2 }));

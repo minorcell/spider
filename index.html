@@ -142,7 +142,7 @@
             <input name="apiKey" type="password" autocomplete="off" spellcheck="false" />
           </label>
           <label
-            >上下文长度
+            >上下文长度 k token
             <input name="contextTokens" type="number" min="1" step="1" placeholder="不限制" />
           </label>
           <label class="check">
@@ -155,8 +155,8 @@
           </label>
           <p>
             地址、模型名和 Key 记在这台浏览器的 localStorage
-            里。三项都留下它才会走，留空就站着。地址填到 /v1
-            为止。上下文长度和自动压缩可以留空。打开自动压缩又不填阈值时，按 400 KB。
+            里。三项都留下它才会走，留空就站着。地址填到 /v1 为止。上下文长度和压缩阈值都按 k 填：8
+            就是 8k token，400 就是 400 KB。都可以留空。打开自动压缩又不填阈值时，按 400 KB。
           </p>
           <menu>
             <button id="settings-close" type="button" value="cancel">关闭</button>

@@ -18,8 +18,10 @@ import {
   leaseOf,
   mayWrite,
   pageOwner,
+  peekLegacyBuffer,
   readBuffer,
   readLease,
+  resetWorldMigration,
   setLease,
 } from './world/storage.js';
 
@@ -109,6 +111,7 @@ export function writesDone(): Promise<void> {
 
 /** Tests drop the timer and the visibility listener between cases. */
 export function resetWorldStore(): void {
+  resetWorldMigration();
   if (timer) clearInterval(timer);
   timer = undefined;
   if (pokeTimer) clearTimeout(pokeTimer);
@@ -137,7 +140,14 @@ export async function restoreWorld(
 ): Promise<BootNote> {
   if (store) providedStore = store;
   const today = localDate(now);
-  const ls = classify(readBuffer(), today);
+  let ls = classify(readBuffer(), today);
+  if (ls.status !== 'ok') {
+    const leftover = classify(peekLegacyBuffer(), today);
+    if (leftover.status === 'ok') {
+      bufferPut(leftover.record);
+      ls = leftover;
+    }
+  }
   const loaded = await loadIdb(today);
   dbDeferred = loaded.deferred;
   const idb = loaded.idb;

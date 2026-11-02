@@ -199,4 +199,18 @@ describe('ObserveOverlay', () => {
     expect(pos.getX(1)).toBeLessThan(0);
     expect(pos.getZ(1)).toBeCloseTo(0);
   });
+
+  it('re-probes ahead along the live yaw', () => {
+    const overlay = new ObserveOverlay(parent);
+    const spider = fakeSpider(0, 0);
+    const wall = block('nest-w', -8, -0.4, -1, 1, 2);
+    overlay.sync(true, camera(), spider, world({ blocks: [wall] }), view);
+    spider.yaw = Math.PI / 2;
+    overlay.sync(true, camera(), spider, world({ blocks: [wall] }), view);
+    const pos = (overlay.object.children[2] as Line).geometry.getAttribute(
+      'position',
+    ) as BufferAttribute;
+    expect(pos.getX(1)).toBeGreaterThan(-2);
+    expect(pos.getX(1)).toBeLessThan(0);
+  });
 });

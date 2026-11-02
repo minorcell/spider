@@ -141,7 +141,7 @@ export type Sense = Pick<
   | 'carrying'
   | 'ahead'
 > & {
-  /** Present when a walk or drive was blocked, so the next turn does not need observe. */
+  /** Present when the outcome was blocked, steep, or no-path. */
   ways?: string[];
 };
 
@@ -161,8 +161,8 @@ function round3(value: number): number {
 }
 
 /**
- * The body alone. One heading probe instead of the 24 `observe` scans, which
- * is what every non-observe action reports.
+ * The body alone. One heading probe. `withWays` also scans 24 headings for
+ * turn sentences, which a blocked action attaches so the next turn needs no observe.
  */
 export function toSense(state: SpiderState, world: WorldState, withWays = false): Sense {
   const heading = toHeading(state.yaw);

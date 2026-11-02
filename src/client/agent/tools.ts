@@ -39,12 +39,12 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       description:
         '停下看看。这是唯一返回周围东西的行动。返回你在哪里，以及你看得见的东西：位置、stage，还有 properties。' +
         `不填距离就看 ${VIEW_DISTANCE}，最远也是这么远，没有一次看完这片地方的办法。` +
-        `走进草丛后距离会缩到 ${GRASS_VIEW}。self.view 是这一次实际看见的距离。` +
-        'beyond 是超出视线的数目，hidden 是被比你高的固体挡住的数目。' +
+        `走进草丛后距离会缩到 ${GRASS_VIEW}。observation.view 是这一次实际看见的距离。` +
+        'observation.beyond 是超出视线的数目，observation.hidden 是被比你高的固体挡住的数目。' +
         `inReach 表示水平距离在 ${REACH} 以内，而且没有被挡住。` +
-        `self.carrying 是你背上的东西，先背上的在前，空着是 []，最多 ${CARRY_LIMIT} 件。self.home 为真表示你在巢里。self.cover 为 grass 表示你站在草丛里。` +
-        'ahead 是你面前这一段：open 是沿着朝向还能走多远；by 为 wall 时 id 和 kind 是挡住的固体，slope 是陡坡，clear 是这段是空的。' +
-        'ways 是算好的短句，告诉你相对朝向转多少度之后能走多远，正数是顺时针，这个度数就是转身的度数。任何固体都用同一套说法。',
+        `observation.self.carrying 是你背上的东西，先背上的在前，空着是 []，最多 ${CARRY_LIMIT} 件。observation.self.home 为真表示你在巢里。observation.self.cover 为 grass 表示你站在草丛里。` +
+        'observation.self.ahead 是你面前这一段：open 是沿着朝向还能走多远；by 为 wall 时 id 和 kind 是挡住的固体，slope 是陡坡，clear 是这段是空的。' +
+        'observation.self.ways 是已经写好的短句，告诉你相对朝向转多少度之后能走多远，正数是顺时针。任何固体都用同一套说法。',
       inputSchema: call({
         distance: z
           .number()
@@ -60,7 +60,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
     }),
     walk: tool({
       description:
-        '顺着现在的朝向走一段路，快到的时候慢下来。负数是后退。大约超过 2 个单位就设 fast，不然你只会慢慢挪。这条路不会自己绕开。返回要走的距离和实际走过的距离。被固体挡住时 ok 是 false、reason 是 blocked；坡太陡是 steep。这时 self.ways 是可转的度数，按它转，不要用同样的参数再顶。',
+        '顺着现在的朝向走一段路，快到的时候慢下来。负数是后退。大约超过 2 个单位就设 fast，不然你只会慢慢挪。这条路不会自己绕开。返回要走的距离和实际走过的距离。被固体挡住时 ok 是 false、reason 是 blocked；坡太陡是 steep。这时 self.ways 是已经写好的短句，按里面的角度转，不要用同样的参数再顶。',
       inputSchema: call({
         distance: z.number().describe('顺着朝向走多少单位。正数向前。'),
         fast: z.boolean().optional().describe('为真就跑。距离大约超过 2 个单位时用。'),

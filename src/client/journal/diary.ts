@@ -1,6 +1,5 @@
 import type { LanguageModelUsage } from 'ai';
-import type { PilotSettings } from '../settings.js';
-import { pilotReady } from '../settings.js';
+import { contextTokensOf, pilotReady, type PilotSettings } from '../settings.js';
 import type { Journal } from './api.js';
 import { blankMemory, openSpiderDb, type MemoryPage } from './db.js';
 import { localDate, shiftDate } from '../../shared/dates.js';
@@ -41,7 +40,7 @@ export interface MemoryApi {
 
 function limitsOf(settings: PilotSettings): CompactLimits {
   return {
-    contextTokens: settings.contextTokens,
+    contextTokens: contextTokensOf(settings.contextTokens),
     compact: settings.compact,
     compactKb: settings.compactKb,
   };

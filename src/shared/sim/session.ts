@@ -94,7 +94,7 @@ export class SimSession {
     return toObservation(this.spider.capture(), this.world, REACH, view, REACH_Y);
   }
 
-  /** Where the body is and nothing else. Every action except observe reports this. */
+  /** Where the body is. `withWays` adds the 24-heading turn sentences. */
   sense(withWays = false): Sense {
     return toSense(this.spider.capture(), this.world, withWays);
   }

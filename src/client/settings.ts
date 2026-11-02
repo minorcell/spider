@@ -7,11 +7,11 @@ export interface PilotSettings {
   baseURL: string;
   model: string;
   apiKey: string;
-  /** Model context window, in tokens. Null leaves the length unset. */
+  /** Model context window in k token (×1000). Null leaves the length unset. */
   contextTokens: number | null;
   /** When on, a full session may be summarized once it passes a size limit. */
   compact: boolean;
-  /** Compact threshold in KB. Null uses the built-in 400 KB default. */
+  /** Compact threshold in KB (×1024 bytes). Null uses the built-in 400 KB default. */
   compactKb: number | null;
   /** When on, a long idle stretch may write the day's conversation into the diary. */
   autoMemory: boolean;
@@ -37,31 +37,9 @@ const EMPTY: PilotSettings = {
   autoMemory: false,
 };
 
-function readRaw(): string | null {
+function parsePilot(raw: string | null): PilotSettings | null {
+  if (!raw) return null;
   try {
-    const current = localStorage.getItem(STORAGE_KEY);
-    if (current != null) {
-      try {
-        localStorage.removeItem(LEGACY_KEY);
-      } catch {
-        // The new key is the source. A blocked delete leaves the old copy.
-      }
-      return current;
-    }
-    const legacy = localStorage.getItem(LEGACY_KEY);
-    if (legacy == null) return null;
-    localStorage.setItem(STORAGE_KEY, legacy);
-    localStorage.removeItem(LEGACY_KEY);
-    return legacy;
-  } catch {
-    return null;
-  }
-}
-
-export function readPilot(): PilotSettings {
-  try {
-    const raw = readRaw();
-    if (!raw) return { ...EMPTY };
     const parsed = JSON.parse(raw) as Partial<PilotSettings>;
     return {
       baseURL: typeof parsed.baseURL === 'string' ? parsed.baseURL : '',
@@ -73,8 +51,48 @@ export function readPilot(): PilotSettings {
       autoMemory: parsed.autoMemory === true,
     };
   } catch {
-    return { ...EMPTY };
+    return null;
   }
+}
+
+function filled(settings: PilotSettings): boolean {
+  return settings.baseURL !== '' || settings.model !== '' || settings.apiKey !== '';
+}
+
+function dropLegacy(): void {
+  try {
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    // The new key is already the source.
+  }
+}
+
+function readStore(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function readPilot(): PilotSettings {
+  const current = parsePilot(readStore(STORAGE_KEY));
+  if (current && filled(current)) {
+    dropLegacy();
+    return current;
+  }
+  const legacy = parsePilot(readStore(LEGACY_KEY));
+  if (legacy && filled(legacy)) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+      dropLegacy();
+    } catch {
+      // Still return the migrated values this load.
+    }
+    return legacy;
+  }
+  if (current) return current;
+  return { ...EMPTY };
 }
 
 export function writePilot(settings: PilotInput): void {
@@ -98,6 +116,12 @@ export function writePilot(settings: PilotInput): void {
 /** All three fields are required before the page will call a model. */
 export function pilotReady(settings: PilotInput): boolean {
   return settings.baseURL !== '' && settings.model !== '' && settings.apiKey !== '';
+}
+
+/** Stored k token → tokens. Vendors count 8k as 8000, 128k as 128000. */
+export function contextTokensOf(k: number | null): number | null {
+  if (k == null) return null;
+  return k * 1000;
 }
 
 function positiveInt(value: unknown): number | null {
