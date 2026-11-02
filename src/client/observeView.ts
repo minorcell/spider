@@ -13,7 +13,7 @@ import { paintObserve, paintPin } from '../ui/dress.js';
 import { aheadAt } from '../shared/sense.js';
 import { grassHere } from '../shared/sight.js';
 import { toHeading, toObservation, type Observation, type WorldState } from '../shared/state.js';
-import { surfaceAt } from '../shared/terrain.js';
+
 import { GRASS_VIEW, REACH, REACH_Y, VIEW_DISTANCE } from '../shared/world.js';
 import type { Spider } from '../shared/sim/Spider.js';
 
@@ -106,7 +106,7 @@ export class ObserveOverlay {
       this.#observedAt = now;
       fresh = true;
     }
-    const ground = (px: number, pz: number) => surfaceAt(height, px, pz) + 0.14;
+    const ground = (px: number, pz: number) => height(px, pz) + 0.14;
 
     // The rings depend on where the body stands and how far it sees, not on
     // the camera. Re-laying them every frame sampled the terrain 600 times.

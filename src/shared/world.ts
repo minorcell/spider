@@ -4,7 +4,7 @@ import { mulberry32 } from './noise.js';
 import { blockedAt } from './sight.js';
 import { stepPhysics } from './sim/physics.js';
 import type { Block, EntityState, Footprint, WorldState } from './state.js';
-import { surfaceAt, Terrain, TERRAIN } from './terrain.js';
+import { Terrain, TERRAIN } from './terrain.js';
 
 /** How close you must be, horizontally, to act on something. */
 export const REACH = 1.2;
@@ -56,18 +56,11 @@ export function restingY(
       : footprint?.kind === 'box'
         ? Math.hypot(footprint.hx, footprint.hz)
         : body;
-  let top = surfaceAt(terrain.height.bind(terrain), x, z);
+  let top = terrain.height(x, z);
   for (const ring of [radius * 0.5, radius]) {
     for (let i = 0; i < 12; i++) {
       const angle = (i / 12) * Math.PI * 2;
-      top = Math.max(
-        top,
-        surfaceAt(
-          terrain.height.bind(terrain),
-          x + Math.cos(angle) * ring,
-          z + Math.sin(angle) * ring,
-        ),
-      );
+      top = Math.max(top, terrain.height(x + Math.cos(angle) * ring, z + Math.sin(angle) * ring));
     }
   }
   return top + rest + CLEARANCE;

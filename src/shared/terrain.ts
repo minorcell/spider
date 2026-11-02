@@ -21,6 +21,8 @@ export class Terrain {
   readonly #noise: (x: number, y: number) => number;
   readonly #warp: (x: number, y: number) => number;
   readonly #angle: number;
+  /** Analytic height at each ground vertex. Lookups interpolate this grid. */
+  readonly #grid: Float32Array;
 
   constructor(seed: number) {
     this.seed = seed >>> 0;
@@ -28,15 +30,50 @@ export class Terrain {
     this.#warp = createNoise(this.seed ^ 0x9e3779b9);
     // 直接从种子里取一个方向；不要再开一条随机流，地形构造要保持纯函数。
     this.#angle = ((this.seed * 2654435761) % 6283) / 1000;
+    const cols = TERRAIN.segments + 1;
+    this.#grid = new Float32Array(cols * cols);
+    const half = TERRAIN.half;
+    const cell = (half * 2) / TERRAIN.segments;
+    for (let j = 0; j < cols; j++) {
+      const z = -half + j * cell;
+      const row = j * cols;
+      for (let i = 0; i < cols; i++) this.#grid[row + i] = this.#sample(-half + i * cell, z);
+    }
   }
 
   /**
-   * World height at a horizontal point. The origin is flattened.
+   * World height at a horizontal point. This is the rendered triangle, not the
+   * raw noise: the mesh, the body, and loose props all read this grid.
+   * The noise is evaluated once, at the vertices, when the island is built.
+   */
+  height(x: number, z: number): number {
+    const half = TERRAIN.half;
+    const segments = TERRAIN.segments;
+    if (x <= -half || z <= -half || x >= half || z >= half) return 0;
+    const cols = segments + 1;
+    const cell = (half * 2) / segments;
+    const ix = Math.min(segments - 1, Math.max(0, Math.floor((x + half) / cell)));
+    const iz = Math.min(segments - 1, Math.max(0, Math.floor((z + half) / cell)));
+    const x0 = -half + ix * cell;
+    const z0 = -half + iz * cell;
+    const fx = (x - x0) / cell;
+    const fz = (z - z0) / cell;
+    const h00 = this.#grid[iz * cols + ix];
+    const h10 = this.#grid[iz * cols + ix + 1];
+    const h01 = this.#grid[(iz + 1) * cols + ix];
+    const h11 = this.#grid[(iz + 1) * cols + ix + 1];
+    // Same split as PlaneGeometry: a-b-d when fx + fz <= 1, otherwise b-c-d.
+    if (fx + fz <= 1) return h00 * (1 - fx - fz) + h01 * fz + h10 * fx;
+    return h01 * (1 - fx) + h11 * (fx + fz - 1) + h10 * (1 - fz);
+  }
+
+  /**
+   * Analytic height. The origin is flattened.
    *
    * 三层地形：扭曲过的 fbm 做缓坡，脊线噪声做山脊，再加一条随种子转向的
    * 长坡，岛的边缘用低频噪声咬出不规则的海岸。近处压平给巢穴，远处收到 0。
    */
-  height(x: number, z: number): number {
+  #sample(x: number, z: number): number {
     const radius = Math.hypot(x, z);
     if (radius >= TERRAIN.island) return 0;
     // 海岸只往里收，保证 island 之外永远是平的。

@@ -137,6 +137,12 @@ describe('Stage setup', () => {
     expect(host.contains(draw.domElement)).toBe(false);
   });
 
+  it('draws at css pixels on a retina screen', () => {
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 2 });
+    void new Stage(makeHost(), new RealSpider());
+    expect(renderer().setPixelRatio).toHaveBeenCalledWith(1);
+  });
+
   it('falls back to a pixel ratio of one', () => {
     Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 0 });
     void new Stage(makeHost(), new RealSpider());

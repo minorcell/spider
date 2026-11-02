@@ -93,7 +93,9 @@ export class Stage {
     this.#spider = spider;
 
     this.#renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.#renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+    // CSS pixels. A retina buffer shades several fragments per pixel and is
+    // what makes the machine warm while the island sits still.
+    this.#renderer.setPixelRatio(Math.min(1, window.devicePixelRatio || 1));
     this.#renderer.setClearColor(PALETTE.paper, 1);
     host.appendChild(this.#renderer.domElement);
     paintCanvas(this.#renderer.domElement);

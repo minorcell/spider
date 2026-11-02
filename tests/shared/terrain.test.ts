@@ -27,11 +27,29 @@ describe('Terrain', () => {
     expect(Number.isFinite(terrain.height(25, 0))).toBe(true);
   });
 
+  it('blends the baked grid across both triangles in a cell', () => {
+    const terrain = new Terrain(3);
+    const cell = (TERRAIN.half * 2) / TERRAIN.segments;
+    const x0 = -TERRAIN.half + 40 * cell;
+    const z0 = -TERRAIN.half + 40 * cell;
+    const h00 = terrain.height(x0, z0);
+    const h10 = terrain.height(x0 + cell, z0);
+    const h01 = terrain.height(x0, z0 + cell);
+    const h11 = terrain.height(x0 + cell, z0 + cell);
+    const first = terrain.height(x0 + 0.2 * cell, z0 + 0.3 * cell);
+    expect(first).toBeCloseTo(h00 * 0.5 + h01 * 0.3 + h10 * 0.2);
+    const second = terrain.height(x0 + 0.7 * cell, z0 + 0.6 * cell);
+    expect(second).toBeCloseTo(h01 * 0.3 + h11 * 0.3 + h10 * 0.4);
+  });
+
   it('is flat past the island rim', () => {
     const terrain = new Terrain(5);
     expect(terrain.height(TERRAIN.island + 1, 0)).toBe(0);
     expect(terrain.height(TERRAIN.island * 0.98, 0)).toBe(0);
     expect(terrain.height(100, 100)).toBe(0);
+    expect(terrain.height(-100, 0)).toBe(0);
+    expect(terrain.height(0, -100)).toBe(0);
+    expect(terrain.height(0, 100)).toBe(0);
   });
 });
 

@@ -9,7 +9,6 @@ import {
 } from 'three';
 import { mulberry32 } from '../shared/noise.js';
 import { grassMat, inkMat } from '../shared/sim/parts.js';
-import { surfaceAt } from '../shared/terrain.js';
 
 // 草成堆长。旧版一片草是 64 根方条，远远看去像木栅栏；现在每片只有三四堆，
 // 每堆十几片弯叶，叶子更长、更宽，顶点总数反而更少。
@@ -259,7 +258,7 @@ export function drapeGrass(
   ) as BufferAttribute;
 
   for (const blade of blades) {
-    const lift = surfaceAt(height, x + blade.x, z + blade.z) + 0.02 - BASE_Y;
+    const lift = height(x + blade.x, z + blade.z) + 0.02 - BASE_Y;
     for (let i = blade.paperFrom; i < blade.paperTo; i++) {
       paper.setY(i, paper.getY(i) + lift);
     }
