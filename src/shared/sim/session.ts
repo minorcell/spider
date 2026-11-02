@@ -1,9 +1,11 @@
 import {
   toHeading,
+  toNear,
   toObservation,
   toSense,
   wrapDegrees,
   type EntityState,
+  type NearEntity,
   type Observation,
   type Sense,
   type SpiderState,
@@ -97,6 +99,11 @@ export class SimSession {
   /** Where the body is. `withWays` adds the 24-heading turn sentences. */
   sense(withWays = false): Sense {
     return toSense(this.spider.capture(), this.world, withWays);
+  }
+
+  /** Actionable things in reach, nearest first. Empty when there are none. */
+  near(): NearEntity[] {
+    return toNear(this.spider.capture(), this.world, REACH, REACH_Y);
   }
 
   /** One visible frame. The page calls this from its render loop. */

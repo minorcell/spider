@@ -61,6 +61,16 @@ beforeEach(() => {
     setHeight: vi.fn(async () => outcome()),
     drive: vi.fn(async () => outcome()),
     wait: vi.fn(async () => outcome()),
+    near: vi.fn(() => [
+      {
+        id: 'apple-1',
+        kind: 'apple',
+        stage: 0,
+        properties: ['edible', 'carryable'],
+        distance: 0.8,
+        bearing: 0,
+      },
+    ]),
   };
 });
 
@@ -98,16 +108,27 @@ describe('spiderTools', () => {
     expect(session.observe).toHaveBeenCalledWith(VIEW_DISTANCE);
   });
 
-  it('returns only body state for an action, and strips the halt field', async () => {
+  it('returns the body and what is in reach, and strips the halt field', async () => {
     const tools = spiderTools(session as unknown as SimSession);
     session.walk.mockResolvedValue(outcome({ halt: 'solid', achieved: 1 }));
     const result = (await execute(tools.walk, { distance: 2 })) as Record<string, unknown>;
     expect(session.sense).toHaveBeenCalledWith(false);
+    expect(session.near).toHaveBeenCalledOnce();
     expect(session.observe).not.toHaveBeenCalled();
     expect(session.walk).toHaveBeenCalledWith(2, false);
     expect(result).not.toHaveProperty('halt');
     expect(result).not.toHaveProperty('observation');
     expect(result.achieved).toBe(1);
+    expect(result.near).toEqual([
+      {
+        id: 'apple-1',
+        kind: 'apple',
+        stage: 0,
+        properties: ['edible', 'carryable'],
+        distance: 0.8,
+        bearing: 0,
+      },
+    ]);
     expect(result.self).not.toHaveProperty('ways');
   });
 
@@ -118,7 +139,44 @@ describe('spiderTools', () => {
       session.walk.mockResolvedValue(outcome({ reason }));
       const result = (await execute(tools.walk, { distance: 2 })) as Record<string, unknown>;
       expect(session.sense).toHaveBeenCalledWith(true);
+      expect(session.near).toHaveBeenCalled();
       expect(result.self).toHaveProperty('ways');
+      expect(result).toHaveProperty('near');
+    }
+  });
+
+  it('attaches near after a move or handling, and leaves it off a turn', async () => {
+    const tools = spiderTools(session as unknown as SimSession);
+    const beside = [
+      ['walk', { distance: 1 }],
+      ['move_to', { x: 1, z: 2 }],
+      ['approach', { id: 'apple-1' }],
+      ['drive', { seconds: 1 }],
+      ['eat', { id: 'apple-1' }],
+      ['pick_up', { id: 'apple-1' }],
+      ['drop', {}],
+      ['store', {}],
+    ] as const;
+    for (const [name, input] of beside) {
+      session.near.mockClear();
+      const result = (await execute(tools[name], input)) as Record<string, unknown>;
+      expect(session.near).toHaveBeenCalledOnce();
+      expect(result).toHaveProperty('near');
+      expect(result).not.toHaveProperty('observation');
+    }
+    const plain = [
+      ['turn', { degrees: 10 }],
+      ['turn_to', { heading: 0 }],
+      ['set_height', { level: 0 }],
+      ['wait', { seconds: 1 }],
+      ['sleep', {}],
+      ['observe', {}],
+    ] as const;
+    for (const [name, input] of plain) {
+      session.near.mockClear();
+      const result = (await execute(tools[name], input)) as Record<string, unknown>;
+      expect(session.near).not.toHaveBeenCalled();
+      expect(result).not.toHaveProperty('near');
     }
   });
 

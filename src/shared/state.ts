@@ -90,6 +90,21 @@ export interface Carried {
   properties: readonly string[];
 }
 
+/**
+ * Something within reach that can be eaten or carried.
+ * Absolute position stays on a full look; this is enough to act.
+ */
+export interface NearEntity {
+  id: string;
+  kind: string;
+  stage: number;
+  properties: readonly string[];
+  /** Horizontal units from you. */
+  distance: number;
+  /** Degrees relative to your heading, clockwise positive. */
+  bearing: number;
+}
+
 export interface Observation {
   time: number;
   /** How far this look actually reached. */
@@ -158,6 +173,16 @@ export function wrapDegrees(degrees: number): number {
 /** Split the difference for the wire: three places, a number, no string. */
 function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+/** Degrees off the heading. 0 is straight ahead, clockwise positive. */
+function bearingFrom(dx: number, dz: number, heading: number): number {
+  return Math.round(wrapDegrees((Math.atan2(dx, -dz) * 180) / Math.PI - heading) * 10) / 10;
+}
+
+/** Cover and home are already on the body. Anything else can be acted on. */
+function canAct(kind: string): boolean {
+  return propertiesOf(kind).some((property) => property !== 'cover' && property !== 'home');
 }
 
 /**
@@ -229,7 +254,7 @@ export function toObservation(
       stage: entity.stage,
       properties: propertiesOf(entity.kind),
       distance: round3(distance),
-      bearing: Math.round(wrapDegrees((Math.atan2(dx, -dz) * 180) / Math.PI - heading) * 10) / 10,
+      bearing: bearingFrom(dx, dz, heading),
       inReach: distance <= reach && vertical <= reachY,
     });
   }
@@ -269,4 +294,40 @@ export function toObservation(
     },
     entities: seen,
   };
+}
+
+/**
+ * What you can eat or carry without another look. Nearest first.
+ * Grass and the nest stay off the list. An empty list means nothing in reach.
+ */
+export function toNear(
+  state: SpiderState,
+  world: WorldState,
+  reach: number,
+  reachY: number,
+): NearEntity[] {
+  const heading = toHeading(state.yaw);
+  const px = state.position.x;
+  const pz = state.position.z;
+  const eye = world.terrain.height(px, pz) + 0.85;
+  const near: NearEntity[] = [];
+  for (const entity of world.entities) {
+    if (!canAct(entity.kind)) continue;
+    const dx = entity.x - px;
+    const dz = entity.z - pz;
+    const distance = Math.hypot(dx, dz);
+    const vertical = Math.abs(entity.y - state.position.y);
+    if (distance > reach || vertical > reachY) continue;
+    if (occluded(px, pz, entity.x, entity.z, world.blocks, entity.id, eye)) continue;
+    near.push({
+      id: entity.id,
+      kind: entity.kind,
+      stage: entity.stage,
+      properties: propertiesOf(entity.kind),
+      distance: round3(distance),
+      bearing: bearingFrom(dx, dz, heading),
+    });
+  }
+  near.sort((a, b) => a.distance - b.distance);
+  return near;
 }

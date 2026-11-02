@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   toHeading,
+  toNear,
   toObservation,
   toSense,
   wrapDegrees,
@@ -208,6 +209,54 @@ describe('toObservation', () => {
     const seen = toObservation(spider(), world({ carrying: [carried] }), 4, 16, 1.6);
     expect(seen.self.carrying).toEqual([
       { id: 'apple-2', kind: 'apple', stage: 2, properties: ['edible', 'carryable'] },
+    ]);
+  });
+
+  it('lists what you can act on within reach, nearest first', () => {
+    const grass: EntityState = {
+      id: 'grass-1',
+      kind: 'grass',
+      x: 0,
+      y: 0,
+      z: 0,
+      stage: 0,
+      footprint: { kind: 'circle', r: 2 },
+    };
+    const near = toNear(
+      spider(),
+      world({
+        entities: [
+          apple({ id: 'apple-b', x: 0.5, z: 0.5, stage: 0 }),
+          apple({ id: 'apple-far', z: -4 }),
+          apple({ id: 'apple-high', y: 3, z: -0.4 }),
+          apple({ id: 'apple-hidden', x: 1.05, z: 0, stage: 0 }),
+          apple({ id: 'apple-a', x: 0, z: -0.5, stage: 1 }),
+          grass,
+          apple({ id: 'home', kind: 'nest', x: 0, y: 0.02, z: 0, stage: 0 }),
+          apple({ id: 'rock-1', kind: 'rock', x: 0.3, z: 0, stage: 0 }),
+        ],
+        blocks: [block('wall', 0.4, 0.7, -0.25, 0.25)],
+      }),
+      1.2,
+      1.6,
+    );
+    expect(near).toEqual([
+      {
+        id: 'apple-a',
+        kind: 'apple',
+        stage: 1,
+        properties: ['edible', 'carryable'],
+        distance: 0.5,
+        bearing: 0,
+      },
+      {
+        id: 'apple-b',
+        kind: 'apple',
+        stage: 0,
+        properties: ['edible', 'carryable'],
+        distance: 0.707,
+        bearing: 135,
+      },
     ]);
   });
 

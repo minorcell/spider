@@ -78,6 +78,16 @@ describe('SimSession basics', () => {
     expect(session.spider.time).toBe(0);
   });
 
+  it('names an apple within reach', () => {
+    const session = new SimSession(1);
+    session.world.entities = session.world.entities.filter((entity) => entity.kind === 'nest');
+    const apple = session.addEntity('apple', 0, -0.7);
+    const near = session.near();
+    expect(near.map((item) => item.id)).toEqual([apple.id]);
+    expect(near[0].distance).toBeLessThanOrEqual(1.2);
+    expect(near[0]).not.toHaveProperty('x');
+  });
+
   it('senses the body without scanning the island', () => {
     const session = new SimSession(3);
     const sense = session.sense();
