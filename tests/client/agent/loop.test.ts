@@ -55,9 +55,15 @@ describe('runAgent', () => {
   it('keeps only the final words when one message mixes prose and tools', async () => {
     stream([
       { type: 'text-delta', text: '我先看看' },
+      { type: 'tool-input-start' },
       { type: 'tool-call', toolName: 'walk', toolCallId: '1', input: {} },
+      { type: 'text-delta', text: '别显示' },
       { type: 'tool-result', toolName: 'walk', output: { ok: true } },
+      { type: 'finish-step' },
       { type: 'text-delta', text: '到了' },
+      { type: 'finish-step' },
+      { type: 'tool-call', toolName: 'walk', toolCallId: '2', input: {} },
+      { type: 'text-delta', text: '也不显示' },
     ]);
     const events: AgentEvent[] = [];
     const answer = await runAgent({
@@ -78,6 +84,8 @@ describe('runAgent', () => {
     await runAgent({ goal: 'go', session: fakeSession(), settings });
     const system = String(aiControl.streamText.mock.calls[0][0].system);
     expect(system).toContain('对各件各写一次 drop');
+    expect(system).toContain('一次回复不要同时写一段话和一个行动');
+    expect(system).toContain('正文留空');
     expect(system).toContain('只写文字、不再调用行动的那一次回复会结束这一轮');
     expect(system).not.toContain('另起一条消息');
     expect(system).not.toContain('只放行动调用');
@@ -104,13 +112,13 @@ describe('runAgent', () => {
     expect(answer.text).toBe('ab');
     expect(answer.usage).toBeNull();
     expect(events).toEqual([
-      { type: 'text', text: 'a' },
-      { type: 'text', text: 'b' },
       { type: 'tool-result', name: 'walk', output: { ok: true } },
       { type: 'error', message: 'walk：nope' },
       { type: 'error', message: 'walk：plain' },
       { type: 'error', message: 'boom' },
       { type: 'error', message: 'plain' },
+      { type: 'text', text: 'a' },
+      { type: 'text', text: 'b' },
     ]);
   });
 

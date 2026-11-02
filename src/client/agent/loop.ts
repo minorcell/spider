@@ -23,7 +23,7 @@ const SYSTEM = `你是一个蜘蛛。你就在这片地方里。用户的话是�
 
 某次行动返回 ok: false 时，看 reason 和已经做到的值，换一种做法。不要用相同的参数再试一次失败的行动。换一个 id 是另一件东西，可以写在同一次回复里。
 
-只写文字、不再调用行动的那一次回复会结束这一轮。事情做成了，或者已经确定做不成，才这样停，然后用用户的语言回一句短话。还有东西要放、要搬、要吃或要走，就把这些行动一起写在这一次回复里，不要停下来解释。`;
+一次回复不要同时写一段话和一个行动。要做事的那一次，正文留空，只写行动调用。旁边那句话只放在 description 里，不要再写另一段。只写文字、不再调用行动的那一次回复会结束这一轮。事情做成了，或者已经确定做不成，才这样停，然后用用户的语言回一句短话。还有东西要放、要搬、要吃或要走，就把这些行动一起写在这一次回复里，正文不要写字。`;
 
 function systemFor(today: string, summary: string, index: string, withMemory: boolean): string {
   const memory = withMemory
@@ -150,9 +150,11 @@ export async function runAgent({
     },
   });
 
-  // Words that share a message with a tool call are narration. The reply is
-  // the text that is not followed by another tool call.
+  // A sentence in the same step as a tool call is not a message. The tool's
+  // description is the line beside the spider. The reply is text from a step
+  // that calls nothing.
   let answer = '';
+  let stepHasTool = false;
   const pending: string[] = [];
   const flush = (): void => {
     if (pending.length === 0) return;
@@ -166,32 +168,33 @@ export async function runAgent({
     if (signal?.aborted) break;
     switch (part.type) {
       case 'text-delta':
-        pending.push(part.text);
+        if (!stepHasTool) pending.push(part.text);
         break;
       case 'tool-call':
+        stepHasTool = true;
         pending.length = 0;
         break;
+      case 'finish-step':
+        if (!stepHasTool) flush();
+        stepHasTool = false;
+        break;
       case 'tool-result':
-        flush();
         onEvent?.({ type: 'tool-result', name: part.toolName, output: part.output });
         break;
       case 'tool-error':
-        flush();
         onEvent?.({
           type: 'error',
           message: `${part.toolName}：${part.error instanceof Error ? part.error.message : String(part.error)}`,
         });
         break;
       case 'error':
-        flush();
         onEvent?.({ type: 'error', message: errorText(part.error) });
         break;
       default:
-        flush();
         break;
     }
   }
-  if (!signal?.aborted) flush();
+  if (!signal?.aborted && !stepHasTool) flush();
   return { text: answer, usage: await takenUsage(result.usage), calls };
 }
 
