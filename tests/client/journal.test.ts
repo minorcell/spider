@@ -33,10 +33,11 @@ const settings: PilotSettings = {
   model: 'model-1',
   apiKey: 'key',
   contextTokens: null,
-  compact: false,
-  compactKb: null,
   autoMemory: false,
 };
+
+/** Long enough that 1k tokens (80% of a 1k window) is already full. */
+const LONG = '一'.repeat(1600);
 
 function session(turns: ChatSession['turns'], summary = ''): ChatSession {
   return { ...blankSession('2026-11-02'), turns, summary, updatedAt: 10 };
@@ -92,9 +93,7 @@ describe('fit', () => {
       { role: 'user', text: '你好' },
       { role: 'assistant', text: '在。' },
     ]);
-    expect(fit(chat, { contextTokens: null, compact: false, compactKb: null })).toEqual({
-      kind: 'keep',
-    });
+    expect(fit(chat, { contextTokens: null })).toEqual({ kind: 'keep' });
     expect(needsDigest(chat)).toBe(true);
     expect(needsDigest({ ...chat, digestedAt: 10 })).toBe(false);
   });
@@ -107,45 +106,22 @@ describe('fit', () => {
       { role: 'user', text: '再拿' },
       { role: 'assistant', text: '好。' },
     ]);
-    const action = fit(chat, {
-      contextTokens: estimateTokens(chat) - 10,
-      compact: false,
-      compactKb: null,
-    });
+    const action = fit(chat, { contextTokens: estimateTokens(chat) - 10 });
     expect(action.kind).toBe('save');
     if (action.kind !== 'save') return;
     expect(action.session.turns).toHaveLength(4);
     expect(action.session.turns[1]?.tools).toBeUndefined();
   });
 
-  it('drops the oldest turns when compact is off and traces are already gone', () => {
-    const chat = session([
-      { role: 'user', text: '一'.repeat(40) },
-      { role: 'assistant', text: '二'.repeat(40) },
-      { role: 'user', text: '三'.repeat(40) },
-      { role: 'assistant', text: '四'.repeat(40) },
-    ]);
-    const action = fit(chat, { contextTokens: 30, compact: false, compactKb: null });
-    expect(action.kind).toBe('save');
-    if (action.kind !== 'save') return;
-    expect(action.session.turns.length).toBeLessThan(chat.turns.length);
-    expect(action.session.turns.at(-1)?.text.startsWith('四')).toBe(true);
-  });
-
-  it('asks for a summary once automatic compact is on', () => {
+  it('asks for a summary once the window is 80% full', () => {
     const chat = session([
       { role: 'user', text: '一'.repeat(80) },
       { role: 'assistant', text: '二'.repeat(80) },
     ]);
-    const action = fit(chat, { contextTokens: 20, compact: true, compactKb: null });
+    const action = fit(chat, { contextTokens: 20 });
     expect(action.kind).toBe('summarize');
-  });
-
-  it('uses 400 KB when compact is on and the threshold is empty', () => {
-    const chat = session([{ role: 'user', text: '短' }]);
-    expect(fit(chat, { contextTokens: null, compact: true, compactKb: null })).toEqual({
-      kind: 'keep',
-    });
+    if (action.kind !== 'summarize') return;
+    expect(action.session.turns.at(-1)?.text.startsWith('二')).toBe(true);
   });
 
   it('folds a summary and keeps the recent tail', () => {
@@ -154,28 +130,19 @@ describe('fit', () => {
     const folded = foldSummary(session(turns, '旧'), '新');
     expect(folded.summary).toBe('新');
     expect(folded.turns.map((turn) => turn.text)).toEqual(['2', '3', '4', '5']);
-    expect(
-      dropOldest(folded, { contextTokens: 1, compact: false, compactKb: null }).turns,
-    ).toHaveLength(1);
+    expect(dropOldest(folded, { contextTokens: 1 }).turns).toHaveLength(1);
   });
 
-  it('checks the byte cap before the token cap', () => {
+  it('compresses at 80% of the context window', () => {
     const chat = session([{ role: 'user', text: 'x'.repeat(400) }]);
-    expect(overLimit(chat, { contextTokens: 50, compact: true, compactKb: 400 })).toBe(true);
-    expect(overLimit(chat, { contextTokens: null, compact: true, compactKb: 400 })).toBe(false);
-    expect(overLimit(chat, { contextTokens: 500, compact: false, compactKb: null })).toBe(false);
-    expect(
-      overLimit(session([{ role: 'user', text: 'x'.repeat(2000) }]), {
-        contextTokens: null,
-        compact: true,
-        compactKb: 1,
-      }),
-    ).toBe(true);
+    expect(overLimit(chat, { contextTokens: 100 })).toBe(true);
+    expect(overLimit(chat, { contextTokens: null })).toBe(false);
+    expect(overLimit(chat, { contextTokens: 10_000 })).toBe(false);
   });
 
   it('keeps the same session when nothing is over the limit', () => {
     const chat = session([{ role: 'user', text: '短' }]);
-    expect(dropOldest(chat, { contextTokens: null, compact: false, compactKb: null })).toBe(chat);
+    expect(dropOldest(chat, { contextTokens: null })).toBe(chat);
   });
 
   it('writes the transcript and the messages sent to the model', () => {
@@ -225,11 +192,7 @@ describe('Diary', () => {
     expect(await today.read(today.date)).toMatchObject({ noted: '不要吃红的' });
 
     const yesterday = await Diary.open(new Date(2026, 10, 1, 12));
-    await yesterday.record('一'.repeat(200), '二'.repeat(200), [], {
-      ...settings,
-      compact: true,
-      compactKb: 1,
-    });
+    await yesterday.record(LONG, LONG, [], { ...settings, contextTokens: 1 });
     expect(yesterday.session.summary).toBe('记下了偏好。');
 
     await today.backfill(settings);
@@ -279,7 +242,18 @@ describe('Diary', () => {
     expect(block).toContain('（无）');
   });
 
-  it('keeps tool traces and trims without a summary when compact is off', async () => {
+  it('drops tool traces without a summary when that fits the window', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 6, 8));
+    await diary.record('拿', '好。', [{ name: 'pick_up', input: {}, output: 'x'.repeat(8000) }], {
+      ...settings,
+      contextTokens: 1,
+    });
+    expect(diary.session.summary).toBe('');
+    expect(diary.session.turns[1]?.tools).toBeUndefined();
+    expect(diary.session.turns).toHaveLength(2);
+  });
+
+  it('keeps tool traces, then summarizes once the window is 80% full', async () => {
     const diary = await Diary.open(new Date(2026, 10, 6, 8));
     await diary.record(
       '拿',
@@ -288,22 +262,14 @@ describe('Diary', () => {
       settings,
     );
     expect(diary.session.turns[1]?.tools).toHaveLength(1);
-    await diary.record('一'.repeat(1200), '好。', [], {
-      ...settings,
-      contextTokens: 1,
-      compact: false,
-    });
-    expect(diary.session.summary).toBe('');
+    await diary.record(LONG, '好。', [], { ...settings, contextTokens: 1 });
+    expect(diary.session.summary).toBe('记下了偏好。');
   });
 
   it('drops the oldest turns when summarizing fails', async () => {
     const diary = await Diary.open(new Date(2026, 10, 7, 8));
     vi.mocked(summarizeDiary).mockRejectedValueOnce(new Error('no model'));
-    await diary.record('一'.repeat(200), '二'.repeat(200), [], {
-      ...settings,
-      compactKb: 1,
-      compact: true,
-    });
+    await diary.record(LONG, LONG, [], { ...settings, contextTokens: 1 });
     expect(diary.session.summary).toBe('');
   });
 
@@ -344,11 +310,7 @@ describe('Diary', () => {
       turns: [{ role: 'user', text: '一'.repeat(200) }],
     };
     vi.mocked(summarizeDiary).mockResolvedValueOnce({ line: '新目录句', summary: '' });
-    await diary.record('一'.repeat(200), '二'.repeat(200), [], {
-      ...settings,
-      compactKb: 1,
-      compact: true,
-    });
+    await diary.record(LONG, LONG, [], { ...settings, contextTokens: 1 });
     expect(diary.session.summary).toBe('更早的摘要');
   });
 
@@ -365,11 +327,7 @@ describe('Diary', () => {
         outputTokenDetails: { textTokens: 2, reasoningTokens: 0 },
       },
     });
-    await diary.record('一'.repeat(200), '二'.repeat(200), [], {
-      ...settings,
-      compactKb: 1,
-      compact: true,
-    });
+    await diary.record(LONG, LONG, [], { ...settings, contextTokens: 1 });
     expect((await readUsage(localDate(new Date()))).today).toMatchObject({
       input: 8,
       output: 2,
@@ -418,11 +376,7 @@ describe('Diary', () => {
         outputTokenDetails: { textTokens: 1, reasoningTokens: 0 },
       },
     });
-    await diary.record('一'.repeat(200), '二'.repeat(200), [], {
-      ...settings,
-      compactKb: 1,
-      compact: true,
-    });
+    await diary.record(LONG, LONG, [], { ...settings, contextTokens: 1 });
     expect(diary.session.summary).toBe('摘要');
   });
 });

@@ -14,8 +14,6 @@ const settings: PilotSettings = {
   model: 'model-1',
   apiKey: 'key',
   contextTokens: null,
-  compact: false,
-  compactKb: null,
   autoMemory: false,
 };
 

@@ -10,8 +10,6 @@ const EMPTY = {
   model: '',
   apiKey: '',
   contextTokens: null,
-  compact: false,
-  compactKb: null,
   autoMemory: false,
 };
 
@@ -30,24 +28,41 @@ describe('pilot settings', () => {
     });
   });
 
-  it('stores a context length and a compact threshold', () => {
+  it('stores a context length and drops a legacy compact threshold', () => {
     writePilot({
       baseURL: 'https://example.com',
       model: 'gpt',
       apiKey: 'key',
       contextTokens: 8,
-      compact: true,
-      compactKb: 400,
     });
-    expect(readPilot()).toMatchObject({ contextTokens: 8, compact: true, compactKb: 400 });
+    expect(readPilot()).toMatchObject({ contextTokens: 8 });
+    expect(readPilot()).not.toHaveProperty('compact');
+    localStorage.setItem(
+      'spider.pilot',
+      JSON.stringify({
+        baseURL: 'https://example.com',
+        model: 'gpt',
+        apiKey: 'key',
+        contextTokens: 8,
+        compact: true,
+        compactKb: 400,
+      }),
+    );
+    expect(readPilot()).toEqual({
+      ...EMPTY,
+      baseURL: 'https://example.com',
+      model: 'gpt',
+      apiKey: 'key',
+      contextTokens: 8,
+    });
     writePilot({
       baseURL: 'https://example.com',
       model: 'gpt',
       apiKey: 'key',
       contextTokens: 0,
-      compactKb: -3,
     });
-    expect(readPilot()).toMatchObject({ contextTokens: null, compact: false, compactKb: null });
+    expect(readPilot().contextTokens).toBeNull();
+    expect(localStorage.getItem('spider.pilot')).not.toContain('compact');
   });
 
   it('stores auto memory as an opt-in flag', () => {
@@ -68,9 +83,8 @@ describe('pilot settings', () => {
       model: 'gpt',
       apiKey: 'key',
       contextTokens: '8' as unknown as number,
-      compactKb: '128' as unknown as number,
     });
-    expect(readPilot()).toMatchObject({ contextTokens: 8, compactKb: 128 });
+    expect(readPilot()).toMatchObject({ contextTokens: 8 });
   });
 
   it('ignores fields of the wrong type', () => {

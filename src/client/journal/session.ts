@@ -1,6 +1,7 @@
 /** One calendar day's conversation, and the rules for when it gets smaller. */
 
-const DEFAULT_COMPACT_KB = 400;
+/** Compress once the transcript fills this much of the context window. */
+const COMPACT_AT = 0.8;
 const KEEP_TURNS = 4;
 const encoder = new TextEncoder();
 
@@ -26,9 +27,8 @@ export interface ChatSession {
 }
 
 export interface CompactLimits {
+  /** Token budget. Null keeps the transcript. */
   contextTokens: number | null;
-  compact: boolean;
-  compactKb: number | null;
 }
 
 export type FitAction =
@@ -58,32 +58,25 @@ export function estimateTokens(session: ChatSession): number {
   return Math.ceil(payloadBytes(session) / 4);
 }
 
-function byteCap(limits: CompactLimits): number | null {
-  if (!limits.compact) return null;
-  return (limits.compactKb ?? DEFAULT_COMPACT_KB) * 1024;
-}
-
 function tokenCap(limits: CompactLimits): number | null {
   if (limits.contextTokens == null) return null;
-  return Math.floor(limits.contextTokens * 0.8);
+  return Math.floor(limits.contextTokens * COMPACT_AT);
 }
 
 export function overLimit(session: ChatSession, limits: CompactLimits): boolean {
-  const bytes = payloadBytes(session);
-  const tokens = Math.ceil(bytes / 4);
-  const bytesAt = byteCap(limits);
   const tokensAt = tokenCap(limits);
-  if (bytesAt != null && bytes >= bytesAt) return true;
-  if (tokensAt != null && tokens >= tokensAt) return true;
-  return false;
+  if (tokensAt == null) return false;
+  return estimateTokens(session) >= tokensAt;
 }
 
-/** Strip tool traces first. Summarize only when automatic compact is on. */
+/**
+ * Strip tool traces first. A transcript that is still past 80% of the window
+ * is summarized. An empty window is kept as it is.
+ */
 export function fit(session: ChatSession, limits: CompactLimits): FitAction {
   if (!overLimit(session, limits)) return { kind: 'keep' };
   const stripped = stripTools(session);
   if (!overLimit(stripped, limits)) return { kind: 'save', session: stripped };
-  if (!limits.compact) return { kind: 'save', session: dropOldest(stripped, limits) };
   return { kind: 'summarize', session: stripped };
 }
 
@@ -104,7 +97,7 @@ export function dropOldest(session: ChatSession, limits: CompactLimits): ChatSes
 
   // Payload size increases monotonically as more of the suffix is kept.
   // Binary search the largest suffix that fits instead of serializing every
-  // intermediate session when compact is disabled.
+  // intermediate session.
   let low = 1;
   let high = turns.length;
   let keep = 1;

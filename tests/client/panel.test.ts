@@ -590,8 +590,6 @@ const PILOT: PilotSettings = {
   model: 'model-1',
   apiKey: 'key',
   contextTokens: null,
-  compact: false,
-  compactKb: null,
   autoMemory: false,
 };
 
@@ -785,26 +783,23 @@ describe('diary panel', () => {
     expect(() => mountPanel(document, fakeSession(), fakeStage())).toThrow('Missing pilot chrome');
   });
 
-  it('fills the compact fields from storage', () => {
+  it('fills the context length and does not offer a compact switch', () => {
     writePilot({
       baseURL: 'https://example.com',
       model: 'model-1',
       apiKey: 'key',
       contextTokens: 4,
-      compact: true,
-      compactKb: 400,
     });
     mount();
     clickButton('#settings-open');
     clickButton('#menu-model');
     expect(field('contextTokens').value).toBe('4');
-    expect(field('compact').checked).toBe(true);
-    expect(field('compactKb').value).toBe('400');
+    expect(document.querySelector('[name="compact"]')).toBeNull();
+    expect(document.querySelector('[name="compactKb"]')).toBeNull();
     clickButton('#settings-close');
     writePilot({ baseURL: 'https://example.com', model: 'model-1', apiKey: 'key' });
     clickButton('#settings-open');
     expect(field('contextTokens').value).toBe('');
-    expect(field('compactKb').value).toBe('');
   });
 
   it('marks a directory page without a line with its date', async () => {

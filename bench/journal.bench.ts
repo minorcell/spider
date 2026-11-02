@@ -1,6 +1,7 @@
 import { describe, test } from 'vitest';
 import {
   blankSession,
+  dropOldest,
   estimateTokens,
   fit,
   transcript,
@@ -21,8 +22,7 @@ function longDay(turns: number): ChatSession {
   };
 }
 
-const limits: CompactLimits = { contextTokens: 4_000, compact: true, compactKb: 400 };
-const noCompactLimits: CompactLimits = { contextTokens: 4_000, compact: false, compactKb: null };
+const limits: CompactLimits = { contextTokens: 4_000 };
 const session = longDay(400);
 
 describe('journal', () => {
@@ -38,9 +38,9 @@ describe('journal', () => {
     }).run();
   });
 
-  test('fit 400 turns without compact', async ({ bench }) => {
-    await bench('fit 400 turns without compact', () => {
-      fit(session, noCompactLimits);
+  test('drop oldest of 400 turns', async ({ bench }) => {
+    await bench('drop oldest of 400 turns', () => {
+      dropOldest(session, limits);
     }).run();
   });
 

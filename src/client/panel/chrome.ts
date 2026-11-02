@@ -128,18 +128,9 @@ export function buildChrome(doc: Document): DocumentFragment {
       step: 1,
       placeholder: '不限制',
     }),
-    switchField(doc, { name: 'compact', label: '自动压缩' }),
-    field(doc, {
-      label: '压缩阈值 KB',
-      name: 'compactKb',
-      kind: 'number',
-      min: 1,
-      step: 1,
-      placeholder: '400',
-    }),
     note(
       doc,
-      '地址、模型名和 Key 记在这台浏览器的 localStorage 里。三项都留下它才会走，留空就站着。地址填到 /v1 为止。上下文长度和压缩阈值都按 k 填：8 就是 8k token，400 就是 400 KB。都可以留空。打开自动压缩又不填阈值时，按 400 KB。',
+      '地址、模型名和 Key 记在这台浏览器的 localStorage 里。三项都留下它才会走，留空就站着。地址填到 /v1 为止。上下文长度按 k 填：8 就是 8k token。留空则不限制。对话写到窗口的 80% 时，会自动收成一段摘要。',
     ),
   );
   model.append(settingsForm);

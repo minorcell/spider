@@ -48,11 +48,7 @@ export interface MemoryApi {
 }
 
 function limitsOf(settings: PilotSettings): CompactLimits {
-  return {
-    contextTokens: contextTokensOf(settings.contextTokens),
-    compact: settings.compact,
-    compactKb: settings.compactKb,
-  };
+  return { contextTokens: contextTokensOf(settings.contextTokens) };
 }
 
 function viewOf(page: MemoryPage): MemoryView {

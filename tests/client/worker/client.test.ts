@@ -82,8 +82,6 @@ describe('WorkerJournal', () => {
           model: 'm',
           apiKey: 'k',
           contextTokens: null,
-          compact: false,
-          compactKb: null,
           autoMemory: false,
         }),
       { ...STATE, behind: true },
@@ -97,8 +95,6 @@ describe('WorkerJournal', () => {
       model: 'm',
       apiKey: 'k',
       contextTokens: null,
-      compact: false,
-      compactKb: null,
       autoMemory: false,
     };
     expect(await call(port, () => journal.digest(settings), STATE)).toBeUndefined();
