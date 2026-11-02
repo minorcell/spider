@@ -1,16 +1,21 @@
 import {
   BoxGeometry,
+  BufferAttribute,
   BufferGeometry,
   CylinderGeometry,
   EdgesGeometry,
+  Euler,
   Group,
   Float32BufferAttribute,
   LatheGeometry,
   LineSegments,
+  Matrix4,
   Mesh,
+  Quaternion,
   Shape,
   ShapeGeometry,
   Vector2,
+  Vector3,
 } from 'three';
 import type { Footprint } from '../shared/state.js';
 import { surfaceAt } from '../shared/terrain.js';
@@ -140,24 +145,98 @@ function appleLeaf(): BufferGeometry {
   return new ShapeGeometry(shape);
 }
 
+interface GrassBlade {
+  readonly localX: number;
+  readonly localZ: number;
+  readonly half: number;
+  readonly rx: number;
+  readonly rz: number;
+  /** First vertex of this blade in the merged paper buffer, and its rest heights. */
+  readonly paperStart: number;
+  readonly paperYs: readonly number[];
+  readonly inkStart: number;
+  readonly inkYs: readonly number[];
+}
+
+/**
+ * One patch is one paper mesh and one ink line set. 64 blades as separate
+ * objects each cost a matrix update and a draw call every frame.
+ */
 function buildGrass(radius: number): Group {
-  const grass = new Group();
   const count = 64;
+  const blades: GrassBlade[] = [];
+  const paper: number[] = [];
+  const normals: number[] = [];
+  const ink: number[] = [];
+  const shapes = new Map<string, { solid: BufferGeometry; edges: BufferGeometry }>();
+  const matrix = new Matrix4();
+  const quaternion = new Quaternion();
+  const euler = new Euler();
+  const place = new Vector3();
+  const one = new Vector3(1, 1, 1);
+
   for (let i = 0; i < count; i++) {
     const angle = i * 2.399963;
     const dist = radius * Math.sqrt((i + 0.5) / count) * 0.96;
     const height = 0.28 + (i % 9) * 0.09;
     const width = i % 6 === 0 ? 0.055 : 0.02;
-    const blade = new BoxGeometry(width, height, 0.012);
-    const mesh = new Mesh(blade, paperMat);
-    mesh.userData.half = height / 2;
-    mesh.position.set(Math.cos(angle) * dist, height / 2, Math.sin(angle) * dist);
-    mesh.rotation.y = angle * 0.37;
-    mesh.rotation.z = ((i % 7) - 3) * 0.09;
-    mesh.rotation.x = ((i % 5) - 2) * 0.07;
-    mesh.add(new LineSegments(new EdgesGeometry(blade, 1), inkMat));
-    grass.add(mesh);
+    const half = height / 2;
+    const rx = ((i % 5) - 2) * 0.07;
+    const rz = ((i % 7) - 3) * 0.09;
+    const ry = angle * 0.37;
+    const localX = Math.cos(angle) * dist;
+    const localZ = Math.sin(angle) * dist;
+
+    const key = `${width}:${height}`;
+    let base = shapes.get(key);
+    if (!base) {
+      const solid = new BoxGeometry(width, height, 0.012);
+      base = { solid, edges: new EdgesGeometry(solid, 1) };
+      shapes.set(key, base);
+    }
+
+    quaternion.setFromEuler(euler.set(rx, ry, rz));
+    matrix.compose(place.set(localX, half, localZ), quaternion, one);
+
+    const solid = base.solid.clone().applyMatrix4(matrix).toNonIndexed();
+    const position = solid.getAttribute('position');
+    const normal = solid.getAttribute('normal');
+    const paperStart = paper.length / 3;
+    const paperYs: number[] = [];
+    for (let v = 0; v < position.count; v++) {
+      paper.push(position.getX(v), position.getY(v), position.getZ(v));
+      normals.push(normal.getX(v), normal.getY(v), normal.getZ(v));
+      paperYs.push(position.getY(v));
+    }
+    solid.dispose();
+
+    const edges = base.edges.clone().applyMatrix4(matrix);
+    const edgePosition = edges.getAttribute('position');
+    const inkStart = ink.length / 3;
+    const inkYs: number[] = [];
+    for (let v = 0; v < edgePosition.count; v++) {
+      ink.push(edgePosition.getX(v), edgePosition.getY(v), edgePosition.getZ(v));
+      inkYs.push(edgePosition.getY(v));
+    }
+    edges.dispose();
+
+    blades.push({ localX, localZ, half, rx, rz, paperStart, paperYs, inkStart, inkYs });
   }
+
+  for (const { solid, edges } of shapes.values()) {
+    solid.dispose();
+    edges.dispose();
+  }
+
+  const paperGeo = new BufferGeometry();
+  paperGeo.setAttribute('position', new Float32BufferAttribute(paper, 3));
+  paperGeo.setAttribute('normal', new Float32BufferAttribute(normals, 3));
+  const inkGeo = new BufferGeometry();
+  inkGeo.setAttribute('position', new Float32BufferAttribute(ink, 3));
+
+  const grass = new Group();
+  grass.add(new Mesh(paperGeo, paperMat), new LineSegments(inkGeo, inkMat));
+  grass.userData.blades = blades;
   return grass;
 }
 
@@ -169,21 +248,24 @@ export function drapeGrass(
   height: (x: number, z: number) => number,
 ): void {
   group.position.set(x, 0, z);
-  for (const blade of group.children) {
-    const half = blade.userData.half;
-    if (typeof half !== 'number') continue;
-    const wx = x + blade.position.x;
-    const wz = z + blade.position.z;
+  const blades = group.userData.blades as GrassBlade[] | undefined;
+  if (!blades) return;
+  const paper = (group.children[0] as Mesh).geometry.getAttribute('position') as BufferAttribute;
+  const ink = (group.children[1] as LineSegments).geometry.getAttribute(
+    'position',
+  ) as BufferAttribute;
+
+  for (const blade of blades) {
+    const wx = x + blade.localX;
+    const wz = z + blade.localZ;
     // The box rotates about its center, so a corner hangs below `half`.
-    let dip = half;
-    const rx = blade.rotation.x;
-    const rz = blade.rotation.z;
-    const cy = Math.cos(rx);
-    const sy = Math.sin(rx);
-    const cz = Math.cos(rz);
-    const sz = Math.sin(rz);
+    let dip = blade.half;
+    const cy = Math.cos(blade.rx);
+    const sy = Math.sin(blade.rx);
+    const cz = Math.cos(blade.rz);
+    const sz = Math.sin(blade.rz);
     for (const cx of [-0.03, 0.03]) {
-      for (const y of [-half, half]) {
+      for (const y of [-blade.half, blade.half]) {
         for (const cz0 of [-0.008, 0.008]) {
           const y1 = y * cy - cz0 * sy;
           const y2 = cx * sz + y1 * cz;
@@ -191,6 +273,16 @@ export function drapeGrass(
         }
       }
     }
-    blade.position.y = surfaceAt(height, wx, wz) + dip + 0.02;
+    // Vertices are baked with the box centre at `half`. Shift them down so the
+    // lowest corner meets the triangle under that blade.
+    const drop = surfaceAt(height, wx, wz) + dip + 0.02 - blade.half;
+    for (let i = 0; i < blade.paperYs.length; i++) {
+      paper.setY(blade.paperStart + i, blade.paperYs[i] + drop);
+    }
+    for (let i = 0; i < blade.inkYs.length; i++) {
+      ink.setY(blade.inkStart + i, blade.inkYs[i] + drop);
+    }
   }
+  paper.needsUpdate = true;
+  ink.needsUpdate = true;
 }

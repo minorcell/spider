@@ -215,6 +215,7 @@ describe('world sync', () => {
     stage.bind(vi.fn(), () => current);
     stage.start();
     frame();
+    stage.setOverlook(true);
     stage.retile();
     frame();
     expect(sound.take).not.toHaveBeenCalled();
@@ -230,6 +231,20 @@ describe('world sync', () => {
     apple.stage = 0;
     frame();
     expect(sound.bite).not.toHaveBeenCalled();
+  });
+
+  it('keeps a carried prop silent when another joins the back', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const first = entity({ id: 'apple-a', x: 0, y: 0, z: 0 });
+    const second = entity({ id: 'apple-b', x: 0, y: 0, z: 0 });
+    let current = makeWorld({ carrying: [first] });
+    stage.bind(vi.fn(), () => current);
+    stage.start();
+    frame();
+    current = makeWorld({ carrying: [first, second] });
+    frame();
+    expect(sound.grasp).toHaveBeenCalledTimes(1);
+    expect(sound.place).not.toHaveBeenCalled();
   });
 
   it('does not sound a place for a carried prop that vanished', () => {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PerspectiveCamera, Vector3 } from 'three';
+import { BufferAttribute, Line, PerspectiveCamera, Vector3 } from 'three';
 import { ObserveOverlay } from '../../src/client/observeView.js';
 import type { Spider } from '../../src/shared/sim/Spider.js';
 import type { EntityState, SpiderState, WorldState } from '../../src/shared/state.js';
@@ -21,6 +21,7 @@ function fakeSpider(x: number, z: number): Spider {
   };
   return {
     root: { position: new Vector3(x, 0, z) },
+    yaw: 0,
     capture: () => state,
   } as unknown as Spider;
 }
@@ -80,7 +81,10 @@ describe('ObserveOverlay', () => {
     expect(pins.innerHTML).toContain('data-state="hidden"');
     expect(pins.innerHTML).toContain('data-state="beyond"');
     expect(pins.innerHTML).toContain('rock-1　rock');
-    expect(pins.innerHTML).not.toContain('apple-behind');
+    const behind = Array.from(pins.querySelectorAll<HTMLElement>('.observe-pin')).find((pin) =>
+      pin.textContent?.includes('apple-behind'),
+    );
+    expect(behind?.hidden).toBe(true);
     const readout = parent.querySelector('#observe-readout')!;
     expect(readout.textContent).toContain('在巢里');
     expect(readout.textContent).toContain('面前');
@@ -138,6 +142,27 @@ describe('ObserveOverlay', () => {
     );
   });
 
+  it('drops pins for entities that leave the map', () => {
+    const overlay = new ObserveOverlay(parent);
+    const apple = entity({ id: 'apple-1', x: 0, z: 0 });
+    overlay.sync(true, camera(), fakeSpider(0, 0), world({ entities: [apple] }), view);
+    expect(parent.querySelector('#observe-pins')!.children).toHaveLength(1);
+    overlay.sync(false, camera(), fakeSpider(0, 0), world({ entities: [apple] }), view);
+    overlay.sync(true, camera(), fakeSpider(0, 0), world({ entities: [] }), view);
+    expect(parent.querySelector('#observe-pins')!.children).toHaveLength(0);
+  });
+
+  it('keeps a pin when the same entity is observed again', () => {
+    const overlay = new ObserveOverlay(parent);
+    const apple = entity({ id: 'apple-1', x: 0, z: 0 });
+    const seen = world({ entities: [apple] });
+    overlay.sync(true, camera(), fakeSpider(0, 0), seen, view);
+    const pin = parent.querySelector('#observe-pins')!.children[0];
+    overlay.sync(false, camera(), fakeSpider(0, 0), seen, view);
+    overlay.sync(true, camera(), fakeSpider(0, 0), seen, view);
+    expect(parent.querySelector('#observe-pins')!.children[0]).toBe(pin);
+  });
+
   it('reuses a recent observation within the refresh window', () => {
     const overlay = new ObserveOverlay(parent);
     const spider = fakeSpider(0, 0);
@@ -145,5 +170,33 @@ describe('ObserveOverlay', () => {
     overlay.sync(true, camera(), spider, world(), view);
     overlay.sync(true, camera(), spider, world(), view);
     expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it('relays rings after reset even when the body has not moved', () => {
+    const overlay = new ObserveOverlay(parent);
+    const spider = fakeSpider(0, 0);
+    overlay.sync(true, camera(), spider, world({ terrain: { height: () => 0 } }), view);
+    const ring = (overlay.object.children[0] as Line).geometry.getAttribute(
+      'position',
+    ) as BufferAttribute;
+    const y0 = ring.getY(0);
+    overlay.reset();
+    overlay.sync(true, camera(), spider, world({ terrain: { height: () => 4 } }), view);
+    expect(ring.getY(0)).toBeGreaterThan(y0);
+  });
+
+  it('aims the ahead line with the live yaw', () => {
+    const overlay = new ObserveOverlay(parent);
+    const spider = fakeSpider(0, 0);
+    overlay.sync(true, camera(), spider, world(), view);
+    const pos = (overlay.object.children[2] as Line).geometry.getAttribute(
+      'position',
+    ) as BufferAttribute;
+    expect(pos.getX(1)).toBeCloseTo(0);
+    expect(pos.getZ(1)).toBeLessThan(0);
+    spider.yaw = Math.PI / 2;
+    overlay.sync(true, camera(), spider, world(), view);
+    expect(pos.getX(1)).toBeLessThan(0);
+    expect(pos.getZ(1)).toBeCloseTo(0);
   });
 });

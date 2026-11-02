@@ -78,6 +78,16 @@ describe('SimSession basics', () => {
     expect(session.spider.time).toBe(0);
   });
 
+  it('senses the body without scanning the island', () => {
+    const session = new SimSession(3);
+    const sense = session.sense();
+    expect(sense.home).toBe(true);
+    expect(sense.ahead).toBeDefined();
+    expect(sense).not.toHaveProperty('entities');
+    expect(sense).not.toHaveProperty('ways');
+    expect(session.sense(true).ways?.length).toBeGreaterThan(0);
+  });
+
   it('observes at the asked distance, clamped', () => {
     const session = new SimSession(3);
     expect(session.observe().view).toBe(16);

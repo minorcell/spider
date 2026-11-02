@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   toHeading,
   toObservation,
+  toSense,
   wrapDegrees,
   type EntityState,
   type SpiderState,
@@ -66,6 +67,46 @@ describe('angles', () => {
   });
 });
 
+describe('toSense', () => {
+  it('reports the body without the island around it', () => {
+    const worldState = world({ entities: [apple()] });
+    const sense = toSense(spider(), worldState);
+    expect(sense).toMatchObject({ x: 0, z: 0, heading: 0, home: true });
+    expect(sense.ahead).toEqual({ open: 8, by: 'clear', id: null, kind: null });
+    expect(sense).not.toHaveProperty('entities');
+    expect(sense).not.toHaveProperty('nearby');
+    expect(sense).not.toHaveProperty('ways');
+  });
+
+  it('lists what is carried and reports grass cover', () => {
+    const grass: EntityState = {
+      id: 'grass-1',
+      kind: 'grass',
+      x: 0,
+      y: 0,
+      z: 0,
+      stage: 0,
+      footprint: { kind: 'circle', r: 2 },
+    };
+    const sense = toSense(
+      spider(),
+      world({
+        entities: [grass],
+        carrying: [apple({ id: 'apple-back', stage: 2 })],
+      }),
+    );
+    expect(sense.cover).toBe('grass');
+    expect(sense.carrying).toEqual([
+      { id: 'apple-back', kind: 'apple', stage: 2, properties: ['edible', 'carryable'] },
+    ]);
+  });
+
+  it('can attach walkable ways', () => {
+    const sense = toSense(spider(), world(), true);
+    expect(sense.ways?.length).toBeGreaterThan(0);
+  });
+});
+
 describe('toObservation', () => {
   it('describes a visible entity in reach', () => {
     const seen = toObservation(spider(), world({ entities: [apple()] }), 4, 16, 1.6);
@@ -93,7 +134,7 @@ describe('toObservation', () => {
       ground: 0,
       heading: 0,
       height: 0.25,
-      speed: 1.234,
+      speed: 1.235,
       cover: null,
       home: true,
     });

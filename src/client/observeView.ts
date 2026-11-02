@@ -30,8 +30,13 @@ export class ObserveOverlay {
   readonly #layer: HTMLElement;
   readonly #readout: HTMLElement;
   readonly #pins: HTMLElement;
+  /** One span per visible entity, reused so the DOM is not rebuilt every frame. */
+  readonly #nodes = new Map<string, HTMLSpanElement>();
+  readonly #at = new Map<string, { x: number; y: number; z: number }>();
   #observation: Observation | null = null;
   #observedAt = Number.NEGATIVE_INFINITY;
+  #ringAt = { x: Number.NaN, z: Number.NaN, view: Number.NaN };
+  #aheadAt = { x: Number.NaN, z: Number.NaN, heading: Number.NaN, open: Number.NaN };
 
   constructor(parent: HTMLElement) {
     const ink = new LineBasicMaterial({ color: PALETTE.ink });
@@ -61,6 +66,14 @@ export class ObserveOverlay {
     return this.#root;
   }
 
+  /** Drop cached rings and the last look. A new island is a different height field. */
+  reset(): void {
+    this.#observation = null;
+    this.#observedAt = Number.NEGATIVE_INFINITY;
+    this.#ringAt = { x: Number.NaN, z: Number.NaN, view: Number.NaN };
+    this.#aheadAt = { x: Number.NaN, z: Number.NaN, heading: Number.NaN, open: Number.NaN };
+  }
+
   sync(
     on: boolean,
     camera: Camera,
@@ -82,31 +95,64 @@ export class ObserveOverlay {
       ? Math.min(VIEW_DISTANCE, GRASS_VIEW)
       : VIEW_DISTANCE;
     const now = performance.now();
-    if (!this.#observation || now - this.#observedAt >= OBSERVE_REFRESH_MS) {
-      this.#observation = toObservation(spider.capture(), world, REACH, distance, REACH_Y);
+    let observation = this.#observation;
+    let fresh = false;
+    if (!observation || now - this.#observedAt >= OBSERVE_REFRESH_MS) {
+      observation = toObservation(spider.capture(), world, REACH, distance, REACH_Y);
+      this.#observation = observation;
       this.#observedAt = now;
+      fresh = true;
     }
-    const observation = this.#observation;
     const ground = (px: number, pz: number) => surfaceAt(height, px, pz) + 0.14;
 
-    layRing(this.#viewRing.geometry, x, z, observation.view, ground);
-    layRing(this.#reachRing.geometry, x, z, REACH, ground);
+    // The rings depend on where the body stands and how far it sees, not on
+    // the camera. Re-laying them every frame sampled the terrain 600 times.
+    const ring = this.#ringAt;
+    if (ring.x !== x || ring.z !== z || ring.view !== observation.view) {
+      ring.x = x;
+      ring.z = z;
+      ring.view = observation.view;
+      layRing(this.#viewRing.geometry, x, z, observation.view, ground);
+      layRing(this.#reachRing.geometry, x, z, REACH, ground);
+    }
 
-    const heading = (observation.self.heading * Math.PI) / 180;
-    const fx = Math.sin(heading);
-    const fz = -Math.cos(heading);
+    const yaw = spider.yaw;
     const open = Math.max(observation.self.ahead.open, 0.6);
-    const ahead = this.#ahead.geometry.getAttribute('position') as BufferAttribute;
-    const y0 = ground(x, z);
-    const y1 = ground(x + fx * open, z + fz * open);
-    ahead.setXYZ(0, x, y0, z);
-    ahead.setXYZ(1, x + fx * open, y1, z + fz * open);
-    ahead.needsUpdate = true;
+    const ahead = this.#aheadAt;
+    if (ahead.x !== x || ahead.z !== z || ahead.heading !== yaw || ahead.open !== open) {
+      ahead.x = x;
+      ahead.z = z;
+      ahead.heading = yaw;
+      ahead.open = open;
+      const fx = -Math.sin(yaw);
+      const fz = -Math.cos(yaw);
+      const y0 = ground(x, z);
+      const y1 = ground(x + fx * open, z + fz * open);
+      const position = this.#ahead.geometry.getAttribute('position') as BufferAttribute;
+      position.setXYZ(0, x, y0, z);
+      position.setXYZ(1, x + fx * open, y1, z + fz * open);
+      position.needsUpdate = true;
+    }
 
+    if (fresh) {
+      this.#layout(x, z, observation, world, ground);
+      this.#readout.textContent = this.#readoutOf(observation);
+    }
+    this.#place(camera, view);
+  }
+
+  /** Marks and labels, only when a new observation arrives. */
+  #layout(
+    x: number,
+    z: number,
+    observation: Observation,
+    world: WorldState,
+    ground: (x: number, z: number) => number,
+  ): void {
     const seen = new Map(observation.entities.map((entity) => [entity.id, entity]));
+    const live = new Set<string>();
     let inkCount = 0;
     let dimCount = 0;
-    const pins = this.#layer.ownerDocument.createDocumentFragment();
     for (const entity of world.entities) {
       const hit = seen.get(entity.id);
       const state = hit
@@ -116,18 +162,17 @@ export class ObserveOverlay {
         : Math.hypot(entity.x - x, entity.z - z) > observation.view
           ? 'beyond'
           : 'hidden';
-      const slot = state === 'seen' || state === 'reach' ? inkCount++ : dimCount++;
-      const lines = state === 'seen' || state === 'reach' ? this.#marks : this.#dim;
+      const visible = state === 'seen' || state === 'reach';
+      const lines = visible ? this.#marks : this.#dim;
       layTick(
         lines.geometry.getAttribute('position') as BufferAttribute,
-        slot,
+        visible ? inkCount++ : dimCount++,
         entity.x,
         entity.z,
         ground,
       );
-      const point = project(camera, entity.x, ground(entity.x, entity.z) + 0.4, entity.z, view);
-      if (!point) continue;
-      const name = NAME[entity.kind] ?? entity.kind;
+
+      live.add(entity.id);
       const note =
         state === 'reach'
           ? '够得着'
@@ -136,20 +181,51 @@ export class ObserveOverlay {
             : state === 'hidden'
               ? '挡住'
               : '视线外';
-      const pin = this.#layer.ownerDocument.createElement('span');
-      pin.className = 'observe-pin';
-      pin.dataset.state = state;
-      pin.style.left = `${point.x}px`;
-      pin.style.top = `${point.y}px`;
-      pin.textContent = `${entity.id}　${name}　${note}`;
-      pins.append(pin);
+      const name = NAME[entity.kind] ?? entity.kind;
+      let pin = this.#nodes.get(entity.id);
+      if (!pin) {
+        pin = this.#layer.ownerDocument.createElement('span');
+        pin.className = 'observe-pin';
+        this.#pins.append(pin);
+        this.#nodes.set(entity.id, pin);
+      }
+      if (pin.dataset.state !== state) pin.dataset.state = state;
+      const label = `${entity.id}　${name}　${note}`;
+      if (pin.textContent !== label) pin.textContent = label;
+      this.#at.set(entity.id, { x: entity.x, y: ground(entity.x, entity.z) + 0.4, z: entity.z });
     }
+
+    for (const [id, pin] of this.#nodes) {
+      if (live.has(id)) continue;
+      pin.remove();
+      this.#nodes.delete(id);
+      this.#at.delete(id);
+    }
+
     (this.#marks.geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
     (this.#dim.geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
     this.#marks.geometry.setDrawRange(0, inkCount * 4);
     this.#dim.geometry.setDrawRange(0, dimCount * 4);
-    this.#pins.replaceChildren(pins);
+  }
 
+  /** Screen positions follow the camera every frame; the spans themselves stay put. */
+  #place(camera: Camera, view: { width: number; height: number }): void {
+    for (const [id, pin] of this.#nodes) {
+      const at = this.#at.get(id);
+      /* v8 ignore next */
+      if (!at) continue;
+      const point = project(camera, at.x, at.y, at.z, view);
+      if (!point) {
+        pin.hidden = true;
+        continue;
+      }
+      pin.hidden = false;
+      pin.style.left = `${point.x}px`;
+      pin.style.top = `${point.y}px`;
+    }
+  }
+
+  #readoutOf(observation: Observation): string {
     const aheadInfo = observation.self.ahead;
     const front =
       aheadInfo.by === 'wall'
@@ -163,7 +239,7 @@ export class ObserveOverlay {
       : observation.self.cover === 'grass'
         ? '在草里'
         : '在空地上';
-    this.#readout.textContent = [
+    return [
       `${where}　朝向 ${observation.self.heading}°　速度 ${observation.self.speed}`,
       `看见 ${observation.view}　够得着 ${REACH}　${front}`,
       `背上 ${carrying}　超出视线 ${observation.beyond}　被挡住 ${observation.hidden}`,

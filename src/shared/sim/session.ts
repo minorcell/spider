@@ -1,9 +1,11 @@
 import {
   toHeading,
   toObservation,
+  toSense,
   wrapDegrees,
   type EntityState,
   type Observation,
+  type Sense,
   type SpiderState,
   type WorldState,
 } from '../state.js';
@@ -90,6 +92,11 @@ export class SimSession {
     const { x, z } = this.spider.root.position;
     const view = grassHere(x, z, this.world.entities) ? Math.min(asked, GRASS_VIEW) : asked;
     return toObservation(this.spider.capture(), this.world, REACH, view, REACH_Y);
+  }
+
+  /** Where the body is and nothing else. Every action except observe reports this. */
+  sense(withWays = false): Sense {
+    return toSense(this.spider.capture(), this.world, withWays);
   }
 
   /** One visible frame. The page calls this from its render loop. */

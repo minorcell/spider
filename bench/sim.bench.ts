@@ -1,4 +1,5 @@
 import { describe, test } from 'vitest';
+import { buildProp } from '../src/client/props.js';
 import { localDate } from '../src/shared/dates.js';
 import { applyBody, captureBody, classify, type WorldRecord } from '../src/shared/sim/snapshot.js';
 import { SimSession } from '../src/shared/sim/session.js';
@@ -40,6 +41,24 @@ describe('simulation', () => {
   test('apply a body', async ({ bench }) => {
     await bench('apply a body', () => {
       applyBody(new SimSession(1), body);
+    }).run();
+  });
+
+  test('sense the body', async ({ bench }) => {
+    await bench('sense the body', () => {
+      idle.sense();
+    }).run();
+  });
+
+  test('observe the island', async ({ bench }) => {
+    await bench('observe the island', () => {
+      idle.observe();
+    }).run();
+  });
+
+  test('build a grass patch', async ({ bench }) => {
+    await bench('build a grass patch', () => {
+      buildProp('grass', 0, { kind: 'circle', r: 3.2 });
     }).run();
   });
 });

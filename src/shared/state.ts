@@ -1,5 +1,5 @@
 import { propertiesOf } from './kinds.js';
-import { senseBody, type Ahead, type NearbySolid } from './sense.js';
+import { aheadAt, senseBody, waysAt, type Ahead, type NearbySolid } from './sense.js';
 import { grassHere, insideHome, occluded } from './sight.js';
 
 /** Serializable simulation state, world state, and the observation format. */
@@ -126,6 +126,25 @@ export interface Observation {
   entities: SeenEntity[];
 }
 
+/** The body's own state, without the island around it. */
+export type Sense = Pick<
+  Observation['self'],
+  | 'x'
+  | 'y'
+  | 'z'
+  | 'ground'
+  | 'heading'
+  | 'height'
+  | 'speed'
+  | 'cover'
+  | 'home'
+  | 'carrying'
+  | 'ahead'
+> & {
+  /** Present when a walk or drive was blocked, so the next turn does not need observe. */
+  ways?: string[];
+};
+
 /** Compass-style degrees from a three.js yaw. */
 export function toHeading(yaw: number): number {
   return wrapDegrees((-yaw * 180) / Math.PI);
@@ -134,6 +153,42 @@ export function toHeading(yaw: number): number {
 export function wrapDegrees(degrees: number): number {
   const wrapped = ((((degrees + 180) % 360) + 360) % 360) - 180;
   return wrapped === -180 ? 180 : wrapped;
+}
+
+/** Split the difference for the wire: three places, a number, no string. */
+function round3(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+/**
+ * The body alone. One heading probe instead of the 24 `observe` scans, which
+ * is what every non-observe action reports.
+ */
+export function toSense(state: SpiderState, world: WorldState, withWays = false): Sense {
+  const heading = toHeading(state.yaw);
+  const px = state.position.x;
+  const pz = state.position.z;
+  const height = (x: number, z: number) => world.terrain.height(x, z);
+  const sense: Sense = {
+    x: round3(px),
+    y: round3(state.position.y),
+    z: round3(pz),
+    ground: round3(world.terrain.height(px, pz)),
+    heading: Math.round(heading * 10) / 10,
+    height: round3(state.height),
+    speed: round3(state.speed),
+    cover: grassHere(px, pz, world.entities) ? 'grass' : null,
+    home: insideHome(px, pz),
+    carrying: world.carrying.map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      stage: item.stage,
+      properties: propertiesOf(item.kind),
+    })),
+    ahead: aheadAt(px, pz, heading, height, world.blocks),
+  };
+  if (withWays) sense.ways = waysAt(px, pz, heading, height, world.blocks);
+  return sense;
 }
 
 export function toObservation(
@@ -168,13 +223,13 @@ export function toObservation(
     seen.push({
       id: entity.id,
       kind: entity.kind,
-      x: Number(entity.x.toFixed(3)),
-      y: Number(entity.y.toFixed(3)),
-      z: Number(entity.z.toFixed(3)),
+      x: round3(entity.x),
+      y: round3(entity.y),
+      z: round3(entity.z),
       stage: entity.stage,
       properties: propertiesOf(entity.kind),
-      distance: Number(distance.toFixed(3)),
-      bearing: Number(wrapDegrees((Math.atan2(dx, -dz) * 180) / Math.PI - heading).toFixed(1)),
+      distance: round3(distance),
+      bearing: Math.round(wrapDegrees((Math.atan2(dx, -dz) * 180) / Math.PI - heading) * 10) / 10,
       inReach: distance <= reach && vertical <= reachY,
     });
   }
@@ -188,18 +243,18 @@ export function toObservation(
     world.blocks,
   );
   return {
-    time: Number(state.time.toFixed(3)),
-    view: Number(view.toFixed(3)),
+    time: round3(state.time),
+    view: round3(view),
     beyond,
     hidden,
     self: {
-      x: Number(px.toFixed(3)),
-      y: Number(state.position.y.toFixed(3)),
-      z: Number(pz.toFixed(3)),
-      ground: Number(ground.toFixed(3)),
-      heading: Number(heading.toFixed(1)),
-      height: Number(state.height.toFixed(3)),
-      speed: Number(state.speed.toFixed(3)),
+      x: round3(px),
+      y: round3(state.position.y),
+      z: round3(pz),
+      ground: round3(ground),
+      heading: Math.round(heading * 10) / 10,
+      height: round3(state.height),
+      speed: round3(state.speed),
       cover: grassHere(px, pz, world.entities) ? 'grass' : null,
       home: insideHome(px, pz),
       carrying: carrying.map((item) => ({

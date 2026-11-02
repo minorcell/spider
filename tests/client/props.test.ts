@@ -23,10 +23,16 @@ describe('buildProp', () => {
     expect(ink.geometry.getAttribute('position').count).toBeGreaterThan(0);
   });
 
-  it('builds grass from the footprint radius, or a default', () => {
-    const patch = buildProp('grass', 0, { kind: 'circle', r: 2.5 });
+  it('builds grass as one paper mesh and one ink line set', () => {
+    const patch = buildProp('grass', 0, { kind: 'circle', r: 2.5 })!;
     expect(patch).toBeInstanceOf(Group);
-    expect(patch!.children.length).toBe(64);
+    expect(patch.children).toHaveLength(2);
+    const paper = patch.children[0];
+    const ink = patch.children[1];
+    expect(paper).toBeInstanceOf(Mesh);
+    expect(ink).toBeInstanceOf(LineSegments);
+    expect(paper.geometry.getAttribute('position').count).toBeGreaterThan(64 * 3);
+    expect(ink.geometry.getAttribute('position').count).toBeGreaterThan(64 * 2);
     const fallback = buildProp('grass', 0, { kind: 'box', hx: 1, hz: 1 });
     expect(fallback).toBeInstanceOf(Group);
     expect(buildProp('grass', 0)).toBeInstanceOf(Group);
@@ -38,14 +44,23 @@ describe('buildProp', () => {
 });
 
 describe('drapeGrass', () => {
-  it('sets each blade on the ground under it and skips non-blades', () => {
+  it('lifts the merged blades onto the ground under the patch', () => {
     const patch = buildProp('grass', 0)!;
     patch.add(new Group());
     const height = (x: number, z: number): number => x * 0.1 + z * 0.2;
     drapeGrass(patch, 3, -1, height);
     expect(patch.position.toArray()).toEqual([3, 0, -1]);
-    const blade = patch.children[0] as Mesh;
-    expect(Number.isFinite(blade.position.y)).toBe(true);
+    const paper = (patch.children[0] as Mesh).geometry.getAttribute('position');
+    const ink = (patch.children[1] as LineSegments).geometry.getAttribute('position');
+    expect(Number.isFinite(paper.getY(0))).toBe(true);
+    expect(paper.getY(0)).toBeGreaterThanOrEqual(0);
+    expect(Number.isFinite(ink.getY(0))).toBe(true);
     expect(patch.children.at(-1)!.position.y).toBe(0);
+  });
+
+  it('ignores a group that was not built as grass', () => {
+    const group = new Group();
+    expect(() => drapeGrass(group, 1, 2, () => 0)).not.toThrow();
+    expect(group.position.toArray()).toEqual([1, 0, 2]);
   });
 });
