@@ -26,7 +26,7 @@ function record(over: Partial<WorldRecord> = {}): WorldRecord {
   return {
     ...body,
     id: 'current',
-    format: 2,
+    format: 3,
     savedAt: Date.now(),
     day: localDate(new Date()),
     owner: 'owner',

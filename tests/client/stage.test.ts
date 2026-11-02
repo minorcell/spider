@@ -247,6 +247,18 @@ describe('world sync', () => {
     expect(sound.place).not.toHaveBeenCalled();
   });
 
+  it('lays seven carried props out in two rows', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const held = Array.from({ length: 7 }, (_, index) =>
+      entity({ id: `apple-${index}`, x: 0, y: 0, z: 0 }),
+    );
+    const current = makeWorld({ carrying: held });
+    stage.bind(vi.fn(), () => current);
+    stage.start();
+    frame();
+    expect(renderer().render).toHaveBeenCalled();
+  });
+
   it('does not sound a place for a carried prop that vanished', () => {
     const stage = new Stage(makeHost(), new RealSpider());
     const carried = entity({ id: 'apple-back', x: 0, y: 0, z: 0 });

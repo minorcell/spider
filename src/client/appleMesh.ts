@@ -12,7 +12,7 @@ import {
   Vector2,
   Vector3,
 } from 'three';
-import { inkMat, inkSolidMat, paperMat } from '../shared/sim/parts.js';
+import { appleMat, inkMat, inkSolidMat, leafMat, paperMat, stemMat } from '../shared/sim/parts.js';
 
 // 苹果不再是一圈圈车出来的灯笼：轮廓靠一层薄薄的墨壳勾出来，
 // 果面只留两三道短纹；咬口有果肉、两粒种子和一点切面线。
@@ -83,7 +83,7 @@ function appleLeaf(scale: number): Mesh {
   shape.bezierCurveTo(0.16, -0.05, 0.05, -0.045, 0, 0);
   const geometry = new ShapeGeometry(shape);
   geometry.scale(scale, scale, scale);
-  const mesh = new Mesh(geometry, paperMat);
+  const mesh = new Mesh(geometry, leafMat);
   const ink: number[] = [0.005 * scale, 0.003 * scale, 0.001, 0.225 * scale, 0.004 * scale, 0.001];
   for (let i = 1; i <= 3; i++) {
     const t = i / 4;
@@ -174,7 +174,7 @@ export function buildApple(stage: number): Group {
     group.add(lineFrom(cutLines));
   }
 
-  const apple = new Mesh(geometry, paperMat);
+  const apple = new Mesh(geometry, appleMat);
   apple.add(outlineShell(geometry, 0.008));
   group.add(apple);
 
@@ -209,7 +209,7 @@ export function buildApple(stage: number): Group {
   }
   group.add(lineFrom(face));
 
-  const stem = new Mesh(new CylinderGeometry(0.014, 0.024, 0.15, 5), paperMat);
+  const stem = new Mesh(new CylinderGeometry(0.014, 0.024, 0.15, 5), stemMat);
   stem.position.set(0.012, 0.715, 0);
   stem.rotation.z = -0.22;
   stem.rotation.x = 0.1;

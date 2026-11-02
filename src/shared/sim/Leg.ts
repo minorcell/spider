@@ -6,7 +6,7 @@ import {
   clawEdges,
   clawGeo,
   inkMat,
-  paperMat,
+  spiderMat,
   tubeEdges,
   tubeGeo,
 } from './parts.js';
@@ -30,13 +30,13 @@ export class Leg {
   ) {
     for (const bone of BONES) {
       const group = new Group();
-      const mesh = new Mesh(tubeGeo, paperMat);
+      const mesh = new Mesh(tubeGeo, spiderMat);
       mesh.add(new LineSegments(tubeEdges, inkMat));
       group.add(mesh);
       rig.add(group);
       this.bones.push(group);
 
-      const joint = new Mesh(ballGeo, paperMat);
+      const joint = new Mesh(ballGeo, spiderMat);
       joint.scale.setScalar(bone.radius * 1.35);
       joint.add(new LineSegments(ballEdges, inkMat));
       rig.add(joint);
@@ -44,7 +44,7 @@ export class Leg {
     }
 
     for (const sign of [-1, 1]) {
-      const mesh = new Mesh(clawGeo, paperMat);
+      const mesh = new Mesh(clawGeo, spiderMat);
       mesh.position.x = sign * 0.03;
       mesh.rotation.y = sign * 0.35;
       mesh.add(new LineSegments(clawEdges, inkMat));

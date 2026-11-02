@@ -428,7 +428,7 @@ function stamp(body: SimBody, seq: number, now: number, today: string): WorldRec
   return {
     ...body,
     id: 'current',
-    format: 2,
+    format: 3,
     savedAt: now,
     day: today,
     owner,

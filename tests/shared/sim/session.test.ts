@@ -535,6 +535,10 @@ describe('carrying', () => {
       fakeEntity({ id: 'a' }),
       fakeEntity({ id: 'b' }),
       fakeEntity({ id: 'c' }),
+      fakeEntity({ id: 'd' }),
+      fakeEntity({ id: 'e' }),
+      fakeEntity({ id: 'f' }),
+      fakeEntity({ id: 'g' }),
     );
     await expect(session.pickUp()).resolves.toMatchObject({ ok: false, reason: 'full' });
   });

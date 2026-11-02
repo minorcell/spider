@@ -44,6 +44,42 @@ export const grassMat = new MeshBasicMaterial({
   polygonOffsetUnits: 1,
 });
 
+/** 岛面、苹果、叶子和梗各用一点淡色；线稿还是同一套墨线。 */
+export const groundMat = new MeshBasicMaterial({
+  color: 0xffffff,
+  vertexColors: true,
+  polygonOffset: true,
+  polygonOffsetFactor: 1,
+  polygonOffsetUnits: 1,
+});
+export const appleMat = new MeshBasicMaterial({
+  color: PALETTE.apple,
+  polygonOffset: true,
+  polygonOffsetFactor: 1,
+  polygonOffsetUnits: 1,
+});
+export const leafMat = new MeshBasicMaterial({
+  color: PALETTE.leaf,
+  side: DoubleSide,
+  polygonOffset: true,
+  polygonOffsetFactor: 1,
+  polygonOffsetUnits: 1,
+});
+export const stemMat = new MeshBasicMaterial({ color: PALETTE.stem });
+export const stoneMat = new MeshBasicMaterial({
+  color: PALETTE.stone,
+  polygonOffset: true,
+  polygonOffsetFactor: 1,
+  polygonOffsetUnits: 1,
+});
+export const spiderMat = new MeshBasicMaterial({
+  color: PALETTE.spider,
+  polygonOffset: true,
+  polygonOffsetFactor: 1,
+  polygonOffsetUnits: 1,
+});
+export const eyeMat = new MeshBasicMaterial({ color: PALETTE.eye });
+
 /** 巢穴的土面。 */
 export const soilMat = new MeshBasicMaterial({
   color: PALETTE.soil,
@@ -74,8 +110,9 @@ export function addSolid(
   z: number,
   rx = 0,
   ry = 0,
+  material: MeshBasicMaterial = paperMat,
 ): Mesh {
-  const mesh = new Mesh(geo, paperMat);
+  const mesh = new Mesh(geo, material);
   mesh.position.set(x, y, z);
   mesh.rotation.set(rx, ry, 0);
   mesh.add(new LineSegments(new EdgesGeometry(geo, 18), inkMat));

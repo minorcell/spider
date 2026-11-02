@@ -1,5 +1,4 @@
 import {
-  BoxGeometry,
   BufferGeometry,
   CylinderGeometry,
   DodecahedronGeometry,
@@ -12,7 +11,7 @@ import {
   type Material,
 } from 'three';
 import { mulberry32 } from '../shared/noise.js';
-import { inkMat, paperMat, silkMat, soilMat } from '../shared/sim/parts.js';
+import { inkMat, silkMat, soilMat, stemMat, stoneMat } from '../shared/sim/parts.js';
 import { buildGrass } from './grassMesh.js';
 
 // 巢穴是一圈土丘：背后堆得高、门口压得低，中间是一个浅坑。
@@ -74,7 +73,7 @@ function pebble(x: number, z: number, size: number, rand: () => number): Mesh {
     );
   }
   geometry.computeVertexNormals();
-  const mesh = new Mesh(geometry, paperMat);
+  const mesh = new Mesh(geometry, stoneMat);
   mesh.scale.setScalar(size);
   mesh.position.set(x, size * 0.32, z);
   mesh.rotation.y = rand() * TAU;
@@ -85,7 +84,7 @@ function pebble(x: number, z: number, size: number, rand: () => number): Mesh {
 /** 一根拴丝的小木桩。 */
 function peg(x: number, z: number): Mesh {
   const geometry = new CylinderGeometry(0.012, 0.02, 0.16, 4);
-  const mesh = new Mesh(geometry, paperMat);
+  const mesh = new Mesh(geometry, stemMat);
   mesh.position.set(x, 0.06, z);
   mesh.add(new LineSegments(new EdgesGeometry(geometry, 1), inkMat));
   return mesh;
@@ -224,12 +223,7 @@ function buildNest(): Group {
     );
   }
 
-  // 门外的一块踏石和几颗石子。
-  const step = new Mesh(new BoxGeometry(1.4, 0.08, 0.55), paperMat);
-  step.position.set(0, 0.045, -2.6);
-  step.rotation.y = 0.08;
-  step.add(new LineSegments(new EdgesGeometry(step.geometry, 1), inkMat));
-  group.add(step);
+  // 门口只留几颗石子，不放石板。
   for (const [x, z, size] of [
     [-0.95, -2.15, 0.18],
     [1.02, -2.28, 0.14],

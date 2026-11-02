@@ -4,8 +4,21 @@ export const PALETTE = {
   paper: 0xf3efe6,
   /** 巢穴翻出来的土，比纸稍微暗一点。 */
   soil: 0xe8e1d4,
-  /** 草叶的纸色，带一点旧纸的灰绿。 */
-  grass: 0xe3e0d1,
+  /** 地面只分几种淡色：低处水蓝、缓坡草绿、土、石头。 */
+  ground: 0xe1e6d6,
+  water: 0xcfe0e6,
+  earth: 0xe7e1d3,
+  /** 草叶的淡绿。 */
+  grass: 0xd8dfc5,
+  /** 苹果的淡胭脂、叶子和梗。 */
+  apple: 0xe6c9bb,
+  leaf: 0xcfd9b8,
+  stem: 0xd6c3a8,
+  /** 石子和蜘蛛的淡灰，蜘蛛再深半档。 */
+  stone: 0xdcd9d1,
+  spider: 0xd7d1c7,
+  /** 蜘蛛的复眼。 */
+  eye: 0xb23a2e,
   ink: 0x1b1714,
   grid: 0xc8bfb2,
 } as const;
@@ -13,7 +26,7 @@ export const PALETTE = {
 export const DECK_Y = 0.78;
 
 /** How many things can sit on the spider's back at once. */
-export const CARRY_LIMIT = 3;
+export const CARRY_LIMIT = 7;
 
 export interface MountSpec {
   readonly x: number;

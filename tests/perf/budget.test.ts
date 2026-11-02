@@ -57,7 +57,7 @@ function recordOf(seed = 7): WorldRecord {
   return {
     ...body,
     id: 'current',
-    format: 2,
+    format: 3,
     savedAt: Date.now(),
     day: localDate(new Date()),
     owner: 'perf',

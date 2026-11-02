@@ -7,7 +7,7 @@ import { APPLE_EVERY, nestBlocks, restingY } from '../world.js';
 import { Terrain } from '../terrain.js';
 import type { Spider } from './Spider.js';
 
-export const FORMAT = 2;
+export const FORMAT = 3;
 export const RETAIN_DAYS = 3;
 export const MAX_ENTITIES = 64;
 export const MAX_PENDING = 4000;
@@ -35,7 +35,7 @@ export interface SimBody {
 /** One stored record. IndexedDB and localStorage share this shape. */
 export interface WorldRecord extends SimBody {
   id: 'current';
-  format: 2;
+  format: 3;
   savedAt: number;
   /** Local day of the write. Retention uses this string, not a new timezone. */
   day: string;

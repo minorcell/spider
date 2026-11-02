@@ -1,15 +1,18 @@
 import {
+  BufferAttribute,
   BufferGeometry,
+  Color,
   Float32BufferAttribute,
   Group,
   LineBasicMaterial,
   LineSegments,
+  MathUtils,
   Mesh,
   PlaneGeometry,
   Vector3,
 } from 'three';
 import { PALETTE } from '../shared/config.js';
-import { paperMat } from '../shared/sim/parts.js';
+import { groundMat } from '../shared/sim/parts.js';
 import { TERRAIN } from '../shared/terrain.js';
 
 const LINE_STEP = 2;
@@ -17,6 +20,24 @@ const LINE_STEP = 2;
 const CONTOUR_STEP = 0.6;
 const CONTOUR_TOP = 6.4;
 const CONTOUR_BOTTOM = -3;
+
+const water = new Color(PALETTE.water);
+const lowland = new Color(PALETTE.ground);
+const earth = new Color(PALETTE.earth);
+const stone = new Color(PALETTE.stone);
+const scratch = new Color();
+
+/** 地势越低越像水，越高越像石头；陡坡再压一点石头色。 */
+function terrainColor(h: number, slope: number, out: Color): void {
+  // 水只留在最低的谷底，陆地大部分是同一个淡草色，土色和石色只轻微变化。
+  if (h < -1) out.copy(water);
+  else if (h < -0.2) out.copy(water).lerp(lowland, MathUtils.smoothstep(h, -1, -0.2));
+  else if (h < 1.8) out.copy(lowland).lerp(earth, MathUtils.smoothstep(h, 0.2, 1.8) * 0.35);
+  else if (h < 3.2) out.copy(earth).lerp(stone, MathUtils.smoothstep(h, 1.8, 3.2) * 0.6);
+  else out.copy(stone);
+  const steep = MathUtils.smoothstep(slope, 0.65, 1.25) * 0.35;
+  if (steep > 0) out.lerp(stone, steep);
+}
 
 const contourInk = new LineBasicMaterial({ color: PALETTE.ink, transparent: true, opacity: 0.2 });
 const contourMajor = new LineBasicMaterial({
@@ -29,7 +50,7 @@ const contourMajor = new LineBasicMaterial({
 export function buildIsland(height: (x: number, z: number) => number): Group {
   const group = new Group();
   const geo = groundGeometry(height, TERRAIN.half, TERRAIN.segments);
-  group.add(new Mesh(geo, paperMat));
+  group.add(new Mesh(geo, groundMat));
 
   const ink = new LineBasicMaterial({ color: PALETTE.grid });
   const points: Vector3[] = [];
@@ -139,9 +160,23 @@ export function groundGeometry(
   // PlaneGeometry faces +z in the xy plane. -90° about x lays it on xz facing +y.
   geo.rotateX(-Math.PI / 2);
   const position = geo.getAttribute('position');
+  const cell = (half * 2) / segments;
+  const colors = new Float32Array(position.count * 3);
   for (let i = 0; i < position.count; i++) {
-    position.setY(i, height(position.getX(i), position.getZ(i)));
+    const x = position.getX(i);
+    const z = position.getZ(i);
+    const y = height(x, z);
+    position.setY(i, y);
+    const slope =
+      Math.hypot(
+        height(x + cell, z) - height(x - cell, z),
+        height(x, z + cell) - height(x, z - cell),
+      ) /
+      (2 * cell);
+    terrainColor(y, slope, scratch);
+    scratch.toArray(colors, i * 3);
   }
+  geo.setAttribute('color', new BufferAttribute(colors, 3));
   geo.computeVertexNormals();
   return geo;
 }

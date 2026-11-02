@@ -42,7 +42,7 @@ function stamp(session: SimSession, over: Partial<WorldRecord> = {}): WorldRecor
   return {
     ...body,
     id: 'current',
-    format: 2,
+    format: 3,
     savedAt: Date.now(),
     day: localDate(new Date()),
     owner: 'other',
@@ -183,19 +183,19 @@ describe('restoreWorld', () => {
   });
 
   it('does not overwrite a snapshot from a newer page', async () => {
-    const record = { ...stamp(new SimSession(2)), format: 3 };
+    const record = { ...stamp(new SimSession(2)), format: 4 };
     localStorage.setItem(KEY, JSON.stringify(record));
     const session = new SimSession(6);
     const born = session.world.terrain.seed;
     const note = await restoreWorld(session);
     expect(note.cause).toBe('format');
     expect(session.world.terrain.seed).toBe(born);
-    expect(JSON.parse(localStorage.getItem(KEY) ?? '').format).toBe(3);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').format).toBe(4);
     installWorldStore(session);
     session.spider.root.position.x += 1;
     flushWorld('poke');
     await writesDone();
-    expect(JSON.parse(localStorage.getItem(KEY) ?? '').format).toBe(3);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').format).toBe(4);
   });
 
   it('says the place was unreadable when nothing valid remains', async () => {
@@ -623,7 +623,7 @@ describe('injected snapshot store', () => {
     await pending;
     vi.useRealTimers();
     store.hangRead = false;
-    store.value = { format: 3 };
+    store.value = { format: 4 };
     installWorldStore(session, store);
     await writesDone();
     session.spider.root.position.x += 0.5;
@@ -637,7 +637,7 @@ describe('injected snapshot store', () => {
     const session = new SimSession(2);
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
-    localStorage.setItem(KEY, JSON.stringify({ format: 3 }));
+    localStorage.setItem(KEY, JSON.stringify({ format: 4 }));
     session.spider.root.position.x += 0.5;
     flushWorld('poke');
     await writesDone();
@@ -649,7 +649,7 @@ describe('injected snapshot store', () => {
     const session = new SimSession(2);
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
-    store.value = { format: 3 };
+    store.value = { format: 4 };
     session.spider.root.position.x += 0.5;
     flushWorld('poke');
     await writesDone();
@@ -697,8 +697,8 @@ describe('injected snapshot store', () => {
     const session = new SimSession(2);
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
-    store.value = { format: 3 };
-    localStorage.setItem(KEY, JSON.stringify({ format: 3 }));
+    store.value = { format: 4 };
+    localStorage.setItem(KEY, JSON.stringify({ format: 4 }));
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
       get: () => 'visible',
@@ -933,7 +933,7 @@ describe('injected snapshot store', () => {
     const local = stamp(new SimSession(2), { seq: 2 });
     localStorage.setItem(KEY, JSON.stringify(local));
     const db = await openSpiderDb();
-    await db.put('snapshots', { id: 'current', format: 2 } as WorldRecord);
+    await db.put('snapshots', { id: 'current', format: 3 } as WorldRecord);
     const note = await restoreWorld(new SimSession(1));
     expect(note.restored).toBe(true);
     const after = await openSpiderDb();

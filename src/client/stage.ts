@@ -184,11 +184,25 @@ export class Stage {
     const yaw = this.#spider.yaw;
     const fx = -Math.sin(yaw);
     const fz = -Math.cos(yaw);
+    // 背得多时排成两列，别让七只苹果从背上排到尾巴外面。
+    const rows = held.length > 3 ? 2 : 1;
+    const cols = Math.ceil(held.length / rows);
+    const rightX = -fz;
+    const rightZ = fx;
     for (let index = 0; index < held.length; index++) {
       const item = held[index];
       alive.add(item.id);
-      const along = (index - (held.length - 1) / 2) * 0.42;
-      this.#syncProp(item, back.x - fx * along, back.y + 0.95, back.z - fz * along, world);
+      const row = index % rows;
+      const col = Math.floor(index / rows);
+      const along = (col - (cols - 1) / 2) * 0.42;
+      const lateral = rows === 1 ? 0 : row === 0 ? -0.24 : 0.24;
+      this.#syncProp(
+        item,
+        back.x - fx * along + rightX * lateral,
+        back.y + 0.95,
+        back.z - fz * along + rightZ * lateral,
+        world,
+      );
     }
 
     for (const [id, prop] of this.#props) {
@@ -323,8 +337,7 @@ export class Stage {
           const gx = look.x + (desired.x - look.x) * t;
           const gz = look.z + (desired.z - look.z) * t;
           const ground = world.terrain.height(gx, gz) + 1.2;
-          const y = look.y + (desired.y - look.y) * t;
-          if (ground > y) desired.y = look.y + (ground - look.y) / t;
+          desired.y = Math.max(desired.y, look.y + (ground - look.y) / t);
         }
       }
     }
