@@ -10,10 +10,19 @@ import {
   type SimBody,
   type WorldRecord,
 } from '../shared/sim/snapshot.js';
+import {
+  bufferPut,
+  forgetBuffer,
+  forgetLease,
+  forgetOwner,
+  leaseOf,
+  mayWrite,
+  pageOwner,
+  readBuffer,
+  readLease,
+  setLease,
+} from './world/storage.js';
 
-const BUFFER_KEY = 'p5-art.world';
-const OWNER_KEY = 'p5-art.world.owner';
-const LEASE_KEY = 'p5-art.world.lease';
 const SAVE_MS = 10_000;
 const LEASE_MS = 30_000;
 const POKE_MS = 400;
@@ -30,11 +39,6 @@ export interface BootNote {
 }
 
 type Reason = 'interval' | 'hide' | 'poke';
-
-interface Lease {
-  owner: string;
-  until: number;
-}
 
 let installed = false;
 let readonly = false;
@@ -57,34 +61,6 @@ function resolveStore(): Promise<SnapshotStore> {
   if (providedStore) return Promise.resolve(providedStore);
   storePromise ??= import('./journal/store.js').then((module) => module.dbSnapshotStore());
   return storePromise;
-}
-
-/**
- * Ownership is a tiny separate key. The snapshot is only written when the
- * world changes; a quiet tab renews this key instead of the whole record.
- */
-function readLease(): Lease | null {
-  try {
-    const raw = localStorage.getItem(LEASE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<Lease>;
-    if (typeof parsed.owner !== 'string' || !Number.isFinite(parsed.until)) return null;
-    return { owner: parsed.owner, until: parsed.until as number };
-  } catch {
-    return null;
-  }
-}
-
-function setLease(page: string, until: number): void {
-  try {
-    localStorage.setItem(LEASE_KEY, JSON.stringify({ owner: page, until }));
-  } catch {
-    // The snapshot still carries an owner and a lease.
-  }
-}
-
-function leaseOf(record?: WorldRecord): Lease | null {
-  return record ? { owner: record.owner, until: record.leaseUntil } : null;
 }
 
 /** Keep a quiet tab's ownership without rewriting the snapshot. */
@@ -143,16 +119,8 @@ export function resetWorldStore(): void {
   readonly = false;
   dbDeferred = false;
   owner = '';
-  try {
-    sessionStorage.removeItem(OWNER_KEY);
-  } catch {
-    // A blocked session store just means the next launch mints an owner.
-  }
-  try {
-    localStorage.removeItem(LEASE_KEY);
-  } catch {
-    // A blocked buffer is replaced by the next write anyway.
-  }
+  forgetOwner();
+  forgetLease();
   seenSeq = 0;
   lastBody = null;
   pending = null;
@@ -360,11 +328,7 @@ async function mirror(chosen: WorldRecord, ls: Classify, idb: Classify): Promise
   const idbSame =
     idb.status === 'ok' && idb.record.seq === chosen.seq && idb.record.savedAt === chosen.savedAt;
   if (!lsSame) {
-    try {
-      localStorage.setItem(BUFFER_KEY, JSON.stringify(chosen));
-    } catch {
-      // The database copy is enough for the next quiet launch.
-    }
+    bufferPut(chosen);
   }
   if (!idbSame) {
     try {
@@ -378,11 +342,7 @@ async function mirror(chosen: WorldRecord, ls: Classify, idb: Classify): Promise
 async function forget(item: Classify, side: 'local' | 'idb', today: string): Promise<void> {
   if (item.status !== 'expired' && item.status !== 'malformed') return;
   if (side === 'local') {
-    try {
-      localStorage.removeItem(BUFFER_KEY);
-    } catch {
-      // Leave a blocked buffer alone.
-    }
+    forgetBuffer();
     return;
   }
   try {
@@ -454,18 +414,6 @@ async function readIdb(): Promise<unknown> {
   return (await resolveStore()).readSnapshot();
 }
 
-function pageOwner(): string {
-  try {
-    const saved = sessionStorage.getItem(OWNER_KEY);
-    if (saved) return saved;
-    const created = globalThis.crypto.randomUUID();
-    sessionStorage.setItem(OWNER_KEY, created);
-    return created;
-  } catch {
-    return globalThis.crypto.randomUUID();
-  }
-}
-
 function stamp(body: SimBody, seq: number, now: number, today: string): WorldRecord {
   return {
     ...body,
@@ -479,32 +427,9 @@ function stamp(body: SimBody, seq: number, now: number, today: string): WorldRec
   };
 }
 
-function bufferPut(record: WorldRecord): boolean {
-  try {
-    localStorage.setItem(BUFFER_KEY, JSON.stringify(record));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** The later of two records; the one that exists when only one does. */
 export function prefer(a?: WorldRecord, b?: WorldRecord): WorldRecord | undefined {
   return a && b ? newer(a, b) : (a ?? b);
-}
-
-function readBuffer(): unknown {
-  try {
-    return localStorage.getItem(BUFFER_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function mayWrite(lease: Lease | null, page: string, now: number): boolean {
-  if (!lease) return true;
-  if (lease.owner === page) return true;
-  return lease.until <= now;
 }
 
 function changed(prev: SimBody, next: SimBody, appleSlack: number): boolean {

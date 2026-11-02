@@ -1,6 +1,6 @@
 import type { LanguageModelUsage } from 'ai';
 import { openSpiderDb, type UsageDay } from './db.js';
-import { localDate } from './dates.js';
+import { localDate } from '../../shared/dates.js';
 
 export interface UsageSnapshot {
   today: UsageDay;
@@ -83,8 +83,6 @@ function normalize(value: Partial<UsageDay> | undefined, date: string): UsageDay
     reasoning: count(value?.reasoning),
   };
 }
-
-export { formatTokens } from './tokens.js';
 
 function count(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;

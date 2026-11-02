@@ -27,7 +27,7 @@ export const KINDS: Record<string, KindSpec> = {
     rest: 0,
   },
   grass: { properties: ['cover'], rest: 0 },
-  nest: { properties: ['home', 'sleepable'], rest: 0 },
+  nest: { properties: ['home'], rest: 0 },
 };
 
 export function kindOf(kind: string): KindSpec | null {

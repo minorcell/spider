@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { openSpiderDb, resetSpiderDb } from '../../src/client/journal/db.js';
 import { Diary } from '../../src/client/journal/diary.js';
-import { localDate, shiftDate } from '../../src/client/journal/dates.js';
+import { localDate, shiftDate } from '../../src/shared/dates.js';
 import {
   blankSession,
   dropOldest,
@@ -235,7 +235,7 @@ describe('Diary', () => {
     await today.backfill(settings);
     expect((await today.read('2026-11-01'))?.summary).toBe('记下了偏好。');
     await today.backfill(settings);
-    expect(await today.listLines()).toEqual(
+    expect(await today.api().list()).toEqual(
       expect.arrayContaining([expect.objectContaining({ date: '2026-11-01' })]),
     );
   });

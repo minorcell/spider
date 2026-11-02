@@ -1,7 +1,7 @@
 /** One calendar day's conversation, and the rules for when it gets smaller. */
 
-export const DEFAULT_COMPACT_KB = 400;
-export const KEEP_TURNS = 4;
+const DEFAULT_COMPACT_KB = 400;
+const KEEP_TURNS = 4;
 const encoder = new TextEncoder();
 
 export interface Trace {
@@ -40,7 +40,7 @@ export function blankSession(date: string): ChatSession {
   return { date, summary: '', turns: [], updatedAt: 0, digestedAt: 0 };
 }
 
-export function hasDialogue(session: ChatSession): boolean {
+function hasDialogue(session: ChatSession): boolean {
   if (session.summary.trim() !== '') return true;
   return session.turns.some((turn) => turn.role === 'user' && turn.text.trim() !== '');
 }
@@ -58,12 +58,12 @@ export function estimateTokens(session: ChatSession): number {
   return Math.ceil(payloadBytes(session) / 4);
 }
 
-export function byteCap(limits: CompactLimits): number | null {
+function byteCap(limits: CompactLimits): number | null {
   if (!limits.compact) return null;
   return (limits.compactKb ?? DEFAULT_COMPACT_KB) * 1024;
 }
 
-export function tokenCap(limits: CompactLimits): number | null {
+function tokenCap(limits: CompactLimits): number | null {
   if (limits.contextTokens == null) return null;
   return Math.floor(limits.contextTokens * 0.8);
 }

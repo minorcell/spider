@@ -13,7 +13,7 @@ let stage: Stage | undefined;
 
 window.addEventListener('pagehide', () => {
   flushWorld('hide');
-  session.stop();
+  session.cancel();
   stage?.dispose();
 });
 

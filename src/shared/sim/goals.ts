@@ -1,5 +1,5 @@
 import type { Spider } from './Spider.js';
-import type { Controls } from '../../shared/types.js';
+import { IDLE_CONTROLS, type Controls } from '../../shared/types.js';
 import type { PlanPoint } from '../route.js';
 
 /**
@@ -13,8 +13,6 @@ export interface Goal {
   /** Partial results, reported whether the goal finished or timed out. */
   result(): Record<string, unknown>;
 }
-
-const IDLE: Controls = { throttle: 0, turn: 0, lift: 0, boost: 0 };
 
 /** How long a step may push against a wall or a slope before the goal gives up. */
 export const STUCK_LIMIT = 0.35;
@@ -51,7 +49,7 @@ export function walkGoal(spider: Spider, distance: number, fast = false): Goal {
       const remaining = target - progress();
       // Fast holds full throttle until the last stride, so the body actually reaches a run.
       const throttle = clamp(remaining / (fast ? 1.2 : 0.7), 0, 1) * sign;
-      return { ...IDLE, throttle, boost: fast ? 1 : 0 };
+      return { ...IDLE_CONTROLS, throttle, boost: fast ? 1 : 0 };
     },
     done() {
       if (spider.stuckFor >= STUCK_LIMIT) return true;
@@ -76,7 +74,7 @@ export function turnGoal(spider: Spider, degrees: number): Goal {
     timeout: Math.max(3, Math.abs(degrees) / 60 + 2),
     controls() {
       const u = -1.5 * (2.5 * error() + spider.yawRate);
-      return { ...IDLE, turn: clamp(u, -1, 1) };
+      return { ...IDLE_CONTROLS, turn: clamp(u, -1, 1) };
     },
     done() {
       return Math.abs(error()) < 0.02 && Math.abs(spider.yawRate) < 0.08;
@@ -131,10 +129,10 @@ export function routeGoal(spider: Spider, points: readonly PlanPoint[], fast = f
       // Close enough, and slow. Cutting the throttle here and then turning
       // back onto the point makes the last step pace past it.
       if (last && left < 0.2 && distance < 0.45 && Math.abs(spider.speed) < 0.45)
-        return { ...IDLE };
+        return { ...IDLE_CONTROLS };
       const along = last ? Math.max(0, left) : distance;
       const throttle = aligned ? clamp(along / (fast ? 2.4 : 1.1), 0, 1) : 0;
-      return { ...IDLE, throttle, turn, boost: fast ? 1 : 0 };
+      return { ...IDLE_CONTROLS, throttle, turn, boost: fast ? 1 : 0 };
     },
     done() {
       if (spider.stuckFor >= STUCK_LIMIT) return true;
@@ -167,7 +165,7 @@ export function heightGoal(spider: Spider, level: number): Goal {
   return {
     timeout: 4,
     controls() {
-      return { ...IDLE, lift: Math.sign(target - spider.heightSet) };
+      return { ...IDLE_CONTROLS, lift: Math.sign(target - spider.heightSet) };
     },
     done() {
       return Math.abs(spider.heightSet - target) < 0.01;

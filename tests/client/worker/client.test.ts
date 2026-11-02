@@ -114,10 +114,8 @@ describe('WorkerJournal', () => {
         summary: '',
       }),
     ).toMatchObject({ line: '行' });
-    expect(await call(port, () => journal.listLines(), [])).toEqual([]);
-
     const api = journal.api();
-    expect(await call(port, () => api.list(), [{ date: 'd', line: 'l' }])).toEqual([
+    expect(await call(port, () => api.list(), [{ date: 'd', description: 'l' }])).toEqual([
       { date: 'd', line: 'l' },
     ]);
     expect(await call(port, () => api.get('d'), null)).toBeNull();

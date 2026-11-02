@@ -15,12 +15,12 @@ export interface Ahead {
   by: 'clear' | 'wall' | 'slope';
   /** The solid's id, when by is wall. */
   id: string | null;
-  kind: 'nest' | 'building' | null;
+  kind: 'nest' | 'solid' | null;
 }
 
 export interface NearbySolid {
   id: string;
-  kind: 'nest' | 'building';
+  kind: 'nest' | 'solid';
   /** Distance from you to the nearest point of it. */
   distance: number;
   /** Degrees off your heading, clockwise positive. 0 is straight ahead. */
@@ -32,15 +32,15 @@ const round = (value: number, places = 2): number => {
   return Math.round(value * scale) / scale;
 };
 
-function kindOfBlock(id: string): 'nest' | 'building' {
-  return id.startsWith('nest') ? 'nest' : 'building';
+function kindOfBlock(id: string): 'nest' | 'solid' {
+  return id.startsWith('nest') ? 'nest' : 'solid';
 }
 
 interface Probe {
   open: number;
   by: 'clear' | 'wall' | 'slope';
   id: string | null;
-  kind: 'nest' | 'building' | null;
+  kind: 'nest' | 'solid' | null;
 }
 
 /** Heading 0 faces world -Z. Clockwise is positive, matching the body's turn. */

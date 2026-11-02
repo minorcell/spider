@@ -16,7 +16,6 @@ export interface JournalState {
 
 export type JournalRequest =
   | { id: number; method: 'open' }
-  | { id: number; method: 'state' }
   | { id: number; method: 'save' }
   | { id: number; method: 'record'; args: [string, string, Trace[], PilotSettings] }
   | { id: number; method: 'digest'; args: [PilotSettings] }
@@ -25,7 +24,6 @@ export type JournalRequest =
   | { id: number; method: 'pages' }
   | { id: number; method: 'read'; args: [string] }
   | { id: number; method: 'write'; args: [MemoryWrite] }
-  | { id: number; method: 'listLines' }
   | { id: number; method: 'dismiss'; args: [boolean] }
   | { id: number; method: 'recordUsage'; args: [LanguageModelUsage | null | undefined, number?] }
   | { id: number; method: 'readUsage'; args: [string] }
@@ -40,7 +38,6 @@ export type JournalReply =
 
 export interface JournalResultMap {
   open: JournalState;
-  state: JournalState;
   save: JournalState;
   record: JournalState;
   digest: JournalState;
@@ -49,7 +46,6 @@ export interface JournalResultMap {
   pages: MemoryPage[];
   read: MemoryView | null;
   write: MemoryView;
-  listLines: Array<{ date: string; line: string }>;
   dismiss: JournalState;
   recordUsage: JournalState;
   readUsage: UsageSnapshot;

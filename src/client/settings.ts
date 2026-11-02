@@ -1,6 +1,7 @@
 /** Model credentials live in this browser only. Empty means hand driving. */
 
-const STORAGE_KEY = 'p5-art.pilot';
+const STORAGE_KEY = 'spider.pilot';
+const LEGACY_KEY = 'p5-art.pilot';
 
 export interface PilotSettings {
   baseURL: string;
@@ -36,9 +37,30 @@ const EMPTY: PilotSettings = {
   autoMemory: false,
 };
 
+function readRaw(): string | null {
+  try {
+    const current = localStorage.getItem(STORAGE_KEY);
+    if (current != null) {
+      try {
+        localStorage.removeItem(LEGACY_KEY);
+      } catch {
+        // The new key is the source. A blocked delete leaves the old copy.
+      }
+      return current;
+    }
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy == null) return null;
+    localStorage.setItem(STORAGE_KEY, legacy);
+    localStorage.removeItem(LEGACY_KEY);
+    return legacy;
+  } catch {
+    return null;
+  }
+}
+
 export function readPilot(): PilotSettings {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readRaw();
     if (!raw) return { ...EMPTY };
     const parsed = JSON.parse(raw) as Partial<PilotSettings>;
     return {
@@ -66,6 +88,11 @@ export function writePilot(settings: PilotInput): void {
     autoMemory: settings.autoMemory === true,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  try {
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    // The new key is already written.
+  }
 }
 
 /** All three fields are required before the page will call a model. */

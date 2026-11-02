@@ -36,7 +36,6 @@ export function createHandler(): Handler {
   const dispatch = async (request: JournalRequest): Promise<unknown> => {
     switch (request.method) {
       case 'open':
-      case 'state':
         return stateOf(await open());
       case 'save': {
         const opened = await open();
@@ -66,8 +65,6 @@ export function createHandler(): Handler {
         return (await open()).read(request.args[0]);
       case 'write':
         return (await open()).write(request.args[0]);
-      case 'listLines':
-        return (await open()).listLines();
       case 'dismiss': {
         const opened = await open();
         opened.dismissed = request.args[0];

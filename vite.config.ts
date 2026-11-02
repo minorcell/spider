@@ -51,11 +51,7 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}', 'worker/src/**/*.js'],
       // Type-only modules carry no runtime statements. The worker entry is the
       // one-line binding to a real Worker global; its handler and transport are tested.
-      exclude: [
-        'src/shared/protocol.ts',
-        'src/shared/types.ts',
-        'src/client/worker/journal.worker.ts',
-      ],
+      exclude: ['src/client/worker/journal.worker.ts', 'src/client/worker/protocol.ts'],
       reporter: ['text', 'lcov'],
       reportsDirectory: 'coverage',
       thresholds: {

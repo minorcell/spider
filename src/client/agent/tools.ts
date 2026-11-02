@@ -27,14 +27,7 @@ function call<T extends z.ZodRawShape>(shape: T) {
 export function spiderTools(session: SimSession, memory?: MemoryApi) {
   const finish = (outcome: GoalOutcome, distance = VIEW_DISTANCE): ToolResult => {
     const { halt: _halt, ...rest } = outcome;
-    const observation = session.observe(distance);
-    return {
-      ...rest,
-      ahead: observation.self.ahead,
-      nearby: observation.self.nearby,
-      ways: observation.self.ways,
-      observation,
-    };
+    return { ...rest, observation: session.observe(distance) };
   };
 
   return {

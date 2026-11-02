@@ -1,9 +1,10 @@
 import { openJournal, type Journal, type OpenedJournal } from './journal/api.js';
 import { flushSoon, flushWorld, onRestore, setPending, type BootNote } from './worldStore.js';
-import { localDate } from './journal/dates.js';
 import type { Trace } from './journal/session.js';
-import { formatTokens } from './journal/tokens.js';
-import type { UsageSnapshot } from './journal/usage.js';
+import { bindLeave } from './panel/leave.js';
+import { bindMemory } from './panel/memory.js';
+import { bindUsage } from './panel/usage.js';
+import { explain, isAbort, numberOrNull, thoughtOf } from './panel/helpers.js';
 import { pilotReady, readPilot, writePilot, type PilotSettings } from './settings.js';
 import type { Stage } from './stage.js';
 import type { SimSession } from '../shared/sim/session.js';
@@ -231,6 +232,8 @@ export function mountPanel(
     })
     .catch(() => null);
 
+  const getJournal = (): Journal | null => journal;
+
   const noteActivity = (): void => {
     lastActivity = Date.now();
   };
@@ -260,128 +263,43 @@ export function mountPanel(
 
   window.setInterval(rememberIfIdle, AUTO_MEMORY_CHECK_MS);
 
-  const fillMemory = (page: { line: string; noted: string; summary: string }): void => {
-    lineInput.value = page.line;
-    notedInput.value = page.noted;
-    summaryInput.value = page.summary;
-  };
-
-  const showMemory = async (): Promise<void> => {
-    const opened = journal ?? (await journalReady);
-    /* v8 ignore next */
-    if (!opened) return;
-    const pages = await opened.pages();
-    dateSelect.replaceChildren();
-    memoryEmpty.hidden = pages.length > 0;
-    for (const page of pages) {
-      const option = doc.createElement('option');
-      option.value = page.date;
-      option.textContent = page.description ? `${page.date} ${page.description}` : page.date;
-      dateSelect.append(option);
-    }
-    const latest = pages[pages.length - 1];
-    if (latest) {
-      dateSelect.value = latest.date;
-      fillMemory({ line: latest.description, noted: latest.noted, summary: latest.summary });
-    } else {
-      lineInput.value = '';
-      notedInput.value = '';
-      summaryInput.value = '';
-    }
-    setMenu(false);
-    autoMemoryInput.checked = readPilot().autoMemory;
-    memoryDialog.showModal();
-  };
-
-  menuMemory.addEventListener('click', () => {
-    void showMemory();
+  bindMemory({
+    doc,
+    menuMemory,
+    memoryDialog,
+    memoryForm,
+    memoryClose,
+    memoryEmpty,
+    dateSelect,
+    lineInput,
+    notedInput,
+    summaryInput,
+    autoMemoryInput,
+    setMenu,
+    getJournal,
+    journalReady,
   });
 
-  const renderUsage = (snapshot: UsageSnapshot): void => {
-    usageToday.textContent = usageFigure(snapshot.today);
-    usageTotal.textContent = usageFigure(snapshot.sum);
-    usageDays.replaceChildren();
-    for (const day of snapshot.days) {
-      const item = doc.createElement('li');
-      item.textContent = `${day.date}　${formatTokens(day.total)}`;
-      usageDays.append(item);
-    }
-    usageEmpty.hidden = snapshot.days.length > 0;
-  };
-
-  const refreshUsage = async (): Promise<void> => {
-    const today = localDate(new Date());
-    const opened = journal ?? (await journalReady);
-    try {
-      if (!opened) throw new Error('no journal');
-      renderUsage(await opened.readUsage(today));
-    } catch {
-      renderUsage({
-        today: { date: today, input: 0, output: 0, total: 0, calls: 0, cacheRead: 0, reasoning: 0 },
-        sum: { date: '', input: 0, output: 0, total: 0, calls: 0, cacheRead: 0, reasoning: 0 },
-        days: [],
-      });
-    }
-  };
-
-  menuUsage.addEventListener('click', () => {
-    setMenu(false);
-    usageDialog.showModal();
-    void refreshUsage();
-  });
-  usageClose.addEventListener('click', () => usageDialog.close());
-  memoryClose.addEventListener('click', () => memoryDialog.close());
-  autoMemoryInput.addEventListener('change', () => {
-    writePilot({ ...readPilot(), autoMemory: autoMemoryInput.checked });
-  });
-  dateSelect.addEventListener('change', () => {
-    void journal?.read(dateSelect.value).then((page) => {
-      if (page) fillMemory(page);
-    });
-  });
-  memoryForm.addEventListener('submit', () => {
-    if (!journal) return;
-    const date = dateSelect.value || journal.date;
-    void journal.write({
-      date,
-      line: lineInput.value,
-      noted: notedInput.value,
-      summary: summaryInput.value,
-    });
+  const usage = bindUsage({
+    doc,
+    menuUsage,
+    usageDialog,
+    usageClose,
+    usageToday,
+    usageTotal,
+    usageDays,
+    usageEmpty,
+    setMenu,
+    getJournal,
+    journalReady,
   });
 
-  leaveClose.addEventListener('click', () => {
-    if (journal) journal.dismissed = true;
-    leave.close();
-  });
-  leaveSummarize.addEventListener('click', () => {
-    if (!journal) return;
-    leaveSummarize.disabled = true;
-    void journal
-      .digest(readPilot())
-      .then(() => {
-        show('记下了。这个页面可以关掉了。', 'note');
-        leave.close();
-      })
-      .catch((error: unknown) => {
-        show(explain(error instanceof Error ? error.message : String(error)), 'note');
-      })
-      .finally(() => {
-        leaveSummarize.disabled = false;
-      });
-  });
-
-  window.addEventListener('beforeunload', (event) => {
-    // Vite reloads this page on each save. That is not the user leaving.
-    if (import.meta.env.MODE === 'development') return;
-    if (!journal?.behind()) return;
-    event.preventDefault();
-    window.setTimeout(() => {
-      if (!leave.open) leave.showModal();
-    }, 0);
-  });
-  window.addEventListener('pagehide', () => {
-    void journal?.save();
+  bindLeave({
+    leave,
+    leaveClose,
+    leaveSummarize,
+    getJournal,
+    show,
   });
 
   const release = (controller: AbortController): void => {
@@ -467,7 +385,7 @@ export function mountPanel(
         if (recorded) release(controller);
         if (!failed && !sawText && answer.trim()) show(answer.trim(), 'speech');
       }
-      if (usageDialog.open) await refreshUsage();
+      if (usage.dialog.open) await usage.refresh();
     } catch (error) {
       if (controller.signal.aborted || isAbort(error)) {
         if (!replaced.has(controller)) show('已停止', 'note');
@@ -560,36 +478,4 @@ export function mountPanel(
   });
 
   paint();
-}
-
-function usageFigure(row: { input: number; output: number; total: number; calls: number }): string {
-  return [
-    `输入 ${formatTokens(row.input)}`,
-    `输出 ${formatTokens(row.output)}`,
-    `合计 ${formatTokens(row.total)}`,
-    `${row.calls} 次`,
-  ].join('\n');
-}
-
-function numberOrNull(value: string): number | null {
-  if (!value.trim()) return null;
-  const number = Number(value);
-  return Number.isInteger(number) && number > 0 ? number : null;
-}
-
-function thoughtOf(input: unknown): string {
-  if (!input || typeof input !== 'object' || !('description' in input)) return '';
-  const description = input.description;
-  return typeof description === 'string' ? description : '';
-}
-
-function isAbort(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError';
-}
-
-function explain(message: string): string {
-  if (message === 'Failed to fetch' || message.includes('Failed to fetch')) {
-    return '请求没有发出去。这个地址可能不允许浏览器跨域。';
-  }
-  return message;
 }

@@ -71,14 +71,13 @@ export class WorkerJournal implements Journal, SnapshotStore {
 
   api(): MemoryApi {
     return {
-      list: () => this.listLines(),
+      list: async () => {
+        const pages = await this.pages();
+        return pages.map((page) => ({ date: page.date, line: page.description }));
+      },
       get: (date) => this.read(date),
       write: (input) => this.write(input),
     };
-  }
-
-  async listLines(): Promise<Array<{ date: string; line: string }>> {
-    return this.#call<'listLines'>((id) => ({ id, method: 'listLines' }));
   }
 
   async pages(): Promise<MemoryPage[]> {

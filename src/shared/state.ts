@@ -92,8 +92,6 @@ export interface Carried {
 
 export interface Observation {
   time: number;
-  /** Rebuilds this same island. */
-  seed: number;
   /** How far this look actually reached. */
   view: number;
   /** Left out because they sit past view. */
@@ -124,16 +122,9 @@ export interface Observation {
     nearby: NearbySolid[];
     /** Computed sentences: which relative turn is walkable, and for how far. */
     ways: string[];
-    /** Indices of legs off the ground right now. */
-    legsLifting: number[];
   };
   entities: SeenEntity[];
 }
-
-/** A foot above this height is mid-swing rather than planted. */
-const GROUND_LIFT = 0.17;
-
-const REACH_Y = 1.6;
 
 /** Compass-style degrees from a three.js yaw. */
 export function toHeading(yaw: number): number {
@@ -150,6 +141,7 @@ export function toObservation(
   world: WorldState,
   reach: number,
   view: number,
+  reachY: number,
 ): Observation {
   const heading = toHeading(state.yaw);
   const seen: SeenEntity[] = [];
@@ -183,7 +175,7 @@ export function toObservation(
       properties: propertiesOf(entity.kind),
       distance: Number(distance.toFixed(3)),
       bearing: Number(wrapDegrees((Math.atan2(dx, -dz) * 180) / Math.PI - heading).toFixed(1)),
-      inReach: distance <= reach && vertical <= REACH_Y,
+      inReach: distance <= reach && vertical <= reachY,
     });
   }
   const carrying = world.carrying;
@@ -197,7 +189,6 @@ export function toObservation(
   );
   return {
     time: Number(state.time.toFixed(3)),
-    seed: world.seed,
     view: Number(view.toFixed(3)),
     beyond,
     hidden,
@@ -220,11 +211,6 @@ export function toObservation(
       ahead: felt.ahead,
       nearby: felt.nearby,
       ways: felt.ways,
-      legsLifting: state.feet
-        .map((foot, index) =>
-          foot.y > world.terrain.height(foot.x, foot.z) + GROUND_LIFT ? index : -1,
-        )
-        .filter((index) => index >= 0),
     },
     entities: seen,
   };

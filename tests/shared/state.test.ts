@@ -68,7 +68,7 @@ describe('angles', () => {
 
 describe('toObservation', () => {
   it('describes a visible entity in reach', () => {
-    const seen = toObservation(spider(), world({ entities: [apple()] }), 4, 16);
+    const seen = toObservation(spider(), world({ entities: [apple()] }), 4, 16, 1.6);
     expect(seen.beyond).toBe(0);
     expect(seen.hidden).toBe(0);
     expect(seen.entities).toHaveLength(1);
@@ -85,7 +85,6 @@ describe('toObservation', () => {
       inReach: true,
     });
     expect(seen.time).toBe(1.235);
-    expect(seen.seed).toBe(7);
     expect(seen.view).toBe(16);
     expect(seen.self).toMatchObject({
       x: 0,
@@ -98,11 +97,10 @@ describe('toObservation', () => {
       cover: null,
       home: true,
     });
-    expect(seen.self.legsLifting).toEqual([0]);
   });
 
   it('counts things past the view', () => {
-    const seen = toObservation(spider(), world({ entities: [apple()] }), 4, 1);
+    const seen = toObservation(spider(), world({ entities: [apple()] }), 4, 1, 1.6);
     expect(seen.beyond).toBe(1);
     expect(seen.hidden).toBe(0);
     expect(seen.entities).toEqual([]);
@@ -110,7 +108,13 @@ describe('toObservation', () => {
 
   it('counts things behind a solid', () => {
     const wall = block('wall', 0.5, 1.5, -2, -1);
-    const seen = toObservation(spider(), world({ entities: [apple()], blocks: [wall] }), 4, 16);
+    const seen = toObservation(
+      spider(),
+      world({ entities: [apple()], blocks: [wall] }),
+      4,
+      16,
+      1.6,
+    );
     expect(seen.hidden).toBe(1);
     expect(seen.entities).toEqual([]);
   });
@@ -121,18 +125,19 @@ describe('toObservation', () => {
       world({ entities: [apple()], blocks: [block('apple-1', 1.5, 2.5, -3.5, -2.5)] }),
       4,
       16,
+      1.6,
     );
     expect(seen.entities).toHaveLength(1);
   });
 
   it('marks a high thing out of reach', () => {
     const high = apple({ y: 3 });
-    const seen = toObservation(spider(), world({ entities: [high] }), 4, 16);
+    const seen = toObservation(spider(), world({ entities: [high] }), 4, 16, 1.6);
     expect(seen.entities[0].inReach).toBe(false);
   });
 
   it('marks a distant thing out of reach', () => {
-    const seen = toObservation(spider(), world({ entities: [apple()] }), 1, 16);
+    const seen = toObservation(spider(), world({ entities: [apple()] }), 1, 16, 1.6);
     expect(seen.entities[0].inReach).toBe(false);
   });
 
@@ -151,6 +156,7 @@ describe('toObservation', () => {
       world({ entities: [grass] }),
       4,
       16,
+      1.6,
     );
     expect(seen.self.cover).toBe('grass');
     expect(seen.self.home).toBe(false);
@@ -158,7 +164,7 @@ describe('toObservation', () => {
 
   it('lists what is carried, oldest first', () => {
     const carried = apple({ id: 'apple-2', stage: 2 });
-    const seen = toObservation(spider(), world({ carrying: [carried] }), 4, 16);
+    const seen = toObservation(spider(), world({ carrying: [carried] }), 4, 16, 1.6);
     expect(seen.self.carrying).toEqual([
       { id: 'apple-2', kind: 'apple', stage: 2, properties: ['edible', 'carryable'] },
     ]);
@@ -166,17 +172,7 @@ describe('toObservation', () => {
 
   it('gives an unknown kind no properties', () => {
     const rock = apple({ id: 'rock-1', kind: 'rock' });
-    const seen = toObservation(spider(), world({ entities: [rock] }), 4, 16);
+    const seen = toObservation(spider(), world({ entities: [rock] }), 4, 16, 1.6);
     expect(seen.entities[0].properties).toEqual([]);
-  });
-
-  it('reports legs that are off the ground and leaves planted ones out', () => {
-    const feet = [
-      { x: 0.1, y: 0.5, z: 0 },
-      { x: 0.2, y: 0.1, z: 0 },
-      { x: 0.3, y: 0.9, z: 0 },
-    ];
-    const seen = toObservation(spider({ feet }), world(), 4, 16);
-    expect(seen.self.legsLifting).toEqual([0, 2]);
   });
 });

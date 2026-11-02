@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { openSpiderDb, resetSpiderDb } from '../../../src/client/journal/db.js';
 import { Diary } from '../../../src/client/journal/diary.js';
-import { localDate } from '../../../src/client/journal/dates.js';
+import { localDate } from '../../../src/shared/dates.js';
 import { createHandler } from '../../../src/client/worker/handler.js';
 import type { JournalState } from '../../../src/client/worker/protocol.js';
 import type { PilotSettings } from '../../../src/client/settings.js';
@@ -49,7 +49,7 @@ describe('journal worker handler', () => {
     expect(state.session.turns).toEqual([]);
     expect(state.behind).toBe(false);
     expect(state.dismissed).toBe(false);
-    expect(await handle({ id: 2, method: 'state' })).toEqual(state);
+    expect(await handle({ id: 2, method: 'open' })).toEqual(state);
   });
 
   it('records a turn and saves it', async () => {
@@ -60,7 +60,7 @@ describe('journal worker handler', () => {
       args: ['走', '好。', [], SETTINGS],
     })) as JournalState;
     expect(state.session.turns).toHaveLength(2);
-    expect(await handle({ id: 2, method: 'listLines' })).toEqual([]);
+    expect(await handle({ id: 2, method: 'pages' })).toEqual([]);
     await handle({ id: 3, method: 'save' });
     const reopened = await Diary.open(new Date());
     expect(reopened.session.turns).toHaveLength(2);
@@ -77,7 +77,9 @@ describe('journal worker handler', () => {
     });
     expect(page).toMatchObject({ date, line: '目录句' });
     expect(await handle({ id: 3, method: 'pages' })).toHaveLength(1);
-    expect(await handle({ id: 4, method: 'listLines' })).toEqual([{ date, line: '目录句' }]);
+    expect(await handle({ id: 4, method: 'pages' })).toEqual([
+      expect.objectContaining({ date, description: '目录句' }),
+    ]);
     expect(await handle({ id: 5, method: 'indexBlock' })).toContain('目录句');
   });
 
@@ -138,7 +140,7 @@ describe('journal worker handler', () => {
   it('advances the queue after a failed request', async () => {
     const handle = createHandler();
     await expect(handle({ id: 1, method: 'record', args: undefined } as never)).rejects.toThrow();
-    expect(await handle({ id: 2, method: 'state' })).toMatchObject({
+    expect(await handle({ id: 2, method: 'open' })).toMatchObject({
       date: localDate(new Date()),
     });
   });

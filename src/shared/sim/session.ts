@@ -8,7 +8,7 @@ import {
   type WorldState,
 } from '../state.js';
 import { kindOf, propertiesOf, slicesOf } from '../kinds.js';
-import type { Controls } from '../types.js';
+import { IDLE_CONTROLS, type Controls } from '../types.js';
 import { blockedAt, grassHere, insideHome, occluded } from '../sight.js';
 import {
   createWorld,
@@ -26,9 +26,6 @@ import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal, type Goal } fro
 import { planRoute } from '../route.js';
 import { applyBody, type SimBody } from './snapshot.js';
 import { Spider } from './Spider.js';
-
-const STEP = 1 / 60;
-const ZERO: Controls = { throttle: 0, turn: 0, lift: 0, boost: 0 };
 
 /** A sentence for a detour the body already took. Null when the straight walk was clear. */
 function detourNote(around: readonly string[], direct: boolean, arrived: boolean): string | null {
@@ -67,21 +64,6 @@ export class SimSession {
   }
 
   #active: ActiveGoal | null = null;
-  #last = performance.now();
-  #acc = 0;
-  #timer?: ReturnType<typeof setInterval>;
-
-  start(): void {
-    if (this.#timer) return;
-    this.#last = performance.now();
-    this.#timer = setInterval(() => this.tick(), 16);
-  }
-
-  stop(): void {
-    if (!this.#timer) return;
-    clearInterval(this.#timer);
-    this.#timer = undefined;
-  }
 
   /** Drop the goal that currently owns the body, if one is running. */
   cancel(): void {
@@ -107,23 +89,12 @@ export class SimSession {
     const asked = Math.min(VIEW_DISTANCE, Math.max(0, distance));
     const { x, z } = this.spider.root.position;
     const view = grassHere(x, z, this.world.entities) ? Math.min(asked, GRASS_VIEW) : asked;
-    return toObservation(this.spider.capture(), this.world, REACH, view);
+    return toObservation(this.spider.capture(), this.world, REACH, view, REACH_Y);
   }
 
   /** One visible frame. The page calls this from its render loop. */
   frame(dt: number): void {
     this.#step(Math.min(0.05, Math.max(0, dt)));
-  }
-
-  tick(): void {
-    const now = performance.now();
-    const dt = Math.min(0.1, (now - this.#last) / 1000);
-    this.#last = now;
-    this.#acc += dt;
-    while (this.#acc >= STEP) {
-      this.#acc -= STEP;
-      this.#step(STEP);
-    }
   }
 
   /** Run a goal to completion; resolves on reach, timeout, or preemption. */
@@ -286,7 +257,7 @@ export class SimSession {
 
     return this.run({
       timeout: remaining + 1,
-      controls: () => ZERO,
+      controls: () => IDLE_CONTROLS,
       done: () => sync() >= meal.duration - 1e-4,
       result: () => ({ action: 'eat', target: entity.id, stage: entity.stage, removed: false }),
     }).then((outcome) => {
@@ -318,7 +289,7 @@ export class SimSession {
     const startedAt = this.spider.time;
     return this.run({
       timeout: 2,
-      controls: () => ZERO,
+      controls: () => IDLE_CONTROLS,
       done: () => this.spider.time - startedAt >= 0.7,
       result: () => ({ action: 'pick-up', target: entity.id }),
     }).then((outcome) => {
@@ -388,7 +359,7 @@ export class SimSession {
           Math.abs(this.spider.heightSet - target) < 0.02
             ? 0
             : Math.sign(target - this.spider.heightSet);
-        return { ...ZERO, lift };
+        return { ...IDLE_CONTROLS, lift };
       },
       done: () =>
         this.spider.time - startedAt >= duration && Math.abs(this.spider.heightSet - woke) < 0.05,
@@ -537,7 +508,7 @@ export class SimSession {
     grow(this.world, dt, { x: this.spider.root.position.x, z: this.spider.root.position.z });
 
     const active = this.#active;
-    this.spider.update(dt, active ? active.goal.controls() : ZERO);
+    this.spider.update(dt, active ? active.goal.controls() : IDLE_CONTROLS);
     if (!active) return;
 
     const reached = active.goal.done();

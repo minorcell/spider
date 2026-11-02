@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetSpiderDb } from '../../src/client/journal/db.js';
 import { Diary } from '../../src/client/journal/diary.js';
-import { localDate, shiftDate } from '../../src/client/journal/dates.js';
+import { localDate, shiftDate } from '../../src/shared/dates.js';
 import * as usageLedger from '../../src/client/journal/usage.js';
 import { summarizeDiary } from '../../src/client/journal/summarize.js';
 import { AUTO_MEMORY_IDLE_MS, mountPanel } from '../../src/client/panel.js';

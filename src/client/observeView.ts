@@ -12,7 +12,7 @@ import { PALETTE } from '../shared/config.js';
 import { grassHere } from '../shared/sight.js';
 import { toObservation, type Observation, type WorldState } from '../shared/state.js';
 import { surfaceAt } from '../shared/terrain.js';
-import { GRASS_VIEW, REACH, VIEW_DISTANCE } from '../shared/world.js';
+import { GRASS_VIEW, REACH, REACH_Y, VIEW_DISTANCE } from '../shared/world.js';
 import type { Spider } from '../shared/sim/Spider.js';
 
 const RING = 72;
@@ -83,7 +83,7 @@ export class ObserveOverlay {
       : VIEW_DISTANCE;
     const now = performance.now();
     if (!this.#observation || now - this.#observedAt >= OBSERVE_REFRESH_MS) {
-      this.#observation = toObservation(spider.capture(), world, REACH, distance);
+      this.#observation = toObservation(spider.capture(), world, REACH, distance, REACH_Y);
       this.#observedAt = now;
     }
     const observation = this.#observation;

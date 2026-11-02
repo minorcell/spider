@@ -3,7 +3,7 @@ import type { PilotSettings } from '../settings.js';
 import { pilotReady } from '../settings.js';
 import type { Journal } from './api.js';
 import { blankMemory, openSpiderDb, type MemoryPage } from './db.js';
-import { localDate, shiftDate } from './dates.js';
+import { localDate, shiftDate } from '../../shared/dates.js';
 import {
   blankSession,
   dropOldest,
@@ -87,15 +87,13 @@ export class Diary implements Journal {
 
   api(): MemoryApi {
     return {
-      list: () => this.listLines(),
+      list: async () => {
+        const pages = await this.pages();
+        return pages.map((page) => ({ date: page.date, line: page.description }));
+      },
       get: (date) => this.read(date),
       write: (input) => this.write(input),
     };
-  }
-
-  async listLines(): Promise<Array<{ date: string; line: string }>> {
-    const pages = await this.pages();
-    return pages.map((page) => ({ date: page.date, line: page.description }));
   }
 
   async pages(): Promise<MemoryPage[]> {

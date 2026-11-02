@@ -18,5 +18,3 @@ comment:
 
 ignore:
   - 'tests/**'
-  - 'src/shared/protocol.ts'
-  - 'src/shared/types.ts'

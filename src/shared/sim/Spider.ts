@@ -13,7 +13,7 @@ import {
 import { BONES, DECK_Y, GAIT, MOUNTS } from '../config.js';
 import { TERRAIN } from '../terrain.js';
 import type { SpiderState } from '../state.js';
-import type { Controls } from '../types.js';
+import { IDLE_CONTROLS, type Controls } from '../types.js';
 import { Leg } from './Leg.js';
 import { addSolid, ballEdges, ballGeo, inkMat, paperMat } from './parts.js';
 
@@ -21,7 +21,6 @@ import { addSolid, ballEdges, ballGeo, inkMat, paperMat } from './parts.js';
 // behind it, and an alternating tetrapod gait.
 
 const UP = new Vector3(0, 1, 0);
-const IDLE: Controls = { throttle: 0, turn: 0, lift: 0, boost: 0 };
 
 // Scratch vectors: posing must not allocate per frame.
 const worldFwd = new Vector3();
@@ -72,7 +71,7 @@ export class Spider {
     this.root.add(this.chassis);
     const mounts = this.#buildBody();
     this.legs = MOUNTS.map((spec, index) => new Leg(this.rig, spec, mounts[index], index));
-    this.update(0, IDLE);
+    this.update(0, IDLE_CONTROLS);
   }
 
   /** The ground the feet plant on. Reseeds the stance for the new surface. */
@@ -81,7 +80,7 @@ export class Spider {
     this.#limit = limit;
     this.fall = 0;
     this.#seeded = false;
-    this.update(0, IDLE);
+    this.update(0, IDLE_CONTROLS);
   }
 
   /** Solids you cannot walk through. */
@@ -89,7 +88,7 @@ export class Spider {
     this.#blocked = blocked;
   }
 
-  update(dt: number, input: Controls = IDLE): void {
+  update(dt: number, input: Controls = IDLE_CONTROLS): void {
     const throttle = input.throttle || 0;
     const turn = input.turn || 0;
     const lift = input.lift || 0;

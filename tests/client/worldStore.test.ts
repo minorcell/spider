@@ -34,8 +34,8 @@ vi.mock('../../src/client/journal/db.js', async () => {
   };
 });
 
-const KEY = 'p5-art.world';
-const LEASE = 'p5-art.world.lease';
+const KEY = 'spider.world';
+const LEASE = 'spider.world.lease';
 
 function stamp(session: SimSession, over: Partial<WorldRecord> = {}): WorldRecord {
   const body = captureBody(session, null);
@@ -123,6 +123,25 @@ describe('restoreWorld', () => {
     const db = await openSpiderDb();
     const stored = await db.get('snapshots', 'current');
     expect(stored?.seq).toBe(4);
+  });
+
+  it('migrates the previous p5-art buffer into the new key', async () => {
+    const saved = new SimSession(9);
+    saved.spider.root.position.set(3, saved.spider.root.position.y, 1);
+    const record = stamp(saved, { seq: 2, pending: { text: '旧钥匙', tool: null } });
+    localStorage.setItem('p5-art.world', JSON.stringify(record));
+    localStorage.setItem(
+      'p5-art.world.lease',
+      JSON.stringify({ owner: 'tab-a', until: Date.now() + 60_000 }),
+    );
+    sessionStorage.setItem('p5-art.world.owner', 'tab-a');
+    const session = new SimSession(1);
+    const note = await restoreWorld(session);
+    expect(note.restored).toBe(true);
+    expect(note.pendingText).toBe('旧钥匙');
+    expect(localStorage.getItem(KEY)).toBeTruthy();
+    expect(localStorage.getItem('p5-art.world')).toBeNull();
+    expect(sessionStorage.getItem('spider.world.owner')).toBe('tab-a');
   });
 
   it('drops a broken buffer and keeps a good database copy', async () => {
@@ -310,7 +329,7 @@ describe('flushWorld', () => {
   });
 
   it('lets this tab keep its lease across a reload', async () => {
-    sessionStorage.setItem('p5-art.world.owner', 'tab-a');
+    sessionStorage.setItem('spider.world.owner', 'tab-a');
     const session = new SimSession(2);
     await restoreWorld(session);
     installWorldStore(session);
@@ -319,7 +338,7 @@ describe('flushWorld', () => {
     await writesDone();
     const seq = JSON.parse(localStorage.getItem(KEY) ?? '').seq as number;
     resetWorldStore();
-    sessionStorage.setItem('p5-art.world.owner', 'tab-a');
+    sessionStorage.setItem('spider.world.owner', 'tab-a');
     const again = new SimSession(2);
     await restoreWorld(again);
     installWorldStore(again);
@@ -840,7 +859,7 @@ describe('injected snapshot store', () => {
   });
 
   it('ignores a visible record this tab wrote', async () => {
-    sessionStorage.setItem('p5-art.world.owner', 'tab-a');
+    sessionStorage.setItem('spider.world.owner', 'tab-a');
     const store = memoryStore();
     const session = new SimSession(2);
     await restoreWorld(session, new Date(), store);
@@ -960,7 +979,7 @@ describe('write cadence and leases', () => {
   });
 
   it('falls back to the snapshot lease when the key is missing', async () => {
-    sessionStorage.setItem('p5-art.world.owner', 'tab-a');
+    sessionStorage.setItem('spider.world.owner', 'tab-a');
     const store = memoryStore();
     const saved = stamp(new SimSession(4), {
       seq: 2,
@@ -1029,7 +1048,7 @@ describe('write cadence and leases', () => {
   });
 
   it('keeps an existing lease and stages with the buffer lease', async () => {
-    sessionStorage.setItem('p5-art.world.owner', 'tab-a');
+    sessionStorage.setItem('spider.world.owner', 'tab-a');
     const store = memoryStore();
     const saved = stamp(new SimSession(4), {
       seq: 2,

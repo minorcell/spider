@@ -30,7 +30,7 @@ describe('attachJournalWorker', () => {
     });
     const send = (id: number) =>
       port.onmessage?.({
-        data: { id, method: 'state' } satisfies JournalRequest,
+        data: { id, method: 'open' } satisfies JournalRequest,
       } as MessageEvent<JournalRequest>);
     send(1);
     await settle();

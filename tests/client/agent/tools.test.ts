@@ -6,7 +6,6 @@ import { GRASS_VIEW, REACH, VIEW_DISTANCE } from '../../../src/shared/world.js';
 
 const observation: Observation = {
   time: 0,
-  seed: 1,
   view: VIEW_DISTANCE,
   beyond: 0,
   hidden: 0,
@@ -24,7 +23,6 @@ const observation: Observation = {
     ahead: { open: 8, by: 'clear', id: null, kind: null },
     nearby: [],
     ways: ['正前方可以走 8 米。'],
-    legsLifting: [],
   },
   entities: [],
 };
@@ -86,9 +84,7 @@ describe('spiderTools', () => {
     const result = (await execute(tools.observe, { distance: 3 })) as Record<string, unknown>;
     expect(session.observe).toHaveBeenCalledWith(3);
     expect(result).toMatchObject({ ok: true, observation });
-    expect(result.ahead).toBe(observation.self.ahead);
-    expect(result.nearby).toBe(observation.self.nearby);
-    expect(result.ways).toBe(observation.self.ways);
+    expect(result).not.toHaveProperty('ahead');
   });
 
   it('observes the full view when no distance is given', async () => {

@@ -15,7 +15,6 @@ export interface Journal {
   save(): Promise<void>;
   indexBlock(): Promise<string>;
   api(): MemoryApi;
-  listLines(): Promise<Array<{ date: string; line: string }>>;
   pages(): Promise<MemoryPage[]>;
   read(date: string): Promise<MemoryView | null>;
   write(input: MemoryWrite): Promise<MemoryView>;

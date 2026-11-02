@@ -306,62 +306,6 @@ describe('camera input', () => {
     frame();
     expect(renderer().render).toHaveBeenCalled();
   });
-
-  it('places a prop only on a near-stationary click', () => {
-    const stage = new Stage(makeHost(), new RealSpider());
-    const canvas = renderer().domElement;
-    const placed = vi.fn();
-    stage.onGroundClick = placed;
-    stage.start();
-    frame();
-
-    stage.setPlaceMode(false);
-    canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100 }));
-    canvas.dispatchEvent(new MouseEvent('pointerup', { clientX: 100, clientY: 100 }));
-    expect(placed).not.toHaveBeenCalled();
-
-    stage.setPlaceMode(true);
-    expect(canvas.style.cursor).toBe('crosshair');
-    canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100 }));
-    canvas.dispatchEvent(new MouseEvent('pointerup', { clientX: 150, clientY: 100 }));
-    expect(placed).not.toHaveBeenCalled();
-
-    canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 400, clientY: 300 }));
-    canvas.dispatchEvent(new MouseEvent('pointerup', { clientX: 402, clientY: 301 }));
-    expect(placed).toHaveBeenCalledTimes(1);
-    expect(Number.isFinite(placed.mock.calls[0][0])).toBe(true);
-
-    stage.setPlaceMode(false);
-    expect(canvas.style.cursor).toBe('');
-  });
-
-  it('ignores a click whose ray misses the ground', () => {
-    const stage = new Stage(makeHost(), new RealSpider());
-    const placed = vi.fn();
-    stage.onGroundClick = placed;
-    stage.setPlaceMode(true);
-    stage.start();
-    threeControl.onRender = (camera) => {
-      camera.position.set(0, 5, 0);
-      camera.lookAt(0, 5, -10);
-    };
-    frame();
-    const canvas = renderer().domElement;
-    canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 400, clientY: 300 }));
-    canvas.dispatchEvent(new MouseEvent('pointerup', { clientX: 400, clientY: 300 }));
-    expect(placed).not.toHaveBeenCalled();
-  });
-
-  it('ignores pointer ups without a drag', () => {
-    const stage = new Stage(makeHost(), new RealSpider());
-    const placed = vi.fn();
-    stage.onGroundClick = placed;
-    stage.setPlaceMode(true);
-    renderer().domElement.dispatchEvent(
-      new MouseEvent('pointerup', { clientX: 100, clientY: 100 }),
-    );
-    expect(placed).not.toHaveBeenCalled();
-  });
 });
 
 describe('feedback', () => {

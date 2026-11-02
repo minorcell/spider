@@ -2,10 +2,7 @@ import {
   Group,
   MathUtils,
   PerspectiveCamera,
-  Plane,
-  Raycaster,
   Scene,
-  Vector2,
   Vector3,
   WebGLRenderer,
   type BufferGeometry,
@@ -42,11 +39,7 @@ const VIEW = {
 const local = new Vector3();
 const look = new Vector3();
 const desired = new Vector3();
-const groundHit = new Vector3();
 const bubbleAt = new Vector3();
-const ndc = new Vector2();
-const groundPlane = new Plane(new Vector3(0, 1, 0), 0);
-const raycaster = new Raycaster();
 
 /** Renderer and camera. It steps the one spider, then paints that same spider. */
 export class Stage {
@@ -82,11 +75,6 @@ export class Stage {
   #dragging = false;
   #pointerX = 0;
   #pointerY = 0;
-  #downX = 0;
-  #downY = 0;
-  #placeMode = false;
-  /** Called when the user clicks the ground while place mode is on. */
-  onGroundClick: ((x: number, z: number) => void) | null = null;
   /** Advance the one simulation, then read its world for the props. */
   #step: ((dt: number) => void) | null = null;
   #world: (() => WorldState) | null = null;
@@ -242,11 +230,6 @@ export class Stage {
     this.#sound.voice();
   }
 
-  setPlaceMode(enabled: boolean): void {
-    this.#placeMode = enabled;
-    this.#renderer.domElement.style.cursor = enabled ? 'crosshair' : '';
-  }
-
   dispose(): void {
     this.#renderer.setAnimationLoop(null);
     this.#resizeObserver.disconnect();
@@ -276,32 +259,12 @@ export class Stage {
     this.#dragging = true;
     this.#pointerX = event.clientX;
     this.#pointerY = event.clientY;
-    this.#downX = event.clientX;
-    this.#downY = event.clientY;
     this.#renderer.domElement.setPointerCapture(event.pointerId);
   };
 
-  #onPointerUp = (event: PointerEvent): void => {
-    const wasDragging = this.#dragging;
+  #onPointerUp = (): void => {
     this.#dragging = false;
-    if (!this.#placeMode || !wasDragging) return;
-    // A drag orbits the camera; only a near-stationary release plants a prop.
-    if (Math.hypot(event.clientX - this.#downX, event.clientY - this.#downY) > 6) return;
-    const point = this.#groundPoint(event);
-    if (point) this.onGroundClick?.(point.x, point.z);
   };
-
-  #groundPoint(event: PointerEvent): { x: number; z: number } | null {
-    const rect = this.#renderer.domElement.getBoundingClientRect();
-    ndc.set(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    raycaster.setFromCamera(ndc, this.#camera);
-    return raycaster.ray.intersectPlane(groundPlane, groundHit)
-      ? { x: groundHit.x, z: groundHit.z }
-      : null;
-  }
 
   #onPointerMove = (event: PointerEvent): void => {
     if (!this.#dragging) return;

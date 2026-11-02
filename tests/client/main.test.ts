@@ -56,7 +56,7 @@ vi.mock('../../src/shared/sim/session.js', () => ({
     spider = { tag: 'spider' };
     world = { tag: 'world' };
     frame = vi.fn();
-    stop = vi.fn();
+    cancel = vi.fn();
 
     constructor() {
       control.sessions.push(this);
@@ -119,15 +119,15 @@ describe('main', () => {
     expect(readWorld()).toBe(session.world);
 
     window.dispatchEvent(new Event('pagehide'));
-    const stop = (session as unknown as { stop: ReturnType<typeof vi.fn> }).stop;
+    const cancel = (session as unknown as { cancel: ReturnType<typeof vi.fn> }).cancel;
     expect(world.flushWorld).toHaveBeenCalledWith('hide');
     expect(world.flushWorld.mock.invocationCallOrder[0]).toBeLessThan(
-      stop.mock.invocationCallOrder[0],
+      cancel.mock.invocationCallOrder[0],
     );
-    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(
       control.dispose.mock.invocationCallOrder[0],
     );
-    expect(stop).toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalled();
     expect(control.dispose).toHaveBeenCalled();
   });
 

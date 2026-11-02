@@ -75,15 +75,49 @@ describe('pilot settings', () => {
 
   it('ignores fields of the wrong type', () => {
     localStorage.setItem(
-      'p5-art.pilot',
+      'spider.pilot',
       JSON.stringify({ baseURL: 1, model: null, apiKey: { key: 'x' } }),
     );
     expect(readPilot()).toEqual(EMPTY);
   });
 
   it('falls back to empty on malformed JSON', () => {
-    localStorage.setItem('p5-art.pilot', '{nope');
+    localStorage.setItem('spider.pilot', '{nope');
     expect(readPilot()).toEqual(EMPTY);
+  });
+
+  it('migrates the previous p5-art key', () => {
+    localStorage.setItem(
+      'p5-art.pilot',
+      JSON.stringify({ baseURL: 'https://example.com', model: 'gpt', apiKey: 'key' }),
+    );
+    expect(readPilot()).toMatchObject({
+      baseURL: 'https://example.com',
+      model: 'gpt',
+      apiKey: 'key',
+    });
+    expect(localStorage.getItem('spider.pilot')).toBeTruthy();
+    expect(localStorage.getItem('p5-art.pilot')).toBeNull();
+  });
+
+  it('keeps the new key when both exist', () => {
+    writePilot({ baseURL: 'https://new.example', model: 'n', apiKey: 'k' });
+    localStorage.setItem(
+      'p5-art.pilot',
+      JSON.stringify({ baseURL: 'https://old.example', model: 'o', apiKey: 'old' }),
+    );
+    expect(readPilot().baseURL).toBe('https://new.example');
+    expect(localStorage.getItem('p5-art.pilot')).toBeNull();
+  });
+
+  it('keeps the new key when the old one cannot be deleted', () => {
+    writePilot({ baseURL: 'https://new.example', model: 'n', apiKey: 'k' });
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('denied');
+    });
+    expect(readPilot().baseURL).toBe('https://new.example');
+    writePilot({ baseURL: 'https://newer.example', model: 'n', apiKey: 'k' });
+    remove.mockRestore();
   });
 
   it('falls back to empty when storage throws', () => {

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LanguageModelUsage } from 'ai';
 import { openSpiderDb, resetSpiderDb, type UsageDay } from '../../src/client/journal/db.js';
-import { formatTokens, readUsage, recordUsage } from '../../src/client/journal/usage.js';
+import { readUsage, recordUsage } from '../../src/client/journal/usage.js';
+import { formatTokens } from '../../src/client/journal/tokens.js';
 
 function usage(
   input: number | undefined,
