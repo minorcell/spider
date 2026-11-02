@@ -27,6 +27,7 @@ export class WorkerJournal implements Journal, SnapshotStore {
   readonly #pending = new Map<number, Waiter>();
   #seq = 0;
   #state: JournalResultMap['open'] | null = null;
+  #failure: Error | null = null;
 
   constructor(port: WorkerPort) {
     this.#port = port;
@@ -158,6 +159,7 @@ export class WorkerJournal implements Journal, SnapshotStore {
   }
 
   #fail(error: Error): void {
+    this.#failure ??= error;
     for (const waiter of this.#pending.values()) waiter.reject(error);
     this.#pending.clear();
   }
@@ -167,8 +169,19 @@ export class WorkerJournal implements Journal, SnapshotStore {
   ): Promise<JournalResultMap[K]> {
     const id = ++this.#seq;
     return new Promise<JournalResultMap[K]>((resolve, reject) => {
+      if (this.#failure) {
+        reject(this.#failure);
+        return;
+      }
       this.#pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
-      this.#port.postMessage(make(id));
+      try {
+        this.#port.postMessage(make(id));
+      } catch (error) {
+        this.#pending.delete(id);
+        const failure = error instanceof Error ? error : new Error(String(error));
+        this.#failure ??= failure;
+        reject(failure);
+      }
     });
   }
 }

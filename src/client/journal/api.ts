@@ -38,9 +38,15 @@ export interface OpenedJournal {
  */
 export async function openJournal(): Promise<OpenedJournal> {
   if (typeof Worker !== 'undefined') {
-    const { createWorkerJournal } = await import('../worker/client.js');
-    const journal = await createWorkerJournal();
-    return { journal, store: journal };
+    try {
+      const { createWorkerJournal } = await import('../worker/client.js');
+      const journal = await createWorkerJournal();
+      return { journal, store: journal };
+    } catch {
+      // Module workers can be unavailable despite the global existing (CSP,
+      // older browsers, or a failed startup). Keep the direct implementation
+      // as the documented fallback instead of silently losing the journal.
+    }
   }
   const [{ Diary }, { dbSnapshotStore }] = await Promise.all([
     import('./diary.js'),

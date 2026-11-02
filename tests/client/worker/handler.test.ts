@@ -120,6 +120,31 @@ describe('journal worker handler', () => {
     expect(usage.today.total).toBe(30);
   });
 
+  it('keeps concurrent requests in arrival order', async () => {
+    const handle = createHandler();
+    const date = localDate(new Date());
+    const writing = handle({
+      id: 1,
+      method: 'recordUsage',
+      args: [{ inputTokens: 2, outputTokens: 3, totalTokens: 5 }],
+    });
+    const reading = handle({ id: 2, method: 'readUsage', args: [date] });
+    await writing;
+    expect((await reading) as { today: { total: number } }).toMatchObject({
+      today: { total: 5 },
+    });
+  });
+
+  it('advances the queue after a failed request', async () => {
+    const handle = createHandler();
+    await expect(
+      handle({ id: 1, method: 'record', args: undefined } as never),
+    ).rejects.toThrow();
+    expect(await handle({ id: 2, method: 'state' })).toMatchObject({
+      date: localDate(new Date()),
+    });
+  });
+
   it('keeps snapshots, sweeps junk, and removes the current one', async () => {
     const handle = createHandler();
     const saved = record(2);

@@ -21,10 +21,19 @@ export function createHandler(): Handler {
   let diary: Diary | null = null;
   let snapshots: SnapshotStore | null = null;
 
+  // A worker can receive the next message while an earlier handler is
+  // waiting on IndexedDB (or the summarizer). Diary is mutable, so allowing
+  // those requests to overlap can lose a turn or return a stale state. Keep
+  // each mutable resource ordered; snapshots do not have to wait for a long
+  // model summary in the diary queue. Failed work must not block the next
+  // request in the same queue.
+  let diaryQueue = Promise.resolve();
+  let snapshotQueue = Promise.resolve();
+
   const open = async (): Promise<Diary> => (diary ??= await Diary.open());
   const store = async (): Promise<SnapshotStore> => (snapshots ??= await dbSnapshotStore());
 
-  return async (request) => {
+  const dispatch = async (request: JournalRequest): Promise<unknown> => {
     switch (request.method) {
       case 'open':
       case 'state':
@@ -84,5 +93,17 @@ export function createHandler(): Handler {
         await (await store()).sweepSnapshots(request.args[0]);
         return null;
     }
+  };
+
+  return (request) => {
+    const snapshotsOnly = request.method.startsWith('snapshot');
+    const task = (snapshotsOnly ? snapshotQueue : diaryQueue).then(() => dispatch(request));
+    const settled = task.then(
+      () => undefined,
+      () => undefined,
+    );
+    if (snapshotsOnly) snapshotQueue = settled;
+    else diaryQueue = settled;
+    return task;
   };
 }

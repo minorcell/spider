@@ -183,6 +183,22 @@ describe('WorkerJournal', () => {
     await expect(pending).rejects.toThrow('worker died');
   });
 
+  it('rejects when posting fails and does not leave a pending request', async () => {
+    const port = new Port();
+    port.postMessage = () => {
+      throw new Error('cannot clone');
+    };
+    const journal = new WorkerJournal(port);
+    await expect(journal.pages()).rejects.toThrow('cannot clone');
+    await expect(journal.pages()).rejects.toThrow('cannot clone');
+
+    const plainPort = new Port();
+    plainPort.postMessage = () => {
+      throw 'cannot clone';
+    };
+    await expect(new WorkerJournal(plainPort).pages()).rejects.toThrow('cannot clone');
+  });
+
   it('starts the real worker from the page', async () => {
     class FakeWorker {
       static last: FakeWorker | null = null;

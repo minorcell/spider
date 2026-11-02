@@ -26,6 +26,10 @@ class FakeWorker {
   }
 }
 
+function BrokenWorker(): never {
+  throw new Error('worker blocked');
+}
+
 beforeEach(async () => {
   await resetSpiderDb();
 });
@@ -48,5 +52,12 @@ describe('openJournal', () => {
     expect(journal).toBeInstanceOf(WorkerJournal);
     expect(store).toBe(journal);
     expect(journal.date).toBe('2026-11-02');
+  });
+
+  it('falls back to direct storage when a worker cannot start', async () => {
+    vi.stubGlobal('Worker', BrokenWorker);
+    const { journal, store } = await openJournal();
+    expect(journal).toBeInstanceOf(Diary);
+    expect(await store.readSnapshot()).toBeNull();
   });
 });
