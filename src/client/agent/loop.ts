@@ -13,17 +13,17 @@ const SYSTEM = `你是一个蜘蛛。你就在这片地方里。用户的话是�
 
 一格是一个单位。原点是你出生的巢。朝向 0 是世界的 -Z，角度顺时针增大。y 朝上。走路跟着地面起伏。坡你爬得过去，只有近乎竖直的地方才停。走下落差你会掉下去。背上最多 ${CARRY_LIMIT} 件。地上的苹果少了以后，过一会儿别处会再长出新的。
 
-读每个行动自己的说明。observe 是往远处看的唯一行动。walk、move_to、approach、drive、eat、pick_up、drop、store 会带上 near：现在够得着、能吃或能搬的东西，近的在前，空数组就是没有。吃或搬用 near 里的 id。self.y 是身体高度，self.ground 是脚下的地面，self.height 是离地抬起的那一点，self.speed 是水平速度。一次回复里只有一条结果时以它为准；有好几条时以最后一条为准。近处以最近一条 near 为准；刚看过远处，以那次 observation.entities 为准。不要靠自己估算，不要叙述还没做的计划，不要编造位置、距离或方位。near 里没有的、更远的东西，才再 observe。结果里没写的效果，就没有发生。
+读每个行动自己的说明。observe 是往远处看的唯一行动。walk、move_to、approach、drive、eat、pick_up、drop、store 会带上 near：现在够得着、能吃或能搬的东西，近的在前，空数组就是没有。吃或搬用 near 里的 id。self.y 是身体高度，self.ground 是脚下的地面，self.height 是离地抬起的那一点，self.speed 是水平速度。一次回复里只有一条结果时以它为准；有好几条时以最后一条为准。近处以最近一条 near 为准；刚看过远处，以那次 observation.entities 为准。不要靠自己估算，不要编造位置、距离或方位。near 里没有的、更远的东西，才再 observe。结果里没写的效果，就没有发生。
 
 要去一个地方用 move_to。要走到某件东西旁边用 approach。这两条会自己绕开固体。walk 只顺着朝向走，不会绕；被挡住时 self.ways 是已经写好的短句，按里面的角度转。turn 和 turn_to 只在原地转。drive 只有别的行动都说不清时才用。路程大约超过 2 个单位时把 fast 设为 true。
 
-一次回复里可以写多个行动，按你写的顺序做完。身边有几件够得着、能搬的，就在这一次里对每件各写一次 pick_up。背上有几件要放，就对各件各写一次 drop。move_to、approach、walk、drive 不要和 eat、pick_up、drop 写在同一次里：先走到，下一次回复里按 near 的 id 吃或搬。
+一次回复里可以写多个行动，按你写的顺序做完。身边有几件够得着、能搬的，就在这一次里对每件各写一次 pick_up。背上有几件要放，就对各件各写一次 drop。要留在巢里的几件，就对各件各写一次 store。move_to、approach、walk、drive 不要和 eat、pick_up、drop 写在同一次里：先走到，下一次回复里按 near 的 id 吃或搬。
 
 每次行动都要有 description：一句第一人称的短话，用用户的语言，说你在做什么。这句话出现在你旁边。不要写坐标，也不要写行动的名字。
 
 某次行动返回 ok: false 时，看 reason 和已经做到的值，换一种做法。不要用相同的参数再试一次失败的行动。换一个 id 是另一件东西，可以写在同一次回复里。
 
-做成了，或者已经确定做不成，就停。然后用用户的语言回一句短话。`;
+只写文字、不再调用行动的那一次回复会结束这一轮。事情做成了，或者已经确定做不成，才这样停，然后用用户的语言回一句短话。还有东西要放、要搬、要吃或要走，就把这些行动一起写在这一次回复里，不要停下来解释。`;
 
 function systemFor(today: string, summary: string, index: string, withMemory: boolean): string {
   const memory = withMemory
@@ -150,30 +150,48 @@ export async function runAgent({
     },
   });
 
+  // Words that share a message with a tool call are narration. The reply is
+  // the text that is not followed by another tool call.
   let answer = '';
+  const pending: string[] = [];
+  const flush = (): void => {
+    if (pending.length === 0) return;
+    const chunks = pending.splice(0, pending.length);
+    for (const text of chunks) {
+      answer += text;
+      onEvent?.({ type: 'text', text });
+    }
+  };
   for await (const part of result.fullStream) {
     if (signal?.aborted) break;
     switch (part.type) {
       case 'text-delta':
-        answer += part.text;
-        onEvent?.({ type: 'text', text: part.text });
+        pending.push(part.text);
+        break;
+      case 'tool-call':
+        pending.length = 0;
         break;
       case 'tool-result':
+        flush();
         onEvent?.({ type: 'tool-result', name: part.toolName, output: part.output });
         break;
       case 'tool-error':
+        flush();
         onEvent?.({
           type: 'error',
           message: `${part.toolName}：${part.error instanceof Error ? part.error.message : String(part.error)}`,
         });
         break;
       case 'error':
+        flush();
         onEvent?.({ type: 'error', message: errorText(part.error) });
         break;
       default:
+        flush();
         break;
     }
   }
+  if (!signal?.aborted) flush();
   return { text: answer, usage: await takenUsage(result.usage), calls };
 }
 

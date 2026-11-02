@@ -52,6 +52,37 @@ beforeEach(() => {
 });
 
 describe('runAgent', () => {
+  it('keeps only the final words when one message mixes prose and tools', async () => {
+    stream([
+      { type: 'text-delta', text: '我先看看' },
+      { type: 'tool-call', toolName: 'walk', toolCallId: '1', input: {} },
+      { type: 'tool-result', toolName: 'walk', output: { ok: true } },
+      { type: 'text-delta', text: '到了' },
+    ]);
+    const events: AgentEvent[] = [];
+    const answer = await runAgent({
+      goal: 'go',
+      session: fakeSession(),
+      settings,
+      onEvent: (event) => events.push(event),
+    });
+    expect(answer.text).toBe('到了');
+    expect(events).toEqual([
+      { type: 'tool-result', name: 'walk', output: { ok: true } },
+      { type: 'text', text: '到了' },
+    ]);
+  });
+
+  it('tells the spider to batch handling and stops only on a reply with no actions', async () => {
+    stream([]);
+    await runAgent({ goal: 'go', session: fakeSession(), settings });
+    const system = String(aiControl.streamText.mock.calls[0][0].system);
+    expect(system).toContain('对各件各写一次 drop');
+    expect(system).toContain('只写文字、不再调用行动的那一次回复会结束这一轮');
+    expect(system).not.toContain('另起一条消息');
+    expect(system).not.toContain('只放行动调用');
+  });
+
   it('streams text, tool results, and errors', async () => {
     stream([
       { type: 'text-delta', text: 'a' },
