@@ -22,6 +22,7 @@ function longDay(turns: number): ChatSession {
 }
 
 const limits: CompactLimits = { contextTokens: 4_000, compact: true, compactKb: 400 };
+const noCompactLimits: CompactLimits = { contextTokens: 4_000, compact: false, compactKb: null };
 const session = longDay(400);
 
 describe('journal', () => {
@@ -34,6 +35,12 @@ describe('journal', () => {
   test('fit 400 turns', async ({ bench }) => {
     await bench('fit 400 turns', () => {
       fit(session, limits);
+    }).run();
+  });
+
+  test('fit 400 turns without compact', async ({ bench }) => {
+    await bench('fit 400 turns without compact', () => {
+      fit(session, noCompactLimits);
     }).run();
   });
 

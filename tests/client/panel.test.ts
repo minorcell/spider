@@ -1260,7 +1260,6 @@ describe('saved sentence', () => {
     document.body.innerHTML = CHROME;
     mountPanel(document, fakeSession(), fakeStage(), {
       restored: true,
-      unreadable: false,
       cause: null,
       pendingText: '去巢边',
     });
@@ -1272,7 +1271,6 @@ describe('saved sentence', () => {
     document.body.innerHTML = CHROME;
     mountPanel(document, fakeSession(), fakeStage(), {
       restored: false,
-      unreadable: true,
       cause: 'malformed',
       pendingText: null,
     });
@@ -1282,7 +1280,6 @@ describe('saved sentence', () => {
     document.body.innerHTML = CHROME;
     mountPanel(document, fakeSession(), fakeStage(), {
       restored: false,
-      unreadable: true,
       cause: 'format',
       pendingText: null,
     });
@@ -1357,7 +1354,6 @@ describe('saved sentence', () => {
     await flush();
     const note = (pendingText: string | null): BootNote => ({
       restored: true,
-      unreadable: false,
       cause: null,
       pendingText,
     });

@@ -406,11 +406,14 @@ export class Spider {
     poleW.copy(UP).addScaledVector(dirW, 0.45);
     bendJoint(coxaW, ankleW, BONES[1].len, BONES[2].len, poleW, kneeW);
 
-    const points = [shoulderW, coxaW, kneeW, ankleW, leg.foot];
-    for (let i = 0; i < leg.bones.length; i++) {
-      placeBone(leg.bones[i], points[i], points[i + 1], BONES[i].radius, leg.spec.side);
-      leg.joints[i].position.copy(points[i]);
-    }
+    placeBone(leg.bones[0], shoulderW, coxaW, BONES[0].radius, leg.spec.side);
+    placeBone(leg.bones[1], coxaW, kneeW, BONES[1].radius, leg.spec.side);
+    placeBone(leg.bones[2], kneeW, ankleW, BONES[2].radius, leg.spec.side);
+    placeBone(leg.bones[3], ankleW, leg.foot, BONES[3].radius, leg.spec.side);
+    leg.joints[0].position.copy(shoulderW);
+    leg.joints[1].position.copy(coxaW);
+    leg.joints[2].position.copy(kneeW);
+    leg.joints[3].position.copy(ankleW);
     leg.claw.position.copy(leg.foot);
     leg.claw.quaternion.copy(leg.bones[3].quaternion);
   }

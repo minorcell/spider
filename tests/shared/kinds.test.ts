@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from 'vitest';
 import { kindOf, KINDS, propertiesOf, slicesOf } from '../../src/shared/kinds.js';
 
@@ -10,11 +12,10 @@ describe('kinds', () => {
     expect(kindOf('rock')).toBeNull();
   });
 
-  it('copies the property list', () => {
+  it('reuses immutable property lists', () => {
     const properties = propertiesOf('apple');
     expect(properties).toEqual(['edible', 'carryable']);
-    properties.push('mutated');
-    expect(propertiesOf('apple')).toEqual(['edible', 'carryable']);
+    expect(propertiesOf('apple')).toBe(properties);
   });
 
   it('reports no properties for something unknown', () => {

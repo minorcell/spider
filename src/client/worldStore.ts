@@ -25,8 +25,6 @@ const OPEN_MS = 1500;
 
 export interface BootNote {
   restored: boolean;
-  /** Unknown format, or JSON that could not be loaded. Expired and first visits are false. */
-  unreadable: boolean;
   cause: 'format' | 'malformed' | null;
   pendingText: string | null;
 }
@@ -45,16 +43,14 @@ let owner = '';
 let seenSeq = 0;
 let lastBody: SimBody | null = null;
 let pending: SimBody['pending'] = null;
-let pendingGen = 0;
 let timer: ReturnType<typeof setInterval> | undefined;
 let pokeTimer: ReturnType<typeof setTimeout> | undefined;
 let sessionRef: Restorable | null = null;
 let listener: ((note: BootNote) => void) | null = null;
 let onVis: (() => void) | null = null;
-let inflight = 0;
-const idle: Array<() => void> = [];
 let providedStore: SnapshotStore | null = null;
 let storePromise: Promise<SnapshotStore> | null = null;
+let workTail: Promise<void> = Promise.resolve();
 
 /** The Worker-backed store in the page; IndexedDB directly in tests and old browsers. */
 function resolveStore(): Promise<SnapshotStore> {
@@ -100,10 +96,8 @@ function touchLease(): void {
   setLease(owner, now + LEASE_MS);
 }
 
-export function setPending(next: SimBody['pending']): number {
-  pendingGen += 1;
+export function setPending(next: SimBody['pending']): void {
   pending = next && next.text !== '' ? { text: next.text, tool: next.tool } : null;
-  return pendingGen;
 }
 
 export function pendingNow(): SimBody['pending'] {
@@ -120,7 +114,7 @@ export function flushWorld(reason: Reason): void {
     clearTimeout(pokeTimer);
     pokeTimer = undefined;
   }
-  track(write(reason));
+  enqueueWrite(reason);
 }
 
 /** Coalesce bursts of tool calls into one write. Hide and submit still flush now. */
@@ -134,8 +128,7 @@ export function flushSoon(reason: Reason): void {
 }
 
 export function writesDone(): Promise<void> {
-  if (inflight === 0) return Promise.resolve();
-  return new Promise((resolve) => idle.push(resolve));
+  return workTail;
 }
 
 /** Tests drop the timer and the visibility listener between cases. */
@@ -163,7 +156,6 @@ export function resetWorldStore(): void {
   seenSeq = 0;
   lastBody = null;
   pending = null;
-  pendingGen = 0;
   sessionRef = null;
   listener = null;
   providedStore = null;
@@ -184,7 +176,7 @@ export async function restoreWorld(
   const dbOpen = loaded.opened;
   if (ls.status === 'format' || idb.status === 'format') {
     readonly = true;
-    return { restored: false, unreadable: true, cause: 'format', pendingText: null };
+    return { restored: false, cause: 'format', pendingText: null };
   }
   await forget(ls, 'local', today);
   await forget(idb, 'idb', today);
@@ -197,7 +189,6 @@ export async function restoreWorld(
     const broken = ls.status === 'malformed' || idb.status === 'malformed';
     return {
       restored: false,
-      unreadable: broken,
       cause: broken ? 'malformed' : null,
       pendingText: null,
     };
@@ -210,7 +201,6 @@ export async function restoreWorld(
   if (dbOpen && !dbDeferred) await mirror(chosen, ls, idb);
   return {
     restored: true,
-    unreadable: false,
     cause: null,
     pendingText: chosen.pending?.text ?? null,
   };
@@ -232,17 +222,27 @@ export function installWorldStore(session: Restorable, store?: SnapshotStore): v
       timer = undefined;
       return;
     }
-    track(catchUp().then(() => arm()));
+    enqueue(() => catchUp().then(() => arm()));
   };
   document.addEventListener('visibilitychange', onVis);
   if (dbDeferred) {
-    track(reconcile().then(() => arm()));
+    enqueue(() => reconcile().then(() => arm()));
     return;
   }
   arm();
 }
 
-async function write(reason: Reason): Promise<void> {
+function enqueueWrite(reason: Reason): void {
+  const previous = workTail;
+  let finish!: () => void;
+  const current = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  workTail = current;
+  void write(reason, previous).then(finish, finish);
+}
+
+async function write(reason: Reason, previous: Promise<void>): Promise<void> {
   // flushWorld checked readonly and sessionRef before calling.
   if (reason === 'interval') touchLease();
   const session = sessionRef as Restorable;
@@ -273,6 +273,10 @@ async function write(reason: Reason): Promise<void> {
     }
   }
   if (dbDeferred) return;
+
+  // The local buffer above is deliberately synchronous for pagehide. Only
+  // the IndexedDB read/write portion waits behind the preceding operation.
+  await previous;
 
   let idbRec: WorldRecord | undefined;
   try {
@@ -327,7 +331,6 @@ async function catchUp(): Promise<void> {
   lastBody = captureBody(session, pending);
   listener?.({
     restored: true,
-    unreadable: false,
     cause: null,
     pendingText: chosen.pending?.text ?? null,
   });
@@ -397,7 +400,7 @@ async function loadIdb(
   let deferred = false;
   let value: unknown = null;
   const ready = await new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => {
+    const guardTimer = setTimeout(() => {
       deferred = true;
       resolve(false);
     }, OPEN_MS);
@@ -406,11 +409,11 @@ async function loadIdb(
       .then(
         (record) => {
           value = record;
-          clearTimeout(timer);
+          clearTimeout(guardTimer);
           resolve(true);
         },
         () => {
-          clearTimeout(timer);
+          clearTimeout(guardTimer);
           resolve(false);
         },
       );
@@ -442,7 +445,6 @@ async function reconcile(): Promise<void> {
   lastBody = captureBody(session, pending);
   listener?.({
     restored: true,
-    unreadable: false,
     cause: null,
     pendingText: idb.record.pending?.text ?? null,
   });
@@ -573,12 +575,6 @@ function arm(): void {
   timer = setInterval(() => flushWorld('interval'), SAVE_MS);
 }
 
-function track(work: Promise<void>): void {
-  inflight += 1;
-  void work.finally(() => {
-    inflight -= 1;
-    if (inflight === 0) {
-      for (const done of idle.splice(0)) done();
-    }
-  });
+function enqueue(work: () => Promise<void>): void {
+  workTail = workTail.then(work, work).catch(() => undefined);
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PerspectiveCamera, Vector3 } from 'three';
 import { ObserveOverlay } from '../../src/client/observeView.js';
 import type { Spider } from '../../src/shared/sim/Spider.js';
@@ -121,5 +121,29 @@ describe('ObserveOverlay', () => {
     const readout = parent.querySelector('#observe-readout')!;
     expect(readout.textContent).toContain('在空地上');
     expect(readout.textContent).toContain('近乎竖直的坡');
+  });
+
+  it('renders untrusted entity labels as text', () => {
+    const overlay = new ObserveOverlay(parent);
+    overlay.sync(
+      true,
+      camera(),
+      fakeSpider(0, 0),
+      world({ entities: [entity({ id: '<img src=x onerror=alert(1)>' })] }),
+      view,
+    );
+    expect(parent.querySelector('#observe-pins img')).toBeNull();
+    expect(parent.querySelector('#observe-pins')?.textContent).toContain(
+      '<img src=x onerror=alert(1)>',
+    );
+  });
+
+  it('reuses a recent observation within the refresh window', () => {
+    const overlay = new ObserveOverlay(parent);
+    const spider = fakeSpider(0, 0);
+    const capture = vi.spyOn(spider, 'capture');
+    overlay.sync(true, camera(), spider, world(), view);
+    overlay.sync(true, camera(), spider, world(), view);
+    expect(capture).toHaveBeenCalledTimes(1);
   });
 });

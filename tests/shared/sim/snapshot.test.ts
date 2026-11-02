@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from 'vitest';
 import { localDate } from '../../../src/shared/dates.js';
 import { SimSession } from '../../../src/shared/sim/session.js';

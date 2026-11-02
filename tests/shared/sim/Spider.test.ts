@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import { GAIT } from '../../../src/shared/config.js';

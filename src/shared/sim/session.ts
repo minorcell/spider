@@ -59,7 +59,6 @@ interface ActiveGoal {
 export class SimSession {
   readonly spider = new Spider();
   readonly world: WorldState;
-  paused = false;
 
   constructor(seed?: number) {
     this.world = createWorld(seed);
@@ -73,16 +72,15 @@ export class SimSession {
   #timer?: ReturnType<typeof setInterval>;
 
   start(): void {
+    if (this.#timer) return;
     this.#last = performance.now();
     this.#timer = setInterval(() => this.tick(), 16);
   }
 
   stop(): void {
-    if (this.#timer) clearInterval(this.#timer);
-  }
-
-  setPaused(paused: boolean): void {
-    this.paused = paused;
+    if (!this.#timer) return;
+    clearInterval(this.#timer);
+    this.#timer = undefined;
   }
 
   /** Drop the goal that currently owns the body, if one is running. */
@@ -536,8 +534,6 @@ export class SimSession {
   }
 
   #step(dt: number): void {
-    if (this.paused) return;
-
     grow(this.world, dt, { x: this.spider.root.position.x, z: this.spider.root.position.z });
 
     const active = this.#active;

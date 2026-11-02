@@ -13,7 +13,6 @@ const control = vi.hoisted(() => ({
 const world = vi.hoisted(() => ({
   restoreWorld: vi.fn(async () => ({
     restored: false,
-    unreadable: false,
     cause: null,
     pendingText: null,
   })),
@@ -80,7 +79,6 @@ beforeEach(() => {
   world.flushWorld.mockClear();
   world.restoreWorld.mockResolvedValue({
     restored: false,
-    unreadable: false,
     cause: null,
     pendingText: null,
   });

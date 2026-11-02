@@ -2,6 +2,7 @@
 
 export const DEFAULT_COMPACT_KB = 400;
 export const KEEP_TURNS = 4;
+const encoder = new TextEncoder();
 
 export interface Trace {
   name: string;
@@ -50,7 +51,7 @@ export function needsDigest(session: ChatSession): boolean {
 
 export function payloadBytes(session: ChatSession): number {
   const text = JSON.stringify({ summary: session.summary, turns: session.turns });
-  return new TextEncoder().encode(text).length;
+  return encoder.encode(text).length;
 }
 
 export function estimateTokens(session: ChatSession): number {
@@ -98,14 +99,31 @@ export function stripTools(session: ChatSession): ChatSession {
 
 /** Drop the oldest turns until the payload fits, leaving at least one. */
 export function dropOldest(session: ChatSession, limits: CompactLimits): ChatSession {
-  let turns = session.turns;
-  while (turns.length > 1 && overLimit({ ...session, turns }, limits)) turns = turns.slice(1);
-  return turns === session.turns ? session : { ...session, turns };
+  const turns = session.turns;
+  if (!overLimit(session, limits)) return session;
+
+  // Payload size increases monotonically as more of the suffix is kept.
+  // Binary search the largest suffix that fits instead of serializing every
+  // intermediate session when compact is disabled.
+  let low = 1;
+  let high = turns.length;
+  let keep = 1;
+  while (low <= high) {
+    const candidate = Math.floor((low + high) / 2);
+    if (overLimit({ ...session, turns: turns.slice(-candidate) }, limits)) {
+      high = candidate - 1;
+    } else {
+      keep = candidate;
+      low = candidate + 1;
+    }
+  }
+  return { ...session, turns: turns.slice(-keep) };
 }
 
 /** Replace the older turns with one summary and keep the recent tail. */
 export function foldSummary(session: ChatSession, summary: string): ChatSession {
-  return { ...stripTools(session), summary, turns: stripTools(session).turns.slice(-KEEP_TURNS) };
+  const stripped = stripTools(session);
+  return { ...stripped, summary, turns: stripped.turns.slice(-KEEP_TURNS) };
 }
 
 export function transcript(session: ChatSession): string {

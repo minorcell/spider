@@ -18,6 +18,8 @@ export interface KindSpec {
   rest: number;
 }
 
+const EMPTY_PROPERTIES: readonly string[] = Object.freeze([]);
+
 export const KINDS: Record<string, KindSpec> = {
   apple: {
     properties: ['edible', 'carryable'],
@@ -32,8 +34,8 @@ export function kindOf(kind: string): KindSpec | null {
   return KINDS[kind] ?? null;
 }
 
-export function propertiesOf(kind: string): string[] {
-  return [...(KINDS[kind]?.properties ?? [])];
+export function propertiesOf(kind: string): readonly string[] {
+  return KINDS[kind]?.properties ?? EMPTY_PROPERTIES;
 }
 
 export function slicesOf(kind: KindSpec): number {

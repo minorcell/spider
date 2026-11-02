@@ -10,12 +10,13 @@ import {
 } from 'three';
 import { PALETTE } from '../shared/config.js';
 import { grassHere } from '../shared/sight.js';
-import { toObservation, type WorldState } from '../shared/state.js';
+import { toObservation, type Observation, type WorldState } from '../shared/state.js';
 import { surfaceAt } from '../shared/terrain.js';
 import { GRASS_VIEW, REACH, VIEW_DISTANCE } from '../shared/world.js';
 import type { Spider } from '../shared/sim/Spider.js';
 
 const RING = 72;
+const OBSERVE_REFRESH_MS = 100;
 const NAME: Record<string, string> = { apple: '苹果', grass: '草', nest: '巢' };
 
 /** God view of what the spider can sense. The chase camera stays as it is. */
@@ -29,6 +30,8 @@ export class ObserveOverlay {
   readonly #layer: HTMLElement;
   readonly #readout: HTMLElement;
   readonly #pins: HTMLElement;
+  #observation: Observation | null = null;
+  #observedAt = Number.NEGATIVE_INFINITY;
 
   constructor(parent: HTMLElement) {
     const ink = new LineBasicMaterial({ color: PALETTE.ink });
@@ -67,7 +70,10 @@ export class ObserveOverlay {
   ): void {
     this.#root.visible = on;
     this.#layer.hidden = !on;
-    if (!on) return;
+    if (!on) {
+      this.#observation = null;
+      return;
+    }
 
     const x = spider.root.position.x;
     const z = spider.root.position.z;
@@ -75,7 +81,12 @@ export class ObserveOverlay {
     const distance = grassHere(x, z, world.entities)
       ? Math.min(VIEW_DISTANCE, GRASS_VIEW)
       : VIEW_DISTANCE;
-    const observation = toObservation(spider.capture(), world, REACH, distance);
+    const now = performance.now();
+    if (!this.#observation || now - this.#observedAt >= OBSERVE_REFRESH_MS) {
+      this.#observation = toObservation(spider.capture(), world, REACH, distance);
+      this.#observedAt = now;
+    }
+    const observation = this.#observation;
     const ground = (px: number, pz: number) => surfaceAt(height, px, pz) + 0.14;
 
     layRing(this.#viewRing.geometry, x, z, observation.view, ground);
@@ -95,7 +106,7 @@ export class ObserveOverlay {
     const seen = new Map(observation.entities.map((entity) => [entity.id, entity]));
     let inkCount = 0;
     let dimCount = 0;
-    const pins: string[] = [];
+    const pins = this.#layer.ownerDocument.createDocumentFragment();
     for (const entity of world.entities) {
       const hit = seen.get(entity.id);
       const state = hit
@@ -125,15 +136,19 @@ export class ObserveOverlay {
             : state === 'hidden'
               ? '挡住'
               : '视线外';
-      pins.push(
-        `<span class="observe-pin" data-state="${state}" style="left:${point.x}px;top:${point.y}px">${entity.id}　${name}　${note}</span>`,
-      );
+      const pin = this.#layer.ownerDocument.createElement('span');
+      pin.className = 'observe-pin';
+      pin.dataset.state = state;
+      pin.style.left = `${point.x}px`;
+      pin.style.top = `${point.y}px`;
+      pin.textContent = `${entity.id}　${name}　${note}`;
+      pins.append(pin);
     }
     (this.#marks.geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
     (this.#dim.geometry.getAttribute('position') as BufferAttribute).needsUpdate = true;
     this.#marks.geometry.setDrawRange(0, inkCount * 4);
     this.#dim.geometry.setDrawRange(0, dimCount * 4);
-    this.#pins.innerHTML = pins.join('');
+    this.#pins.replaceChildren(pins);
 
     const aheadInfo = observation.self.ahead;
     const front =

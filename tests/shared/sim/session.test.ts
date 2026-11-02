@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KINDS } from '../../../src/shared/kinds.js';
 import { STUCK_LIMIT, type Goal } from '../../../src/shared/sim/goals.js';
@@ -65,7 +67,6 @@ describe('SimSession basics', () => {
   it('builds a world and binds the body', () => {
     const session = new SimSession(3);
     expect(session.world.seed).toBe(3);
-    expect(session.paused).toBe(false);
     const snapshot = session.snapshot();
     expect(snapshot.world).toBe(session.world);
     expect(snapshot.state.feet).toHaveLength(8);
@@ -74,17 +75,6 @@ describe('SimSession basics', () => {
   it('stops cleanly when nothing was started', () => {
     const session = new SimSession(3);
     session.stop();
-    expect(session.paused).toBe(false);
-  });
-
-  it('pauses and resumes', () => {
-    const session = new SimSession(3);
-    session.setPaused(true);
-    session.frame(1);
-    expect(session.spider.time).toBe(0);
-    session.setPaused(false);
-    session.frame(1);
-    expect(session.spider.time).toBeCloseTo(0.05);
   });
 
   it('ignores negative frame steps', () => {
@@ -113,8 +103,10 @@ describe('SimSession basics', () => {
     });
     const session = new SimSession(3);
     session.start();
+    session.start();
     vi.advanceTimersByTime(64);
     expect(session.spider.time).toBeGreaterThan(0);
+    expect(session.spider.time).toBeLessThan(0.1);
     const seen = session.spider.time;
     session.stop();
     vi.advanceTimersByTime(200);
@@ -732,9 +724,8 @@ describe('sleep and props', () => {
 
     session.world.entities = session.world.entities.filter((entity) => entity.kind !== 'apple');
     session.world.appleIn = 0;
-    session.paused = true;
     session.frame(1);
-    expect(session.world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
+    expect(session.world.entities.some((entity) => entity.kind === 'apple')).toBe(true);
   });
 
   it('numbers a new prop after the highest existing one', () => {

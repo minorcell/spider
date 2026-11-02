@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from 'vitest';
 import { surfaceAt, Terrain, TERRAIN } from '../../src/shared/terrain.js';
 

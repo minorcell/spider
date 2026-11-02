@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from 'vitest';
 import { createNoise, fbm, mulberry32 } from '../../src/shared/noise.js';
 

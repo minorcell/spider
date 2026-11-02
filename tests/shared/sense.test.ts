@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from 'vitest';
 import { senseBody } from '../../src/shared/sense.js';
 import { block, flat } from '../helpers.js';

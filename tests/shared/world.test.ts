@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Terrain, TERRAIN } from '../../src/shared/terrain.js';
 import {

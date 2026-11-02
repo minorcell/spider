@@ -74,7 +74,7 @@ export interface SeenEntity {
   z: number;
   stage: number;
   /** Qualities you can act on, such as edible or carryable. */
-  properties: string[];
+  properties: readonly string[];
   /** Horizontal units from you. */
   distance: number;
   /** Degrees relative to your heading, clockwise positive. */
@@ -87,7 +87,7 @@ export interface Carried {
   id: string;
   kind: string;
   stage: number;
-  properties: string[];
+  properties: readonly string[];
 }
 
 export interface Observation {

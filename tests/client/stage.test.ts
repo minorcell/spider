@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BufferGeometry } from 'three';
 import { Spider as RealSpider } from '../../src/shared/sim/Spider.js';
 import type { EntityState, WorldState } from '../../src/shared/state.js';
 import { Stage } from '../../src/client/stage.js';
@@ -120,6 +121,7 @@ beforeEach(() => {
 
 describe('Stage setup', () => {
   it('creates the renderer, camera, and canvas', () => {
+    const dispose = vi.spyOn(BufferGeometry.prototype, 'dispose');
     const host = makeHost();
     const spider = new RealSpider();
     const stage = new Stage(host, spider);
@@ -130,6 +132,7 @@ describe('Stage setup', () => {
     stage.dispose();
     expect(draw.setAnimationLoop).toHaveBeenLastCalledWith(null);
     expect(draw.dispose).toHaveBeenCalled();
+    expect(dispose).toHaveBeenCalled();
     expect(sound.dispose).toHaveBeenCalled();
     expect(host.contains(draw.domElement)).toBe(false);
   });

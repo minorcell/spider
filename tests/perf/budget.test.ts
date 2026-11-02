@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from 'vitest';
 import {
   blankSession,
@@ -47,6 +49,7 @@ function longDay(turns: number): ChatSession {
 }
 
 const limits: CompactLimits = { contextTokens: 4_000, compact: true, compactKb: 400 };
+const noCompactLimits: CompactLimits = { contextTokens: 4_000, compact: false, compactKb: null };
 const day = longDay(400);
 
 function recordOf(seed = 7): WorldRecord {
@@ -111,6 +114,10 @@ describe('journal budgets', () => {
 
   it('fits 400 turns in under 10 ms', () => {
     expect(bestOf(5, () => void fit(day, limits))).toBeLessThan(25);
+  });
+
+  it('fits 400 turns without compact in under 25 ms', () => {
+    expect(bestOf(5, () => void fit(day, noCompactLimits))).toBeLessThan(25);
   });
 
   it('prints 400 turns in under 10 ms', () => {

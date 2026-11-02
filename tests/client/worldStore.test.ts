@@ -130,8 +130,7 @@ describe('restoreWorld', () => {
     await put(stamp(saved, { seq: 2 }));
     localStorage.setItem(KEY, '{');
     const session = new SimSession(1);
-    const note = await restoreWorld(session);
-    expect(note.unreadable).toBe(false);
+    await restoreWorld(session);
     expect(session.world.terrain.seed).toBe(saved.world.terrain.seed);
     expect(localStorage.getItem(KEY)).toContain('"seq":2');
   });
@@ -144,7 +143,7 @@ describe('restoreWorld', () => {
     const session = new SimSession(8);
     const born = session.world.terrain.seed;
     const note = await restoreWorld(session);
-    expect(note).toMatchObject({ restored: false, unreadable: false, cause: null });
+    expect(note).toMatchObject({ restored: false, cause: null });
     expect(session.world.terrain.seed).toBe(born);
     expect(localStorage.getItem(KEY)).toBeNull();
     const db = await openSpiderDb();
@@ -170,7 +169,7 @@ describe('restoreWorld', () => {
   it('says the place was unreadable when nothing valid remains', async () => {
     localStorage.setItem(KEY, '{');
     const note = await restoreWorld(new SimSession(1));
-    expect(note).toMatchObject({ restored: false, unreadable: true, cause: 'malformed' });
+    expect(note).toMatchObject({ restored: false, cause: 'malformed' });
   });
 
   it('still starts when the database cannot be opened', async () => {
@@ -197,6 +196,61 @@ describe('restoreWorld', () => {
 });
 
 describe('flushWorld', () => {
+  it('serializes overlapping writes and keeps the latest body', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+
+    let release!: () => void;
+    let enter!: () => void;
+    const firstPut = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const writeGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const originalPut = store.putSnapshot.bind(store);
+    let puts = 0;
+    store.putSnapshot = async (record) => {
+      puts += 1;
+      if (puts === 1) {
+        enter();
+        await writeGate;
+      }
+      await originalPut(record);
+    };
+
+    session.spider.root.position.x = 0.3;
+    flushWorld('poke');
+    session.spider.root.position.x = 0.6;
+    flushWorld('poke');
+    await firstPut;
+    release();
+    await writesDone();
+
+    expect(puts).toBe(2);
+    expect(store.value).toMatchObject({ seq: 2, spider: { position: { x: 0.6 } } });
+  });
+
+  it('continues after a visible-tab reconciliation failure', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    store.value = stamp(new SimSession(8), { seq: 2, owner: 'other' });
+    const adopt = vi.spyOn(session, 'adopt').mockImplementation(() => {
+      throw new Error('adopt failed');
+    });
+    installWorldStore(session, store);
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await writesDone();
+    expect(adopt).toHaveBeenCalled();
+  });
+
   it('does nothing until the store is installed', async () => {
     const record = stamp(new SimSession(2), { seq: 6 });
     localStorage.setItem(KEY, JSON.stringify(record));
@@ -595,7 +649,7 @@ describe('injected snapshot store', () => {
     await vi.advanceTimersByTimeAsync(1500);
     const note = await pending;
     vi.useRealTimers();
-    expect(note).toMatchObject({ unreadable: true, cause: 'malformed' });
+    expect(note).toMatchObject({ cause: 'malformed' });
     expect(localStorage.getItem(KEY)).toBeNull();
   });
 

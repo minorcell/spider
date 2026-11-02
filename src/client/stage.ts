@@ -8,6 +8,8 @@ import {
   Vector2,
   Vector3,
   WebGLRenderer,
+  type BufferGeometry,
+  type Object3D,
 } from 'three';
 import { PALETTE } from '../shared/config.js';
 import { TERRAIN } from '../shared/terrain.js';
@@ -57,6 +59,10 @@ export class Stage {
   #island: Group | null = null;
   /** Last drawn action stage, so a new bite can make a sound. */
   readonly #stages = new Map<string, number>();
+  readonly #drapedGrass = new Map<
+    string,
+    { x: number; z: number; terrain: WorldState['terrain'] }
+  >();
   #resizeObserver!: ResizeObserver;
   #view = { left: 0, top: 0, width: 1, height: 1 };
   readonly #sound = createSound(window);
@@ -138,14 +144,17 @@ export class Stage {
   /** The ground mesh is baked once. A restored seed needs a new island. */
   retile(): void {
     if (this.#island) {
+      disposeGeometries(this.#island);
       this.#scene.remove(this.#island);
       this.#island = null;
     }
     for (const [id, prop] of this.#props) {
+      disposeGeometries(prop);
       this.#scene.remove(prop);
       this.#props.delete(id);
       this.#stages.delete(id);
     }
+    this.#drapedGrass.clear();
     this.#carried = null;
     this.#syncWorld();
   }
@@ -193,8 +202,10 @@ export class Stage {
       const previous = this.#stages.get(entity.id);
       let prop = this.#props.get(entity.id);
       if (prop && previous !== entity.stage) {
+        disposeGeometries(prop);
         this.#scene.remove(prop);
         this.#props.delete(entity.id);
+        this.#drapedGrass.delete(entity.id);
         prop = undefined;
         if (previous != null && entity.stage > previous) this.#sound.bite();
       }
@@ -206,15 +217,23 @@ export class Stage {
         this.#scene.add(prop);
       }
       this.#stages.set(entity.id, entity.stage);
-      if (entity.kind === 'grass') drapeGrass(prop, x, z, (px, pz) => world.terrain.height(px, pz));
+      if (entity.kind === 'grass') {
+        const draped = this.#drapedGrass.get(entity.id);
+        if (!draped || draped.x !== x || draped.z !== z || draped.terrain !== world.terrain) {
+          drapeGrass(prop, x, z, (px, pz) => world.terrain.height(px, pz));
+          this.#drapedGrass.set(entity.id, { x, z, terrain: world.terrain });
+        }
+      }
       else prop.position.set(x, y, z);
     }
 
     for (const [id, prop] of this.#props) {
       if (alive.has(id)) continue;
+      disposeGeometries(prop);
       this.#scene.remove(prop);
       this.#props.delete(id);
       this.#stages.delete(id);
+      this.#drapedGrass.delete(id);
       this.#sound.take();
     }
   }
@@ -237,6 +256,7 @@ export class Stage {
     el.removeEventListener('pointerup', this.#onPointerUp);
     el.removeEventListener('pointermove', this.#onPointerMove);
     el.removeEventListener('wheel', this.#onWheel);
+    disposeGeometries(this.#scene);
     this.#renderer.dispose();
     this.#sound.dispose();
     el.remove();
@@ -394,4 +414,14 @@ export class Stage {
       y: view.top + (-bubbleAt.y * 0.5 + 0.5) * view.height,
     };
   }
+}
+
+/** Release geometry owned by a scene subtree without touching shared materials. */
+function disposeGeometries(root: Object3D): void {
+  const geometries = new Set<BufferGeometry>();
+  root.traverse((node) => {
+    const geometry = (node as Object3D & { geometry?: BufferGeometry }).geometry;
+    if (geometry) geometries.add(geometry);
+  });
+  for (const geometry of geometries) geometry.dispose();
 }
