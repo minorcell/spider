@@ -79,13 +79,7 @@ const CHROME = `
     <button id="leave-close" type="button"></button>
     <button id="leave-summarize" type="button"></button>
   </dialog>
-  <dialog id="usage">
-    <p id="usage-today"></p>
-    <p id="usage-total"></p>
-    <ol id="usage-days"></ol>
-    <p id="usage-empty" hidden></p>
-    <button id="usage-close" type="button"></button>
-  </dialog>
+  <dialog id="usage"></dialog>
 `;
 
 let stage: {
@@ -1169,10 +1163,9 @@ describe('usage dialog', () => {
     await flush();
     expect(document.querySelector<HTMLElement>('#corner-menu')!.hidden).toBe(true);
     expect(document.querySelector<HTMLDialogElement>('#usage')!.open).toBe(true);
-    expect(document.querySelector('#usage-today')!.textContent).toBe(
-      '输入 0\n输出 0\n合计 0\n0 次',
-    );
-    expect(document.querySelector('#usage-empty')!.hidden).toBe(false);
+    expect(document.querySelector('.kpis')!.textContent).toContain('模型请求');
+    expect(document.querySelector('.kpis')!.textContent).toContain('0');
+    expect(document.querySelector('#usage-empty')!.textContent).toBe('还没有用量。');
     clickButton('#usage-close');
     expect(document.querySelector<HTMLDialogElement>('#usage')!.open).toBe(false);
   });
@@ -1184,30 +1177,36 @@ describe('usage dialog', () => {
     clickButton('#menu-usage');
     await flush();
     expect(document.querySelector<HTMLDialogElement>('#usage')!.open).toBe(true);
-    expect(document.querySelector('#usage-today')!.textContent).toContain('0 次');
+    expect(document.querySelector('#usage-empty')!.textContent).toBe('还没有用量。');
   });
 
-  it('shows compacted totals and days', async () => {
+  it('shows compacted totals, models, and requests', async () => {
     const today = localDate(new Date());
     const [year, month, day] = shiftDate(today, -1).split('-').map(Number);
-    await usageLedger.recordUsage(reported, new Date());
+    await usageLedger.recordUsage(reported, new Date(), {
+      kind: 'agent',
+      modelId: 'deepseek-chat',
+      provider: 'openai-compatible',
+    });
     await usageLedger.recordUsage(
       { ...reported, inputTokens: 1000, outputTokens: 0, totalTokens: 1000 },
       new Date(year, month - 1, day, 12),
+      { kind: 'summary', modelId: 'deepseek-reasoner' },
     );
     mount();
     clickButton('#menu-usage');
     await flush();
-    const todayText = document.querySelector('#usage-today')!.textContent;
-    expect(todayText).toContain('输入 1.5k');
-    expect(todayText).toContain('输出 2.5m');
-    expect(todayText).toContain('合计 1.2b');
-    expect(todayText).toContain('1 次');
-    expect(document.querySelector('#usage-total')!.textContent).toContain('2 次');
-    expect(document.querySelector('#usage-days')!.textContent).toContain(today);
-    expect(document.querySelector('#usage-days')!.textContent).toContain('1.2b');
-    expect(document.querySelector('#usage-days')!.textContent).toContain(shiftDate(today, -1));
-    expect(document.querySelector('#usage-empty')!.hidden).toBe(true);
+    const page = document.querySelector('#usage')!.textContent ?? '';
+    expect(page).toContain('1.5k');
+    expect(page).toContain('2.5m');
+    expect(page).toContain('1.2b');
+    expect(page).toContain('deepseek-chat');
+    expect(page).toContain('deepseek-reasoner');
+    expect(document.querySelector('#usage-empty')).toBeNull();
+    document
+      .querySelector('.request summary')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.querySelector('.request')!.hasAttribute('open')).toBe(true);
   });
 
   it('refreshes an open ledger after a reply', async () => {
@@ -1216,12 +1215,93 @@ describe('usage dialog', () => {
     mount();
     clickButton('#menu-usage');
     await flush();
-    expect(document.querySelector('#usage-today')!.textContent).toContain('0 次');
+    expect(document.querySelector('#usage-empty')!.textContent).toBe('还没有用量。');
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
     await flush();
-    expect(document.querySelector('#usage-today')!.textContent).toContain('输入 1.5k');
-    expect(document.querySelector('#usage-today')!.textContent).toContain('1 次');
+    expect(document.querySelector('#usage')!.textContent).toContain('1.5k');
+    expect(document.querySelector('.kpis')!.textContent).toContain('1');
+  });
+
+  it('records each returned model step', async () => {
+    ready();
+    loop.runAgent.mockResolvedValue({
+      text: '好',
+      usage: reported,
+      calls: [
+        usageLedger.usageCallFromStep(
+          {
+            callId: 'c1',
+            stepNumber: 0,
+            model: { provider: 'openai-compatible', modelId: 'deepseek-chat' },
+            usage: reported,
+            finishReason: 'tool-calls',
+            toolCalls: [{ toolCallId: 't1', toolName: 'observe', input: {} }],
+            toolResults: [{ toolCallId: 't1', output: { ok: true } }],
+            performance: {
+              timeToFirstOutputMs: 80,
+              responseTimeMs: 200,
+              stepTimeMs: 240,
+              toolExecutionMs: { t1: 18 },
+            },
+          },
+          {
+            kind: 'agent',
+            sessionId: localDate(new Date()),
+            turnId: 'turn',
+            date: localDate(new Date()),
+            ts: Date.now(),
+          },
+        ),
+        usageLedger.usageCallFromStep(
+          {
+            callId: 'c1',
+            stepNumber: 1,
+            model: { provider: 'openai-compatible', modelId: 'deepseek-chat' },
+            usage: reported,
+            finishReason: 'stop',
+            toolCalls: [],
+            toolResults: [],
+            performance: { responseTimeMs: 100, stepTimeMs: 120, toolExecutionMs: {} },
+          },
+          {
+            kind: 'agent',
+            sessionId: localDate(new Date()),
+            turnId: 'turn',
+            date: localDate(new Date()),
+            ts: Date.now() + 1,
+          },
+        ),
+        usageLedger.usageCallFromStep(
+          {
+            callId: 'c1',
+            stepNumber: 2,
+            model: { provider: 'openai-compatible', modelId: 'deepseek-chat' },
+            usage: reported,
+            finishReason: 'stop',
+            toolCalls: [],
+            toolResults: [],
+            performance: { responseTimeMs: 90, stepTimeMs: 110, toolExecutionMs: {} },
+          },
+          {
+            kind: 'agent',
+            sessionId: localDate(new Date()),
+            turnId: 'turn',
+            date: localDate(new Date()),
+            ts: Date.now() + 2,
+          },
+        ),
+      ],
+    });
+    mount();
+    document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
+    submit();
+    await flush();
+    clickButton('#menu-usage');
+    await flush();
+    const values = [...document.querySelectorAll('.kpi-value')].map((node) => node.textContent);
+    expect(values[0]).toBe('3');
+    expect(document.querySelectorAll('.request')).toHaveLength(3);
   });
 
   it('keeps tokens from a stopped reply', async () => {
@@ -1240,7 +1320,7 @@ describe('usage dialog', () => {
     await flush();
     clickButton('#menu-usage');
     await flush();
-    expect(document.querySelector('#usage-today')!.textContent).toContain('输入 1.5k');
+    expect(document.querySelector('#usage')!.textContent).toContain('1.5k');
   });
 
   it('shows an empty ledger when the read fails', async () => {
@@ -1248,10 +1328,112 @@ describe('usage dialog', () => {
     mount();
     clickButton('#menu-usage');
     await flush();
-    expect(document.querySelector('#usage-today')!.textContent).toBe(
-      '输入 0\n输出 0\n合计 0\n0 次',
+    expect(document.querySelector('#usage-empty')!.textContent).toBe('还没有用量。');
+  });
+
+  it('changes the range, closes the menu, and exports', async () => {
+    await usageLedger.recordUsage(reported, new Date(), { modelId: 'deepseek-chat' });
+    mount();
+    clickButton('#menu-usage');
+    await flush();
+    const rangeButton = document.querySelector<HTMLButtonElement>('.range')!;
+    rangeButton.click();
+    expect(rangeButton.getAttribute('aria-expanded')).toBe('true');
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(rangeButton.getAttribute('aria-expanded')).toBe('false');
+    rangeButton.click();
+    document.querySelector<HTMLButtonElement>('[data-value="30"]')!.click();
+    await flush();
+    expect(document.querySelector('.range')!.textContent).toContain('最近 30 天');
+    document.querySelector<HTMLButtonElement>('.range')!.click();
+    document.querySelector<HTMLButtonElement>('[data-value="all"]')!.click();
+    await flush();
+    expect(document.querySelector('.footer-note')!.textContent).toContain(
+      '成本需要在模型设置中填写价格',
     );
-    expect(document.querySelector('#usage-empty')!.hidden).toBe(false);
+    document.querySelector<HTMLButtonElement>('.range')!.click();
+    document
+      .querySelector('#usage-range-menu')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.querySelector('.range')!.getAttribute('aria-expanded')).toBe('true');
+    const bogus = document.createElement('button');
+    bogus.setAttribute('role', 'option');
+    bogus.dataset.value = 'nope';
+    document.querySelector('#usage-range-menu')!.append(bogus);
+    bogus.click();
+    await flush();
+    expect(document.querySelector('.range')!.textContent).toContain('全部时间');
+    const create = vi.fn(() => 'blob:usage');
+    const revoke = vi.fn();
+    vi.stubGlobal('URL', { ...URL, createObjectURL: create, revokeObjectURL: revoke });
+    vi.useFakeTimers();
+    document.querySelector<HTMLButtonElement>('#usage-export')!.click();
+    expect(create).toHaveBeenCalled();
+    expect(document.querySelector('#usage-export')!.textContent).toBe('已导出');
+    await vi.advanceTimersByTimeAsync(1400);
+    expect(document.querySelector('#usage-export')!.textContent).toBe('导出');
+  });
+
+  it('renders failed tools, second models, and empty range charts', async () => {
+    const today = localDate(new Date());
+    await usageLedger.recordUsageCall(
+      usageLedger.usageCallFromStep(
+        {
+          callId: 'c-slow',
+          stepNumber: 0,
+          model: { provider: 'openai-compatible', modelId: 'deepseek-chat' },
+          usage: reported,
+          finishReason: 'mystery',
+          toolCalls: [{ toolCallId: 't1', toolName: 'observe', input: {} }],
+          toolResults: [],
+          performance: {
+            timeToFirstOutputMs: 1200,
+            responseTimeMs: 2400,
+            stepTimeMs: 2500,
+            toolExecutionMs: { t1: 1200 },
+          },
+        },
+        { kind: 'agent', sessionId: today, turnId: 'a', date: today, ts: Date.now() },
+      ),
+    );
+    await usageLedger.recordUsageCall(
+      usageLedger.usageCallFromStep(
+        {
+          callId: 'c-other',
+          stepNumber: 0,
+          model: { provider: 'acme', modelId: 'other-model' },
+          usage: { ...reported, totalTokens: 1000, inputTokens: 500, outputTokens: 500 },
+          finishReason: 'length',
+          toolCalls: [{ toolCallId: 't2', toolName: 'pick_up', input: {} }],
+          toolResults: [{ toolCallId: 't2', output: { ok: true } }],
+          performance: { responseTimeMs: 100, stepTimeMs: 110, toolExecutionMs: { t2: 40 } },
+        },
+        { kind: 'summary', sessionId: today, turnId: 'b', date: today, ts: Date.now() + 1 },
+      ),
+    );
+    mount();
+    clickButton('#menu-usage');
+    await flush();
+    const page = document.querySelector('#usage')!.textContent ?? '';
+    expect(page).toContain('失败');
+    expect(page).toContain('other-model');
+    expect(page).toContain('acme');
+    expect(page).toContain('2.5s');
+    expect(page).toContain('mystery');
+    expect(page).toContain('长度限制');
+    expect(document.querySelectorAll('.model-dot.blue').length).toBeGreaterThan(0);
+    document.querySelector<HTMLButtonElement>('#usage-export')!.click();
+    vi.spyOn(usageLedger, 'readUsage').mockRejectedValue(new Error('down'));
+    document.querySelector<HTMLButtonElement>('.range')!.click();
+    document.querySelector<HTMLButtonElement>('[data-value="30"]')!.click();
+    await flush();
+    expect(document.querySelectorAll('.bar-group')).toHaveLength(30);
+    expect(document.querySelector('.kpi-foot')!.textContent).toContain('较前 30 天');
+    document.querySelector<HTMLButtonElement>('.range')!.click();
+    document.querySelector<HTMLButtonElement>('[data-value="all"]')!.click();
+    await flush();
+    expect(document.querySelectorAll('.bar-group')).toHaveLength(1);
+    expect(document.querySelector('.kpi-foot')!.textContent).toBe('实际请求');
   });
 });
 

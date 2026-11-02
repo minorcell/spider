@@ -217,7 +217,90 @@ describe('runAgent', () => {
       {
         text: 'a',
         usage: null,
+        calls: [],
       },
     );
+  });
+
+  it('makes a turn id when randomUUID is missing', async () => {
+    vi.stubGlobal('crypto', {});
+    stream([]);
+    await expect(runAgent({ goal: 'go', session: fakeSession(), settings })).resolves.toMatchObject(
+      {
+        calls: [],
+      },
+    );
+  });
+
+  it('records each model step and failed tools', async () => {
+    aiControl.streamText.mockImplementation(
+      (options: {
+        onToolExecutionEnd?: (event: unknown) => void;
+        onStepEnd?: (step: unknown) => void;
+      }) => {
+        options.onToolExecutionEnd?.({
+          toolCall: { toolCallId: 't1', toolName: 'observe', input: { n: 1 } },
+          toolOutput: { type: 'tool-result', output: { ok: true } },
+          toolExecutionMs: 18,
+        });
+        options.onToolExecutionEnd?.({
+          toolCall: { toolCallId: 't2', toolName: 'pick_up', input: {} },
+          toolOutput: { type: 'tool-error', error: new Error('nope') },
+          toolExecutionMs: 4,
+        });
+        options.onStepEnd?.({
+          callId: 'c1',
+          stepNumber: 0,
+          model: { provider: 'openai-compatible', modelId: 'deepseek-chat' },
+          usage: {
+            inputTokens: 10,
+            outputTokens: 2,
+            totalTokens: 12,
+            inputTokenDetails: { noCacheTokens: 6, cacheReadTokens: 4, cacheWriteTokens: 0 },
+            outputTokenDetails: { textTokens: 2, reasoningTokens: 0 },
+          },
+          finishReason: 'tool-calls',
+          toolCalls: [
+            { toolCallId: 't1', toolName: 'observe', input: { n: 1 } },
+            { toolCallId: 't2', toolName: 'pick_up', input: {} },
+          ],
+          toolResults: [{ toolCallId: 't1', output: { ok: true } }],
+          performance: {
+            timeToFirstOutputMs: 80,
+            responseTimeMs: 200,
+            stepTimeMs: 240,
+            toolExecutionMs: { t1: 18, t2: 4 },
+          },
+        });
+        options.onStepEnd?.({
+          callId: 'c1',
+          stepNumber: 1,
+          model: { provider: 'openai-compatible', modelId: 'deepseek-chat' },
+          finishReason: 'stop',
+          toolCalls: [{ toolCallId: 't3', toolName: 'wait', input: null }],
+          toolResults: [{ toolCallId: 'other', output: { ok: true } }],
+          performance: { responseTimeMs: 100, stepTimeMs: 120, toolExecutionMs: {} },
+        });
+        return {
+          fullStream: (async function* generate() {
+            yield { type: 'text-delta', text: 'ok' };
+          })(),
+          usage: Promise.resolve(undefined),
+        };
+      },
+    );
+    const answer = await runAgent({ goal: 'go', session: fakeSession(), settings });
+    expect(answer.calls).toHaveLength(2);
+    expect(answer.calls[0]).toMatchObject({
+      id: 'c1:0',
+      kind: 'agent',
+      modelId: 'deepseek-chat',
+      finishReason: 'tool-calls',
+    });
+    expect(answer.calls[0].tools).toEqual([
+      expect.objectContaining({ name: 'observe', ok: true, durationMs: 18 }),
+      expect.objectContaining({ name: 'pick_up', ok: false, durationMs: 4 }),
+    ]);
+    expect(answer.calls[1].tools[0]).toMatchObject({ name: 'wait', ok: false });
   });
 });

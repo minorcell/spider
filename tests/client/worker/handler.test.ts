@@ -120,6 +120,39 @@ describe('journal worker handler', () => {
       today: { total: number };
     };
     expect(usage.today.total).toBe(30);
+    const date = localDate(new Date());
+    await handle({
+      id: 5,
+      method: 'recordUsageCall',
+      args: [
+        {
+          id: 'c1:0',
+          ts: Date.now(),
+          date,
+          kind: 'agent',
+          sessionId: date,
+          turnId: 't',
+          step: 0,
+          provider: 'openai-compatible',
+          modelId: 'deepseek-chat',
+          total: 4,
+          input: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
+          output: { total: 2, text: 2, reasoning: 0 },
+          tools: [
+            { id: 't1', name: 'observe', ok: true, durationMs: 8, inputBytes: 1, outputBytes: 2 },
+          ],
+          timing: { responseMs: 20, stepMs: 30 },
+          finishReason: 'stop',
+        },
+      ],
+    });
+    const detailed = (await handle({
+      id: 6,
+      method: 'readUsage',
+      args: [date, '7'],
+    })) as { kpis: { calls: number }; requests: unknown[] };
+    expect(detailed.kpis.calls).toBeGreaterThanOrEqual(3);
+    expect(detailed.requests.length).toBeGreaterThanOrEqual(3);
   });
 
   it('keeps concurrent requests in arrival order', async () => {

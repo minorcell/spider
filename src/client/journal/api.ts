@@ -3,7 +3,7 @@ import type { MemoryPage } from './db.js';
 import type { MemoryApi, MemoryView, MemoryWrite } from './diary.js';
 import type { ChatSession, Trace } from './session.js';
 import type { SnapshotStore } from './store.js';
-import type { UsageSnapshot } from './usage.js';
+import type { UsageCall, UsageCallMeta, UsageRange, UsageSnapshot } from './usage.js';
 import type { PilotSettings } from '../settings.js';
 
 /** What the panel needs from today's conversation and the diary. */
@@ -21,8 +21,13 @@ export interface Journal {
   record(user: string, assistant: string, tools: Trace[], settings: PilotSettings): Promise<void>;
   digest(settings: PilotSettings): Promise<void>;
   backfill(settings: PilotSettings): Promise<void>;
-  recordUsage(usage: LanguageModelUsage | null | undefined, now?: Date): Promise<void>;
-  readUsage(today: string): Promise<UsageSnapshot>;
+  recordUsage(
+    usage: LanguageModelUsage | null | undefined,
+    now?: Date,
+    meta?: UsageCallMeta,
+  ): Promise<void>;
+  recordUsageCall(call: UsageCall): Promise<void>;
+  readUsage(today: string, range?: UsageRange): Promise<UsageSnapshot>;
 }
 
 export interface OpenedJournal {

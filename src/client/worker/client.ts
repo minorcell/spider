@@ -5,7 +5,7 @@ import type { MemoryPage } from '../journal/db.js';
 import type { MemoryApi, MemoryView, MemoryWrite } from '../journal/diary.js';
 import { blankSession, type ChatSession, type Trace } from '../journal/session.js';
 import type { SnapshotStore } from '../journal/store.js';
-import type { UsageSnapshot } from '../journal/usage.js';
+import type { UsageCall, UsageCallMeta, UsageRange, UsageSnapshot } from '../journal/usage.js';
 import type { PilotSettings } from '../settings.js';
 import type { JournalReply, JournalRequest, JournalResultMap } from './protocol.js';
 
@@ -117,16 +117,28 @@ export class WorkerJournal implements Journal, SnapshotStore {
     }));
   }
 
-  async recordUsage(usage: LanguageModelUsage | null | undefined, now = new Date()): Promise<void> {
+  async recordUsage(
+    usage: LanguageModelUsage | null | undefined,
+    now = new Date(),
+    meta?: UsageCallMeta,
+  ): Promise<void> {
     this.#state = await this.#call<'recordUsage'>((id) => ({
       id,
       method: 'recordUsage',
-      args: [usage, now.getTime()],
+      args: meta == null ? [usage, now.getTime()] : [usage, now.getTime(), meta],
     }));
   }
 
-  async readUsage(today: string): Promise<UsageSnapshot> {
-    return this.#call<'readUsage'>((id) => ({ id, method: 'readUsage', args: [today] }));
+  async recordUsageCall(call: UsageCall): Promise<void> {
+    this.#state = await this.#call<'recordUsageCall'>((id) => ({
+      id,
+      method: 'recordUsageCall',
+      args: [call],
+    }));
+  }
+
+  async readUsage(today: string, range?: UsageRange): Promise<UsageSnapshot> {
+    return this.#call<'readUsage'>((id) => ({ id, method: 'readUsage', args: [today, range] }));
   }
 
   async readSnapshot(): Promise<unknown> {

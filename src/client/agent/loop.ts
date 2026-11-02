@@ -4,6 +4,7 @@ import { CARRY_LIMIT } from '../../shared/config.js';
 import type { SimSession } from '../../shared/sim/session.js';
 import type { MemoryApi } from '../journal/diary.js';
 import { toMessages, type ChatSession } from '../journal/session.js';
+import { byteSize, usageCallFromStep, type UsageCall, type UsageTool } from '../journal/usage.js';
 import { localDate } from '../../shared/dates.js';
 import type { PilotSettings } from '../settings.js';
 import { spiderTools } from './tools.js';
@@ -43,6 +44,7 @@ export type AgentEvent =
 export interface AgentReply {
   text: string;
   usage: LanguageModelUsage | null;
+  calls: UsageCall[];
 }
 
 export interface RunAgentOptions {
@@ -82,6 +84,9 @@ export async function runAgent({
   signal?.addEventListener('abort', () => session.cancel(), { once: true });
 
   const today = chat?.date ?? localDate(new Date());
+  const turnId = uniqueId();
+  const calls: UsageCall[] = [];
+  const pendingTools = new Map<string, UsageTool>();
   const result = streamText({
     model: provider(settings.model),
     system: systemFor(
@@ -105,6 +110,43 @@ export async function runAgent({
         name: event.toolCall.toolName,
         input: event.toolCall.input,
       });
+    },
+    onToolExecutionEnd(event) {
+      const output = event.toolOutput;
+      const ok = output.type === 'tool-result';
+      pendingTools.set(event.toolCall.toolCallId, {
+        id: event.toolCall.toolCallId,
+        name: event.toolCall.toolName,
+        ok,
+        durationMs: finiteMs(event.toolExecutionMs),
+        inputBytes: byteSize(event.toolCall.input),
+        outputBytes: ok ? byteSize(output.output) : byteSize(output.error),
+      });
+    },
+    onStepEnd(step) {
+      const tools = step.toolCalls.map((call) => {
+        const recorded = pendingTools.get(call.toolCallId);
+        if (recorded) return recorded;
+        const matched = step.toolResults.find((item) => item.toolCallId === call.toolCallId);
+        return {
+          id: call.toolCallId,
+          name: call.toolName,
+          ok: matched != null,
+          durationMs: finiteMs(step.performance.toolExecutionMs[call.toolCallId]),
+          inputBytes: byteSize(call.input),
+          outputBytes: byteSize(matched?.output),
+        };
+      });
+      calls.push(
+        usageCallFromStep(step, {
+          kind: 'agent',
+          sessionId: today,
+          turnId,
+          date: today,
+          ts: Date.now(),
+          tools,
+        }),
+      );
     },
   });
 
@@ -132,7 +174,7 @@ export async function runAgent({
         break;
     }
   }
-  return { text: answer, usage: await takenUsage(result.usage) };
+  return { text: answer, usage: await takenUsage(result.usage), calls };
 }
 
 async function takenUsage(
@@ -147,4 +189,14 @@ async function takenUsage(
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function uniqueId(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function finiteMs(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }

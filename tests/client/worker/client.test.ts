@@ -145,8 +145,40 @@ describe('WorkerJournal', () => {
       method: 'recordUsage',
       args: [usage, now.getTime()],
     });
+    await call(
+      port,
+      () => journal.recordUsage(usage, now, { kind: 'summary', modelId: 'm' }),
+      STATE,
+    );
+    expect(port.last).toMatchObject({
+      method: 'recordUsage',
+      args: [usage, now.getTime(), { kind: 'summary', modelId: 'm' }],
+    });
     expect(await call(port, () => journal.readUsage('2026-11-02'), { days: [] })).toEqual({
       days: [],
+    });
+
+    const recorded = {
+      id: 'c1:0',
+      ts: now.getTime(),
+      date: '2026-11-02',
+      kind: 'agent' as const,
+      sessionId: '2026-11-02',
+      turnId: 't',
+      step: 0,
+      provider: 'openai-compatible',
+      modelId: 'deepseek-chat',
+      total: 3,
+      input: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+      output: { total: 2, text: 2, reasoning: 0 },
+      tools: [],
+      timing: { responseMs: 10, stepMs: 12 },
+      finishReason: 'stop',
+    };
+    await call(port, () => journal.recordUsageCall(recorded), STATE);
+    expect(port.last).toMatchObject({ method: 'recordUsageCall', args: [recorded] });
+    expect(await call(port, () => journal.readUsage('2026-11-02', '7'), { range: '7' })).toEqual({
+      range: '7',
     });
   });
 

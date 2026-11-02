@@ -1,19 +1,3 @@
-import { formatTokens } from '../journal/tokens.js';
-
-export function usageFigure(row: {
-  input: number;
-  output: number;
-  total: number;
-  calls: number;
-}): string {
-  return [
-    `输入 ${formatTokens(row.input)}`,
-    `输出 ${formatTokens(row.output)}`,
-    `合计 ${formatTokens(row.total)}`,
-    `${row.calls} 次`,
-  ].join('\n');
-}
-
 export function numberOrNull(value: string): number | null {
   if (!value.trim()) return null;
   const number = Number(value);

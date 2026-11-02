@@ -46,11 +46,6 @@ export function mountPanel(
   const leaveClose = doc.querySelector<HTMLButtonElement>('#leave-close');
   const leaveSummarize = doc.querySelector<HTMLButtonElement>('#leave-summarize');
   const usageDialog = doc.querySelector<HTMLDialogElement>('#usage');
-  const usageClose = doc.querySelector<HTMLButtonElement>('#usage-close');
-  const usageToday = doc.querySelector<HTMLElement>('#usage-today');
-  const usageTotal = doc.querySelector<HTMLElement>('#usage-total');
-  const usageDays = doc.querySelector<HTMLOListElement>('#usage-days');
-  const usageEmpty = doc.querySelector<HTMLElement>('#usage-empty');
   if (
     !form ||
     !goal ||
@@ -73,12 +68,7 @@ export function mountPanel(
     !leave ||
     !leaveClose ||
     !leaveSummarize ||
-    !usageDialog ||
-    !usageClose ||
-    !usageToday ||
-    !usageTotal ||
-    !usageDays ||
-    !usageEmpty
+    !usageDialog
   ) {
     throw new Error('Missing pilot chrome');
   }
@@ -284,11 +274,6 @@ export function mountPanel(
     doc,
     menuUsage,
     usageDialog,
-    usageClose,
-    usageToday,
-    usageTotal,
-    usageDays,
-    usageEmpty,
     setMenu,
     getJournal,
     journalReady,
@@ -366,7 +351,11 @@ export function mountPanel(
         },
       });
       const answer = reply.text;
-      await opened?.recordUsage(reply.usage);
+      if (reply.calls && reply.calls.length > 0) {
+        for (const call of reply.calls) await opened?.recordUsageCall(call);
+      } else {
+        await opened?.recordUsage(reply.usage);
+      }
       if (controller.signal.aborted) {
         if (!replaced.has(controller)) show('已停止', 'note');
         release(controller);
