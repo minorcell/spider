@@ -137,9 +137,7 @@ describe('journal worker handler', () => {
 
   it('advances the queue after a failed request', async () => {
     const handle = createHandler();
-    await expect(
-      handle({ id: 1, method: 'record', args: undefined } as never),
-    ).rejects.toThrow();
+    await expect(handle({ id: 1, method: 'record', args: undefined } as never)).rejects.toThrow();
     expect(await handle({ id: 2, method: 'state' })).toMatchObject({
       date: localDate(new Date()),
     });

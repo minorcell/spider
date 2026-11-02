@@ -223,8 +223,7 @@ export class Stage {
           drapeGrass(prop, x, z, (px, pz) => world.terrain.height(px, pz));
           this.#drapedGrass.set(entity.id, { x, z, terrain: world.terrain });
         }
-      }
-      else prop.position.set(x, y, z);
+      } else prop.position.set(x, y, z);
     }
 
     for (const [id, prop] of this.#props) {
