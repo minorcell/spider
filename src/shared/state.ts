@@ -38,6 +38,9 @@ export interface EntityState {
   stage: number;
   /** Collision or cover size. Not reported in a look. */
   footprint?: Footprint;
+  /** Horizontal velocity for props that physics moves. */
+  vx?: number;
+  vz?: number;
 }
 
 /** A solid the spider cannot enter, and cannot see through. */
@@ -64,6 +67,14 @@ export interface WorldState {
   appleIn?: number;
   /** How many times this island has tried to grow an apple. */
   sprouts?: number;
+  /** The island's physical rules. Absent on hand-built test worlds. */
+  physics?: {
+    gravity: number;
+    damping: number;
+    sleepSlope: number;
+    sleepSpeed: number;
+    maxSpeed: number;
+  };
 }
 
 export interface SeenEntity {

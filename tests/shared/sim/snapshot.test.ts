@@ -70,6 +70,39 @@ describe('snapshot', () => {
     expect(first.spider.halt).toBe('solid');
   });
 
+  it('keeps prop velocities and rejects broken ones', () => {
+    const base = good();
+    const apple = base.entities.find((entity) => entity.kind === 'apple')!;
+    const withMotion = {
+      ...base,
+      entities: base.entities.map((entity) =>
+        entity === apple ? { ...entity, vx: 1.5, vz: -0.5 } : entity,
+      ),
+    };
+    const ok = classify(withMotion, today);
+    expect(ok.status).toBe('ok');
+    if (ok.status === 'ok') {
+      expect(ok.record.entities.find((entity) => entity.id === apple.id)).toMatchObject({
+        vx: 1.5,
+        vz: -0.5,
+      });
+    }
+    const badVx = {
+      ...withMotion,
+      entities: withMotion.entities.map((entity) =>
+        entity.id === apple.id ? { ...entity, vx: 'fast' } : entity,
+      ),
+    };
+    expect(classify(badVx, today).status).toBe('malformed');
+    const badVz = {
+      ...withMotion,
+      entities: withMotion.entities.map((entity) =>
+        entity.id === apple.id ? { ...entity, vz: Number.NaN } : entity,
+      ),
+    };
+    expect(classify(badVz, today).status).toBe('malformed');
+  });
+
   it('cuts a long sentence down to the stored limit', () => {
     const body = captureBody(session(), { text: '虫'.repeat(5000), tool: 'n'.repeat(40) });
     expect(body.pending?.text).toHaveLength(4000);

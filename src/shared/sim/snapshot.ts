@@ -200,6 +200,9 @@ function readEntity(value: unknown): EntityState | null {
     return null;
   }
   if (!footprintOk(raw.footprint)) return null;
+  const vx = optionalNumber(raw.vx);
+  const vz = optionalNumber(raw.vz);
+  if (vx === null || vz === null) return null;
   const entity: EntityState = {
     id: raw.id,
     kind: raw.kind,
@@ -209,7 +212,15 @@ function readEntity(value: unknown): EntityState | null {
     stage: raw.stage as number,
   };
   if (raw.footprint) entity.footprint = raw.footprint as Footprint;
+  if (vx !== undefined) entity.vx = vx;
+  if (vz !== undefined) entity.vz = vz;
   return entity;
+}
+
+/** 缺省或有限数字；其他值是坏记录。 */
+function optionalNumber(value: unknown): number | undefined | null {
+  if (value === undefined) return undefined;
+  return isFiniteNumber(value) ? value : null;
 }
 
 function readSpider(value: unknown): SpiderState | null {

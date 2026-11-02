@@ -29,6 +29,7 @@ import { CARRY_LIMIT } from '../config.js';
 import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal, type Goal } from './goals.js';
 import { planRoute } from '../route.js';
 import { applyBody, type SimBody } from './snapshot.js';
+import { stepPhysics } from './physics.js';
 import { Spider } from './Spider.js';
 
 /** A sentence for a detour the body already took. Null when the straight walk was clear. */
@@ -523,6 +524,15 @@ export class SimSession {
 
     const active = this.#active;
     this.spider.update(dt, active ? active.goal.controls() : IDLE_CONTROLS);
+    stepPhysics(
+      this.world,
+      {
+        x: this.spider.root.position.x,
+        z: this.spider.root.position.z,
+        speed: this.spider.speed,
+      },
+      dt,
+    );
     if (!active) return;
 
     const reached = active.goal.done();

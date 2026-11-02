@@ -28,6 +28,16 @@ export const DECK_Y = 0.78;
 /** How many things can sit on the spider's back at once. */
 export const CARRY_LIMIT = 7;
 
+/** The island's physical rules. Everything that moves reads these numbers. */
+export const PHYSICS = {
+  gravity: 9.8,
+  /** 1/s, rolling friction. */
+  damping: 2.4,
+  sleepSlope: 0.08,
+  sleepSpeed: 0.03,
+  maxSpeed: 5,
+} as const;
+
 export interface MountSpec {
   readonly x: number;
   readonly y: number;

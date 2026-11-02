@@ -1,6 +1,8 @@
+import { PHYSICS } from './config.js';
 import { kindOf } from './kinds.js';
 import { mulberry32 } from './noise.js';
 import { blockedAt } from './sight.js';
+import { stepPhysics } from './sim/physics.js';
 import type { Block, EntityState, Footprint, WorldState } from './state.js';
 import { surfaceAt, Terrain, TERRAIN } from './terrain.js';
 
@@ -34,8 +36,8 @@ const quantize = (value: number): number => Math.round(value * 10) / 10;
 const CLEARANCE = 0.03;
 
 /**
- * Height to sit a prop on. Grass is a patch draped per blade, so its anchor is
- * the center. Anything solid is lifted to the highest ground under its footprint.
+ * Height to sit a prop on. A kind with no contact radius anchors at the center
+ * sample. Anything with a radius is lifted to the highest ground under that disc.
  */
 export function restingY(
   terrain: { height(x: number, z: number): number },
@@ -44,16 +46,16 @@ export function restingY(
   z: number,
   footprint?: Footprint,
 ): number {
-  const rest = kindOf(kind)?.rest ?? 0;
-  if (kind === 'grass' || kind === 'nest') return terrain.height(x, z) + rest;
+  const spec = kindOf(kind);
+  const rest = spec?.rest ?? 0;
+  const body = spec?.physics?.radius ?? 0.2;
+  if (body <= 0) return terrain.height(x, z) + rest;
   const radius =
     footprint?.kind === 'circle'
       ? footprint.r
       : footprint?.kind === 'box'
         ? Math.hypot(footprint.hx, footprint.hz)
-        : kind === 'apple'
-          ? 0.36
-          : 0.2;
+        : body;
   let top = surfaceAt(terrain.height.bind(terrain), x, z);
   for (const ring of [radius * 0.5, radius]) {
     for (let i = 0; i < 12; i++) {
@@ -95,6 +97,7 @@ export function createWorld(seed = Math.floor(Math.random() * 1_000_000_000)): W
     carrying: [],
     appleIn: APPLE_EVERY,
     sprouts: 0,
+    physics: PHYSICS,
   };
 }
 
@@ -120,12 +123,15 @@ export function grow(world: WorldState, dt: number, avoid?: { x: number; z: numb
   for (let guard = 0; guard < SPROUT_TRIES; guard++) {
     const spot = roll(rng, world.terrain, placed, world.blocks, 'apple', 6, avoid);
     if (!spot) continue;
+    const settled = settle(world.terrain, world.blocks, 'apple', spot, placed, avoid);
+    /* v8 ignore next */
+    if (!settled) continue;
     world.entities.push({
       id: nextPropId(world, 'apple'),
       kind: 'apple',
-      x: spot.x,
-      y: restingY(world.terrain, 'apple', spot.x, spot.z),
-      z: spot.z,
+      x: settled.x,
+      y: restingY(world.terrain, 'apple', settled.x, settled.z),
+      z: settled.z,
       stage: 0,
     });
     return;
@@ -192,19 +198,117 @@ function scatter(
     guard += 1;
     const spot = roll(rng, terrain, placed, blocks, kind, minFromHome);
     if (!spot) continue;
+    const settled = settle(terrain, blocks, kind, spot, placed);
+    if (!settled) continue;
     const footprint = kind === 'grass' ? { kind: 'circle' as const, r: 3.2 } : undefined;
-    placed.push(spot);
+    placed.push(settled);
     entities.push({
       id: `${kind}-${entities.length + 1}`,
       kind,
-      x: spot.x,
-      y: restingY(terrain, kind, spot.x, spot.z, footprint),
-      z: spot.z,
+      x: settled.x,
+      y: restingY(terrain, kind, settled.x, settled.z, footprint),
+      z: settled.z,
       stage: 0,
       footprint,
     });
   }
   return entities;
+}
+
+/** Deep enough that a loose body is in the water and should not be placed. */
+const WATER = -0.7;
+const SETTLE_STEPS = 30;
+const SETTLE_DT = 1 / 15;
+
+/**
+ * Where a placed thing comes to rest. Fixed kinds stay on the spot they were
+ * given. Loose kinds run the same solver the island steps every frame, then
+ * the spot is kept only if it is dry, on land, clear of walls and neighbors.
+ */
+export function settle(
+  terrain: { height(x: number, z: number): number },
+  blocks: readonly Block[],
+  kind: string,
+  start: { x: number; z: number },
+  placed: { x: number; z: number }[],
+  avoid?: { x: number; z: number },
+): { x: number; z: number } | null {
+  const spec = kindOf(kind)?.physics;
+  if (!spec?.loose) return { x: start.x, z: start.z };
+
+  const entity: EntityState = {
+    id: 'settle',
+    kind,
+    x: start.x,
+    y: 0,
+    z: start.z,
+    stage: 0,
+    vx: 0,
+    vz: 0,
+  };
+  const scratch: WorldState = {
+    seed: 0,
+    terrain,
+    entities: [entity],
+    blocks: [...blocks],
+    carrying: [],
+    physics: PHYSICS,
+  };
+  const far = { x: 1e6, z: 1e6, speed: 0 };
+  const run = (): void => {
+    for (let step = 0; step < SETTLE_STEPS; step++) {
+      stepPhysics(scratch, far, SETTLE_DT);
+      if (entity.vx === 0 && entity.vz === 0) return;
+    }
+  };
+  run();
+  // A crest is flat in the center and lower all around. Step off it and settle again.
+  const lower = lowerAround(terrain, entity.x, entity.z);
+  if (lower) {
+    entity.x = lower.x;
+    entity.z = lower.z;
+    entity.vx = 0;
+    entity.vz = 0;
+    run();
+  }
+
+  const x = quantize(entity.x);
+  const z = quantize(entity.z);
+  // A wall stops a loose body while the ground under it is still steep.
+  // That is not a rest. A slope it is still crossing can be placed; the solver
+  // keeps moving it after the world starts.
+  const slope = Math.hypot(
+    terrain.height(x + 0.5, z) - terrain.height(x - 0.5, z),
+    terrain.height(x, z + 0.5) - terrain.height(x, z - 0.5),
+  );
+  const asleep = entity.vx === 0 && entity.vz === 0;
+  if (asleep && slope > PHYSICS.sleepSlope) return null;
+  if (terrain.height(x, z) < WATER) return null;
+  if (Math.hypot(x, z) > TERRAIN.island * 0.7) return null;
+  if (avoid && Math.hypot(avoid.x - x, avoid.z - z) < SPROUT_CLEAR) return null;
+  if (placed.some((point) => Math.hypot(point.x - x, point.z - z) < MIN_GAP)) return null;
+  if (blockedAt(x, z, blocks, spec.radius)) return null;
+  return { x, z };
+}
+
+/** The lowest neighbor when the center is a crest. Null on a hollow or a plain. */
+function lowerAround(
+  terrain: { height(x: number, z: number): number },
+  x: number,
+  z: number,
+): { x: number; z: number } | null {
+  let lowest = terrain.height(x, z);
+  let spot: { x: number; z: number } | null = null;
+  for (let k = 0; k < 8; k++) {
+    const angle = (k / 8) * Math.PI * 2;
+    const px = x + Math.cos(angle) * 0.5;
+    const pz = z + Math.sin(angle) * 0.5;
+    const h = terrain.height(px, pz);
+    if (h >= lowest - 0.03) continue;
+    lowest = h;
+    spot = { x: px, z: pz };
+  }
+  return spot;
 }
 
 /** One scatter try. Null when the point is home, steep, crowded, or under the spider. */

@@ -9,6 +9,7 @@ import {
   grow,
   GRASS_VIEW,
   nestBlocks,
+  settle,
   REACH,
   REACH_Y,
   restingY,
@@ -151,6 +152,55 @@ describe('nestBlocks', () => {
   });
 });
 
+describe('settle', () => {
+  const flat = { height: () => 0 };
+
+  it('leaves a fixed kind where it was put', () => {
+    const slope = { height: (x: number) => x * 0.5 };
+    expect(settle(slope, [], 'grass', { x: 5, z: 1 }, [])).toEqual({ x: 5, z: 1 });
+  });
+
+  it('keeps a loose body on a flat spot', () => {
+    expect(settle(flat, [], 'apple', { x: 2, z: -1 }, [])).toEqual({ x: 2, z: -1 });
+  });
+
+  it('keeps a loose body that is still crossing a slope', () => {
+    const slope = { height: (x: number) => x * 0.2 };
+    const settled = settle(slope, [], 'apple', { x: 2, z: 1 }, [], { x: 30, z: 30 });
+    expect(settled).not.toBeNull();
+    expect(settled!.x).toBeLessThan(2);
+  });
+
+  it('rolls a loose body to a lower spot', () => {
+    const slope = { height: (x: number) => Math.max(-0.5, x * 0.5) };
+    const settled = settle(slope, [], 'apple', { x: 5, z: 0 }, [])!;
+    expect(settled.x).toBeLessThan(5);
+  });
+
+  it('leaves a ridge crest for a lower neighbour', () => {
+    const ridge = { height: (x: number, z: number) => Math.max(-0.5, -Math.hypot(x, z) * 0.5) };
+    const settled = settle(ridge, [], 'apple', { x: 0, z: 0 }, [])!;
+    expect(Math.hypot(settled.x, settled.z)).toBeGreaterThan(0);
+  });
+
+  it('refuses water, the spider, and crowded ground', () => {
+    expect(settle({ height: () => -1 }, [], 'apple', { x: 0, z: 0 }, [])).toBeNull();
+    expect(settle(flat, [], 'apple', { x: 0, z: 0 }, [], { x: 0.5, z: 0 })).toBeNull();
+    expect(settle(flat, [], 'apple', { x: 0, z: 0 }, [{ x: 0.5, z: 0 }])).toBeNull();
+  });
+
+  it('stops when the roll hits a wall, a solid, or the island edge', () => {
+    const downhill = { id: 'wall', minX: -2, maxX: 0.2, minZ: -1, maxZ: 1, height: 1 };
+    expect(
+      settle({ height: (x: number) => x * 0.5 }, [downhill], 'apple', { x: 3, z: 0 }, []),
+    ).toBeNull();
+    const buried = { id: 'wall', minX: -1, maxX: 1, minZ: -1, maxZ: 1, height: 1 };
+    expect(settle(flat, [buried], 'apple', { x: 0, z: 0 }, [])).toBeNull();
+    const rim = { height: (x: number) => (x < 35.2 ? (35.2 - x) * 0.5 : 0) };
+    expect(settle(rim, [], 'apple', { x: 31, z: 0 }, [])).toBeNull();
+  });
+});
+
 describe('createWorld', () => {
   it('builds the same island for a seed', () => {
     const a = createWorld(1234);
@@ -284,7 +334,8 @@ describe('grow', () => {
     control.queue = [...rolls];
     grow(world, 0, { x: 0, z: 0 });
     const apple = world.entities.find((entity) => entity.kind === 'apple');
-    expect(apple).toMatchObject({ x: quantized(spot.x), z: quantized(spot.z) });
+    expect(apple).toBeTruthy();
+    expect(Math.hypot(apple!.x - quantized(spot.x), apple!.z - quantized(spot.z))).toBeLessThan(6);
 
     control.enabled = false;
     const stuck = bare(seed);
