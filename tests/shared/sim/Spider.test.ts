@@ -129,7 +129,7 @@ describe('Spider', () => {
 
   it('keeps the shell above a steep face', () => {
     const rise = 1.6;
-    const grounds = [(x: number, z: number) => -z * rise, (x: number, z: number) => x * rise];
+    const grounds = [(x: number, z: number) => -z * rise, (x: number, _z: number) => x * rise];
     for (const ground of grounds) {
       const spider = new Spider();
       spider.yaw = 0.8;
