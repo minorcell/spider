@@ -1,5 +1,6 @@
-import './styles/sheet.css';
 import { openJournal } from './journal/api.js';
+import { buildChrome } from './panel/chrome.js';
+import { paintDocument, paintStage } from '../ui/dress.js';
 import { mountPanel } from './panel.js';
 import { Stage } from './stage.js';
 import { flushWorld, installWorldStore, restoreWorld } from './worldStore.js';
@@ -7,6 +8,10 @@ import { SimSession } from '../shared/sim/session.js';
 
 const host = document.querySelector<HTMLElement>('#stage');
 if (!host) throw new Error('Missing #stage host element');
+const parent = host.parentElement!;
+paintDocument(document);
+paintStage(parent, host);
+parent.append(buildChrome(document));
 
 const session = new SimSession();
 let stage: Stage | undefined;

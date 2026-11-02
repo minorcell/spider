@@ -12,6 +12,7 @@ import { PALETTE } from '../shared/config.js';
 import { TERRAIN } from '../shared/terrain.js';
 import type { EntityState, WorldState } from '../shared/state.js';
 import type { Spider } from '../shared/sim/Spider.js';
+import { paintCanvas } from '../ui/dress.js';
 import { buildIsland } from './groundView.js';
 import { ObserveOverlay } from './observeView.js';
 import { buildProp, drapeGrass } from './props.js';
@@ -94,6 +95,7 @@ export class Stage {
     this.#renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
     this.#renderer.setClearColor(PALETTE.paper, 1);
     host.appendChild(this.#renderer.domElement);
+    paintCanvas(this.#renderer.domElement);
 
     this.#camera = new PerspectiveCamera(VIEW.fov, 1, VIEW.near, VIEW.far);
     this.#observe = new ObserveOverlay(host);

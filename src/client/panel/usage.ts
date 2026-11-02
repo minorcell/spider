@@ -1,4 +1,9 @@
 import { localDate, shiftDate } from '../../shared/dates.js';
+import { dressUsage } from '../../ui/dress.js';
+import { button } from '../../ui/button/index.js';
+import { donutChart, stackedBarChart } from '../../ui/chart/index.js';
+import { h } from '../../ui/dom/index.js';
+import { menuSelect, type MenuSelect } from '../../ui/select/index.js';
 import type { Journal } from '../journal/api.js';
 import { formatTokens } from '../journal/tokens.js';
 import {
@@ -26,8 +31,6 @@ const FINISH_LABEL: Record<string, string> = {
   other: '其他',
   'content-filter': '内容过滤',
 };
-
-const DONUT = ['#1b1714', '#8e877e', '#c8c1b7', '#5e5750', '#aaa298'] as const;
 
 export function bindUsage(opts: {
   doc: Document;
@@ -77,47 +80,22 @@ export function bindUsage(opts: {
 
   const render = (snapshot: UsageSnapshot): void => {
     page.replaceChildren(buildPage(doc, snapshot, range));
+    dressUsage(page);
     bindChrome(page, snapshot);
   };
 
   const bindChrome = (root: HTMLElement, snapshot: UsageSnapshot): void => {
-    const rangeButton = root.querySelector<HTMLButtonElement>('.range');
-    const rangeMenu = root.querySelector<HTMLElement>('#usage-range-menu');
-    const exportButton = root.querySelector<HTMLButtonElement>('#usage-export');
-    const setOpen = (open: boolean): void => {
-      rangeButton?.setAttribute('aria-expanded', String(open));
-      rangeMenu!.hidden = !open;
-    };
-    rangeButton?.addEventListener('click', (event) => {
-      event.stopPropagation();
-      setOpen(rangeButton.getAttribute('aria-expanded') !== 'true');
-    });
-    rangeMenu?.addEventListener('click', (event) => {
-      const option = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>(
-        '[role="option"]',
-      );
-      if (!option) return;
-      const next = option.dataset.value;
+    const rangeInput = root.querySelector<MenuSelect>('input[name="usage-range"]')!;
+    rangeInput.addEventListener('change', () => {
+      const next = rangeInput.value;
       if (next === '7' || next === '30' || next === 'all') range = next;
-      setOpen(false);
       void refresh();
     });
-    exportButton?.addEventListener('click', () => {
+    const exportButton = root.querySelector<HTMLButtonElement>('#usage-export')!;
+    exportButton.addEventListener('click', () => {
       exportSnapshot(snapshot, exportButton);
     });
   };
-
-  const onDocumentClick = (event: MouseEvent): void => {
-    /* v8 ignore next */
-    if (!(event.target instanceof Node)) return;
-    if (!page.querySelector('.select-wrap')?.contains(event.target)) {
-      const rangeButton = page.querySelector<HTMLButtonElement>('.range');
-      const rangeMenu = page.querySelector<HTMLElement>('#usage-range-menu');
-      if (rangeButton) rangeButton.setAttribute('aria-expanded', 'false');
-      if (rangeMenu) rangeMenu.hidden = true;
-    }
-  };
-  doc.addEventListener('click', onDocumentClick);
 
   const refresh = async (): Promise<void> => {
     const today = localDate(new Date());
@@ -168,19 +146,6 @@ function buildPage(doc: Document, snapshot: UsageSnapshot, range: UsageRange): H
 }
 
 function buildTop(doc: Document, range: UsageRange): HTMLElement {
-  const options = (['7', '30', 'all'] as const).map((value) =>
-    h(
-      doc,
-      'button',
-      {
-        type: 'button',
-        role: 'option',
-        'data-value': value,
-        'aria-selected': value === range ? 'true' : 'false',
-      },
-      RANGE_LABEL[value],
-    ),
-  );
   return h(
     doc,
     'header',
@@ -196,32 +161,17 @@ function buildTop(doc: Document, range: UsageRange): HTMLElement {
       doc,
       'div',
       { class: 'top-actions' },
-      h(
-        doc,
-        'div',
-        { class: 'select-wrap' },
-        h(
-          doc,
-          'button',
-          {
-            class: 'range',
-            type: 'button',
-            'data-value': range,
-            'aria-haspopup': 'listbox',
-            'aria-expanded': 'false',
-            'aria-controls': 'usage-range-menu',
-          },
-          RANGE_LABEL[range],
-          h(doc, 'span', { class: 'select-arrow', 'aria-hidden': 'true' }, '⌄'),
-        ),
-        h(
-          doc,
-          'div',
-          { class: 'select-menu', id: 'usage-range-menu', role: 'listbox', hidden: true },
-          ...options,
-        ),
-      ),
-      h(doc, 'button', { class: 'ghost', type: 'button', id: 'usage-export' }, '导出'),
+      menuSelect(doc, {
+        name: 'usage-range',
+        menuId: 'usage-range-menu',
+        buttonClass: 'range',
+        value: range,
+        choices: (['7', '30', 'all'] as const).map((value) => ({
+          value,
+          label: RANGE_LABEL[value],
+        })),
+      }),
+      button(doc, '导出', { variant: 'ghost', id: 'usage-export' }),
     ),
   );
 }
@@ -299,107 +249,34 @@ function buildChart(
   range: UsageRange,
 ): HTMLElement {
   const max = niceMax(Math.max(0, ...chart.map((day) => day.total)));
-  const ticks = [max, max * 0.75, max * 0.5, max * 0.25, 0].map((value) =>
-    h(doc, 'span', {}, formatAxis(value)),
-  );
-  const groups = chart.map((day) => {
-    const total = day.total;
-    const stackHeight = max === 0 || total === 0 ? 0 : (total / max) * 100;
-    const inputShare = total === 0 ? 0 : (day.input / total) * 100;
-    const outputShare = total === 0 ? 0 : (day.output / total) * 100;
-    const stack = h(doc, 'div', { class: 'bar-stack' });
-    stack.style.height = `${stackHeight}%`;
-    const inputBar = h(doc, 'i', { class: 'bar input' });
-    const outputBar = h(doc, 'i', { class: 'bar output' });
-    inputBar.style.height = `${inputShare}%`;
-    outputBar.style.height = `${outputShare}%`;
-    stack.append(inputBar, outputBar);
-    return h(
-      doc,
-      'div',
-      { class: 'bar-group' },
-      stack,
-      h(doc, 'small', {}, day.date === today ? '今天' : shortDate(day.date)),
-    );
+  return stackedBarChart(doc, {
+    title: '每日消耗',
+    hint: `token · ${RANGE_LABEL[range]}`,
+    ariaLabel: '每日输入输出 token 柱状图',
+    ticks: [max, max * 0.75, max * 0.5, max * 0.25, 0].map((value) => formatAxis(value)),
+    bars: chart.map((day) => ({
+      label: day.date === today ? '今天' : shortDate(day.date),
+      height: max === 0 || day.total === 0 ? 0 : (day.total / max) * 100,
+      input: day.total === 0 ? 0 : (day.input / day.total) * 100,
+      output: day.total === 0 ? 0 : (day.output / day.total) * 100,
+    })),
   });
-  return h(
-    doc,
-    'article',
-    { class: 'card' },
-    h(
-      doc,
-      'div',
-      { class: 'card-head' },
-      h(doc, 'h2', {}, '每日消耗'),
-      h(doc, 'small', {}, `token · ${RANGE_LABEL[range]}`),
-    ),
-    h(
-      doc,
-      'div',
-      { class: 'chart' },
-      h(doc, 'div', { class: 'y-axis' }, ...ticks),
-      h(doc, 'div', { class: 'bars', 'aria-label': '每日输入输出 token 柱状图' }, ...groups),
-    ),
-    h(
-      doc,
-      'div',
-      { class: 'legend' },
-      h(doc, 'span', {}, '输入'),
-      h(doc, 'span', { class: 'out' }, '输出'),
-    ),
-  );
 }
 
 function buildDonut(doc: Document, snapshot: UsageSnapshot): HTMLElement {
   const parts = compositionOf(snapshot);
-  const total = parts.reduce((sum, part) => sum + part.value, 0);
-  const donut = h(doc, 'div', { class: 'donut' });
-  donut.style.background = donutFill(parts, total);
-  const center = h(
-    doc,
-    'div',
-    { class: 'donut-center' },
-    h(doc, 'strong', {}, formatTokens(snapshot.kpis.input + snapshot.kpis.output)),
-    h(doc, 'small', {}, '总 token'),
-  );
-  const rows = parts.map((part) => {
-    const width = total === 0 ? 0 : (part.value / total) * 100;
-    const fill = h(doc, 'i', { class: `fill ${part.tone}` });
-    fill.style.width = `${width}%`;
-    return h(
-      doc,
-      'div',
-      { class: 'break-row' },
-      h(doc, 'span', { class: 'name' }, part.name),
-      h(doc, 'strong', {}, formatTokens(part.value)),
-      h(doc, 'div', { class: 'track' }, fill),
-    );
+  return donutChart(doc, {
+    title: 'Token 构成',
+    hint: `${formatTokens(snapshot.kpis.input)} 输入 · ${formatTokens(snapshot.kpis.output)} 输出`,
+    center: formatTokens(snapshot.kpis.input + snapshot.kpis.output),
+    caption: '总 token',
+    parts: parts.map((part) => ({
+      name: part.name,
+      value: formatTokens(part.value),
+      amount: part.value,
+      tone: part.tone,
+    })),
   });
-  return h(
-    doc,
-    'article',
-    { class: 'card' },
-    h(
-      doc,
-      'div',
-      { class: 'card-head' },
-      h(doc, 'h2', {}, 'Token 构成'),
-      h(
-        doc,
-        'small',
-        {},
-        `${formatTokens(snapshot.kpis.input)} 输入 · ${formatTokens(snapshot.kpis.output)} 输出`,
-      ),
-    ),
-    h(
-      doc,
-      'div',
-      { class: 'donut-wrap' },
-      donut,
-      center,
-      h(doc, 'div', { class: 'breakdown' }, ...rows),
-    ),
-  );
 }
 
 function buildModels(doc: Document, models: UsageModelRow[]): HTMLElement {
@@ -623,19 +500,6 @@ function compositionOf(
   ];
 }
 
-function donutFill(parts: Array<{ value: number }>, total: number): string {
-  if (total === 0) return 'var(--paper-deep, #e9e4da)';
-  const stops: string[] = [];
-  let start = 0;
-  parts.forEach((part, index) => {
-    if (part.value <= 0) return;
-    const next = start + (part.value / total) * 100;
-    stops.push(`${DONUT[index]} ${start}% ${next}%`);
-    start = next;
-  });
-  return `conic-gradient(${stops.join(', ')})`;
-}
-
 function weekDelta(kpis: UsageKpis, range: UsageRange): string {
   if (kpis.previousCalls == null) return '实际请求';
   const delta = kpis.calls - kpis.previousCalls;
@@ -644,7 +508,7 @@ function weekDelta(kpis: UsageKpis, range: UsageRange): string {
   return `实际请求 · ${label} ${sign}${delta}`;
 }
 
-function exportSnapshot(snapshot: UsageSnapshot, button: HTMLButtonElement): void {
+function exportSnapshot(snapshot: UsageSnapshot, trigger: HTMLButtonElement): void {
   const payload = {
     range: snapshot.range,
     requests: snapshot.kpis.calls,
@@ -665,7 +529,7 @@ function exportSnapshot(snapshot: UsageSnapshot, button: HTMLButtonElement): voi
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const href = URL.createObjectURL(blob);
-  const doc = button.ownerDocument;
+  const doc = trigger.ownerDocument;
   const link = doc.createElement('a');
   link.href = href;
   link.download = 'token-usage-summary.json';
@@ -674,9 +538,9 @@ function exportSnapshot(snapshot: UsageSnapshot, button: HTMLButtonElement): voi
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(href), 0);
-  button.textContent = '已导出';
+  trigger.textContent = '已导出';
   window.setTimeout(() => {
-    button.textContent = '导出';
+    trigger.textContent = '导出';
   }, 1400);
 }
 
@@ -712,20 +576,4 @@ function formatDuration(ms: number | undefined): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = Math.round(ms / 100) / 10;
   return `${seconds.toFixed(1)}s`;
-}
-
-function h<K extends keyof HTMLElementTagNameMap>(
-  doc: Document,
-  tag: K,
-  attrs: Record<string, string | boolean | undefined> = {},
-  ...children: Array<Node | string>
-): HTMLElementTagNameMap[K] {
-  const node = doc.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (key === 'class') node.className = String(value);
-    else if (key === 'hidden') node.hidden = Boolean(value);
-    else node.setAttribute(key, String(value));
-  }
-  for (const child of children) node.append(child);
-  return node;
 }

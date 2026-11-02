@@ -43,7 +43,7 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'src/ui/**/*.test.ts'],
     setupFiles: ['tests/setup.ts'],
     restoreMocks: true,
     coverage: {
@@ -51,7 +51,11 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}', 'worker/src/**/*.js'],
       // Type-only modules carry no runtime statements. The worker entry is the
       // one-line binding to a real Worker global; its handler and transport are tested.
-      exclude: ['src/client/worker/journal.worker.ts', 'src/client/worker/protocol.ts'],
+      exclude: [
+        'src/client/worker/journal.worker.ts',
+        'src/client/worker/protocol.ts',
+        'src/ui/**/*.test.ts',
+      ],
       reporter: ['text', 'lcov'],
       reportsDirectory: 'coverage',
       thresholds: {

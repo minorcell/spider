@@ -4,6 +4,7 @@ import { Diary } from '../../src/client/journal/diary.js';
 import { localDate, shiftDate } from '../../src/shared/dates.js';
 import * as usageLedger from '../../src/client/journal/usage.js';
 import { summarizeDiary } from '../../src/client/journal/summarize.js';
+import { buildChrome } from '../../src/client/panel/chrome.js';
 import { AUTO_MEMORY_IDLE_MS, mountPanel } from '../../src/client/panel.js';
 import { pendingNow, resetWorldStore, type BootNote } from '../../src/client/worldStore.js';
 import { readPilot, writePilot, type PilotSettings } from '../../src/client/settings.js';
@@ -38,53 +39,15 @@ vi.mock('../../src/client/journal/summarize.js', async () => {
   };
 });
 
-const CHROME = `
-  <form id="pilot">
-    <input id="goal" />
-    <button id="pilot-send" type="button">发送</button>
-  </form>
-  <span id="pilot-model"></span>
-  <ol id="trace"></ol>
-  <button id="settings-open" type="button" aria-expanded="false"></button>
-  <button id="observe-open" type="button"></button>
-  <span id="look-hint"></span>
-  <dialog id="settings">
-    <button id="menu-model" type="button">模型</button>
-    <button id="menu-memory" type="button">记忆</button>
-    <button id="menu-usage" type="button">用量</button>
-    <section id="panel-model">
-      <form id="settings-form">
-        <input name="baseURL" />
-        <input name="model" />
-        <input name="apiKey" />
-        <input name="contextTokens" />
-        <input name="compact" type="checkbox" />
-        <input name="compactKb" />
-      </form>
-    </section>
-    <section id="memory" hidden>
-      <form id="memory-form">
-        <input name="autoMemory" type="checkbox" />
-        <select name="date"></select>
-        <input name="line" />
-        <textarea name="noted"></textarea>
-        <textarea name="summary"></textarea>
-      </form>
-      <p id="memory-empty" hidden></p>
-    </section>
-    <section id="usage" hidden></section>
-    <button id="settings-close" type="button"></button>
-  </dialog>
-  <dialog id="leave">
-    <button id="leave-close" type="button"></button>
-    <button id="leave-summarize" type="button"></button>
-  </dialog>
-`;
+function installChrome(): void {
+  document.body.replaceChildren(buildChrome(document));
+}
 
 let stage: {
   setOverlook: ReturnType<typeof vi.fn>;
   voice: ReturnType<typeof vi.fn>;
   follow: ReturnType<typeof vi.fn>;
+  retile: ReturnType<typeof vi.fn>;
 };
 
 function fakeStage(): Stage {
@@ -100,7 +63,7 @@ function ready(): void {
 }
 
 function mount(withHint = true): void {
-  document.body.innerHTML = CHROME;
+  installChrome();
   if (!withHint) document.querySelector('#look-hint')!.remove();
   mountPanel(document, fakeSession(), fakeStage());
 }
@@ -204,7 +167,7 @@ describe('settings dialog', () => {
   it('rejects a missing settings field', () => {
     const onError = vi.fn((event: ErrorEvent) => event.preventDefault());
     window.addEventListener('error', onError);
-    document.body.innerHTML = CHROME;
+    installChrome();
     document.querySelector('[name="apiKey"]')!.remove();
     mountPanel(document, fakeSession(), fakeStage());
     clickButton('#settings-open');
@@ -471,6 +434,7 @@ describe('running a goal', () => {
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
     await flush();
+    document.querySelector<HTMLButtonElement>('#pilot-send')!.type = 'button';
     clickButton('#pilot-send', 0);
     await flush();
     expect(document.querySelector('#pilot-send')!.textContent).toBe('停止');
@@ -678,7 +642,7 @@ describe('diary panel', () => {
   });
 
   it('keeps running when the journal hand-off is empty', async () => {
-    document.body.innerHTML = CHROME;
+    installChrome();
     mountPanel(document, fakeSession(), fakeStage(), undefined, Promise.resolve(null));
     await flush();
     clickButton('#menu-memory');
@@ -716,9 +680,7 @@ describe('diary panel', () => {
     await flush();
     document.querySelector<HTMLInputElement>('[name="line"]')!.value = '新的一句';
     document.querySelector<HTMLTextAreaElement>('[name="noted"]')!.value = '记住';
-    document
-      .querySelector('#memory-form')!
-      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    document.querySelector('[name="line"]')!.dispatchEvent(new Event('input', { bubbles: true }));
     await flush();
     expect(await day.read(day.date)).toMatchObject({ line: '新的一句', noted: '记住' });
   });
@@ -818,7 +780,7 @@ describe('diary panel', () => {
   });
 
   it('throws when the memory form is missing a field', () => {
-    document.body.innerHTML = CHROME;
+    installChrome();
     document.querySelector('#memory-form [name="date"]')!.remove();
     expect(() => mountPanel(document, fakeSession(), fakeStage())).toThrow('Missing pilot chrome');
   });
@@ -853,7 +815,7 @@ describe('diary panel', () => {
     await flush();
     clickButton('#menu-memory');
     await flush();
-    const options = [...document.querySelectorAll('#memory-form option')];
+    const options = [...document.querySelectorAll('#memory-form [role="option"]')];
     expect(options.map((option) => option.textContent)).toEqual([
       `${shiftDate(day.date, -1)} 昨天`,
       day.date,
@@ -1375,6 +1337,10 @@ describe('usage dialog', () => {
     bogus.click();
     await flush();
     expect(document.querySelector('.range')!.textContent).toContain('全部时间');
+    const rangeInput = document.querySelector<HTMLInputElement>('input[name="usage-range"]')!;
+    rangeInput.value = 'nope';
+    rangeInput.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
     const create = vi.fn(() => 'blob:usage');
     const revoke = vi.fn();
     vi.stubGlobal('URL', { ...URL, createObjectURL: create, revokeObjectURL: revoke });
@@ -1518,7 +1484,7 @@ describe('usage dialog', () => {
 
 describe('saved sentence', () => {
   it('puts an unfinished sentence back in the box', () => {
-    document.body.innerHTML = CHROME;
+    installChrome();
     mountPanel(document, fakeSession(), fakeStage(), {
       restored: true,
       cause: null,
@@ -1529,7 +1495,7 @@ describe('saved sentence', () => {
   });
 
   it('says when the snapshot cannot be read', () => {
-    document.body.innerHTML = CHROME;
+    installChrome();
     mountPanel(document, fakeSession(), fakeStage(), {
       restored: false,
       cause: 'malformed',
@@ -1538,7 +1504,7 @@ describe('saved sentence', () => {
     expect(document.querySelector('#trace')!.textContent).toBe(
       '上次的地方读不出来，这是一片新的。',
     );
-    document.body.innerHTML = CHROME;
+    installChrome();
     mountPanel(document, fakeSession(), fakeStage(), {
       restored: false,
       cause: 'format',

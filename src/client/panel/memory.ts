@@ -1,12 +1,12 @@
+import type { MenuSelect } from '../../ui/select/index.js';
 import type { Journal } from '../journal/api.js';
 import { readPilot, writePilot } from '../settings.js';
 
 export function bindMemory(opts: {
-  doc: Document;
   menuMemory: HTMLButtonElement;
   memoryForm: HTMLFormElement;
   memoryEmpty: HTMLElement;
-  dateSelect: HTMLSelectElement;
+  dateSelect: MenuSelect;
   lineInput: HTMLInputElement;
   notedInput: HTMLTextAreaElement;
   summaryInput: HTMLTextAreaElement;
@@ -16,7 +16,6 @@ export function bindMemory(opts: {
   journalReady: Promise<Journal | null>;
 }): void {
   const {
-    doc,
     menuMemory,
     memoryForm,
     memoryEmpty,
@@ -41,14 +40,13 @@ export function bindMemory(opts: {
     /* v8 ignore next */
     if (!opened) return;
     const pages = await opened.pages();
-    dateSelect.replaceChildren();
     memoryEmpty.hidden = pages.length > 0;
-    for (const page of pages) {
-      const option = doc.createElement('option');
-      option.value = page.date;
-      option.textContent = page.description ? `${page.date} ${page.description}` : page.date;
-      dateSelect.append(option);
-    }
+    dateSelect.setChoices(
+      pages.map((page) => ({
+        value: page.date,
+        label: page.description ? `${page.date} ${page.description}` : page.date,
+      })),
+    );
     const latest = pages[pages.length - 1];
     if (latest) {
       dateSelect.value = latest.date;
@@ -75,8 +73,7 @@ export function bindMemory(opts: {
         if (page) fill(page);
       });
   });
-  memoryForm.addEventListener('submit', (event) => {
-    event.preventDefault();
+  const save = (): void => {
     const journal = getJournal();
     if (!journal) return;
     const date = dateSelect.value || journal.date;
@@ -86,5 +83,10 @@ export function bindMemory(opts: {
       noted: notedInput.value,
       summary: summaryInput.value,
     });
+  };
+  memoryForm.addEventListener('input', save);
+  memoryForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    save();
   });
 }

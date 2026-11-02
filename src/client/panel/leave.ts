@@ -1,3 +1,4 @@
+import { closeDialog, showDialog } from '../../ui/dialog/index.js';
 import type { Journal } from '../journal/api.js';
 import { readPilot } from '../settings.js';
 import { explain } from './helpers.js';
@@ -14,7 +15,7 @@ export function bindLeave(opts: {
   leaveClose.addEventListener('click', () => {
     const journal = getJournal();
     if (journal) journal.dismissed = true;
-    leave.close();
+    closeDialog(leave);
   });
   leaveSummarize.addEventListener('click', () => {
     const journal = getJournal();
@@ -24,7 +25,7 @@ export function bindLeave(opts: {
       .digest(readPilot())
       .then(() => {
         show('记下了。这个页面可以关掉了。', 'note');
-        leave.close();
+        closeDialog(leave);
       })
       .catch((error: unknown) => {
         show(explain(error instanceof Error ? error.message : String(error)), 'note');
@@ -40,7 +41,7 @@ export function bindLeave(opts: {
     if (!getJournal()?.behind()) return;
     event.preventDefault();
     window.setTimeout(() => {
-      if (!leave.open) leave.showModal();
+      showDialog(leave);
     }, 0);
   });
   window.addEventListener('pagehide', () => {

@@ -7,5 +7,6 @@
     "types": ["vite/client"],
     "noEmit": true
   },
-  "include": ["src/client/**/*.ts", "src/shared/**/*.ts"]
+  "include": ["src/client/**/*.ts", "src/shared/**/*.ts", "src/ui/**/*.ts"],
+  "exclude": ["src/ui/**/*.test.ts"]
 }

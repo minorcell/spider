@@ -9,6 +9,7 @@ import {
   type Camera,
 } from 'three';
 import { PALETTE } from '../shared/config.js';
+import { paintObserve, paintPin } from '../ui/dress.js';
 import { aheadAt } from '../shared/sense.js';
 import { grassHere } from '../shared/sight.js';
 import { toHeading, toObservation, type Observation, type WorldState } from '../shared/state.js';
@@ -60,6 +61,7 @@ export class ObserveOverlay {
     this.#pins = document.createElement('div');
     this.#pins.id = 'observe-pins';
     this.#layer.append(this.#readout, this.#pins);
+    paintObserve(this.#layer, this.#readout, this.#pins);
     parent.append(this.#layer);
   }
 
@@ -191,7 +193,10 @@ export class ObserveOverlay {
         this.#pins.append(pin);
         this.#nodes.set(entity.id, pin);
       }
-      if (pin.dataset.state !== state) pin.dataset.state = state;
+      if (pin.dataset.state !== state) {
+        pin.dataset.state = state;
+        paintPin(pin, state);
+      }
       const label = `${entity.id}　${name}　${note}`;
       if (pin.textContent !== label) pin.textContent = label;
       this.#at.set(entity.id, { x: entity.x, y: ground(entity.x, entity.z) + 0.4, z: entity.z });

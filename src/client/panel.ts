@@ -1,3 +1,7 @@
+import { closeDialog, showDialog } from '../ui/dialog/index.js';
+import { placeTail } from '../ui/dress.js';
+import type { MenuSelect } from '../ui/select/index.js';
+import { enhanceSwitch } from '../ui/switch/index.js';
 import { openJournal, type Journal, type OpenedJournal } from './journal/api.js';
 import { flushSoon, flushWorld, onRestore, setPending, type BootNote } from './worldStore.js';
 import type { Trace } from './journal/session.js';
@@ -71,13 +75,16 @@ export function mountPanel(
     throw new Error('Missing pilot chrome');
   }
 
-  const dateSelect = memoryForm.querySelector<HTMLSelectElement>('select[name="date"]');
+  const dateSelect = memoryForm.querySelector<MenuSelect>('input[name="date"]');
   const lineInput = memoryForm.querySelector<HTMLInputElement>('input[name="line"]');
   const notedInput = memoryForm.querySelector<HTMLTextAreaElement>('textarea[name="noted"]');
   const summaryInput = memoryForm.querySelector<HTMLTextAreaElement>('textarea[name="summary"]');
   const autoMemoryInput = memoryForm.querySelector<HTMLInputElement>('input[name="autoMemory"]');
   if (!dateSelect || !lineInput || !notedInput || !summaryInput || !autoMemoryInput) {
     throw new Error('Missing pilot chrome');
+  }
+  for (const label of doc.querySelectorAll<HTMLLabelElement>('label.check')) {
+    enhanceSwitch(label);
   }
 
   const showMap = (on: boolean): void => {
@@ -108,6 +115,7 @@ export function mountPanel(
     const settings = readPilot();
     const ready = pilotReady(settings);
     model.textContent = ready ? settings.model : '';
+    model.style.display = ready ? '' : 'none';
     goal.placeholder = ready ? '让它去做一件事' : '未填写模型';
   };
 
@@ -181,12 +189,12 @@ export function mountPanel(
       else nav[name].removeAttribute('aria-current');
     }
     open.setAttribute('aria-expanded', 'true');
-    if (!dialog.open) dialog.showModal();
+    showDialog(dialog);
   };
 
   open.addEventListener('click', () => {
     if (dialog.open) {
-      dialog.close();
+      closeDialog(dialog);
       return;
     }
     fill(readPilot());
@@ -196,7 +204,7 @@ export function mountPanel(
     fill(readPilot());
     showPage('model');
   });
-  close.addEventListener('click', () => dialog.close());
+  close.addEventListener('click', () => closeDialog(dialog));
 
   const persist = (): void => {
     writePilot({
@@ -267,7 +275,6 @@ export function mountPanel(
   window.setInterval(rememberIfIdle, AUTO_MEMORY_CHECK_MS);
 
   bindMemory({
-    doc,
     menuMemory,
     memoryForm,
     memoryEmpty,
@@ -447,8 +454,10 @@ export function mountPanel(
       live = null;
       hideAt = 0;
     }
+    const tailNode = doc.querySelector<HTMLElement>('#trace-tail')!;
     if (!point || trace.childElementCount === 0) {
       trace.hidden = true;
+      tailNode.hidden = true;
       return;
     }
     /* v8 ignore next */
@@ -475,6 +484,7 @@ export function mountPanel(
     const tailX = Math.max(14, Math.min(width - 14, point.x - left));
     trace.style.setProperty('--tail', `${tailX}px`);
     trace.dataset.tail = tail;
+    placeTail(tailNode, top, height, tailX, tail === 'down');
   });
 
   paint();
