@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { localDate } from '../../../src/shared/dates.js';
 import { SimSession } from '../../../src/shared/sim/session.js';
+import { Terrain } from '../../../src/shared/terrain.js';
 import { APPLE_EVERY } from '../../../src/shared/world.js';
 import {
   applyBody,
@@ -15,6 +16,14 @@ import {
 } from '../../../src/shared/sim/snapshot.js';
 
 const today = '2026-11-02';
+
+it('plants a body on a terrain that was already baked', () => {
+  const session = new SimSession(1);
+  const baked = new Terrain(2);
+  applyBody(session, captureBody(new SimSession(2), null), baked);
+  expect(session.world.terrain).toBe(baked);
+  expect(session.world.seed).toBe(2);
+});
 
 function session(): SimSession {
   return new SimSession(7);

@@ -52,6 +52,10 @@ export class Stage {
   readonly #spider: Spider;
   readonly #props = new Map<string, Group>();
   #island: Group | null = null;
+  /** While set, a restored seed waits for the world worker instead of meshing here. */
+  #islandPending = false;
+  #islandRequest = 0;
+  #islandSource: ((seed: number) => Promise<Group>) | null = null;
   /** Last drawn action stage, so a new bite can make a sound. */
   readonly #stages = new Map<string, number>();
   readonly #drapedGrass = new Map<
@@ -136,12 +140,39 @@ export class Stage {
     this.#renderer.setAnimationLoop(this.#frame);
   }
 
+  /** Use an island the world worker already built. */
+  placeIsland(group: Group): void {
+    this.#dropIsland();
+    this.#island = group;
+    this.#islandPending = false;
+    this.#scene.add(group);
+  }
+
+  /** A restored seed can be meshed off the page thread. */
+  setIslandSource(source: (seed: number) => Promise<Group>): void {
+    this.#islandSource = source;
+  }
+
   /** The ground mesh is baked once. A restored seed needs a new island. */
   retile(): void {
-    if (this.#island) {
-      disposeGeometries(this.#island);
-      this.#scene.remove(this.#island);
-      this.#island = null;
+    const seed = this.#world?.().seed;
+    if (this.#islandSource && seed != null) {
+      const request = ++this.#islandRequest;
+      this.#islandPending = true;
+      this.#dropIsland();
+      void this.#islandSource(seed).then(
+        (group) => {
+          if (request !== this.#islandRequest) return;
+          this.placeIsland(group);
+        },
+        () => {
+          if (request !== this.#islandRequest) return;
+          this.#islandPending = false;
+          this.#syncWorld();
+        },
+      );
+    } else {
+      this.#dropIsland();
     }
     for (const [id, prop] of this.#props) {
       disposeGeometries(prop);
@@ -158,7 +189,7 @@ export class Stage {
   #syncWorld(): void {
     const world = this.#world?.();
     if (!world) return;
-    if (!this.#island) {
+    if (!this.#island && !this.#islandPending) {
       this.#island = buildIsland((x, z) => world.terrain.height(x, z));
       this.#scene.add(this.#island);
     }
@@ -381,6 +412,13 @@ export class Stage {
     this.#camera.updateProjectionMatrix();
     const rect = this.#renderer.domElement.getBoundingClientRect();
     this.#view = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+  }
+
+  #dropIsland(): void {
+    if (!this.#island) return;
+    disposeGeometries(this.#island);
+    this.#scene.remove(this.#island);
+    this.#island = null;
   }
 
   #frame = (now: number): void => {

@@ -3,7 +3,16 @@ import { buildChrome } from './panel/chrome.js';
 import { paintDocument, paintStage } from '../ui/dress.js';
 import { mountPanel } from './panel.js';
 import { Stage } from './stage.js';
-import { flushWorld, installWorldStore, restoreWorld } from './worldStore.js';
+import { readBuffer } from './world/storage.js';
+import {
+  flushWorld,
+  installWorldStore,
+  restoreWorld,
+  setWorldTerrainSource,
+} from './worldStore.js';
+import { prepareWorld } from './worker/worldClient.js';
+import { classify } from '../shared/sim/snapshot.js';
+import { localDate } from '../shared/dates.js';
 import { SimSession } from '../shared/sim/session.js';
 
 const host = document.querySelector<HTMLElement>('#stage');
@@ -13,7 +22,18 @@ paintDocument(document);
 paintStage(parent, host);
 parent.append(buildChrome(document));
 
-const session = new SimSession();
+function hintedSeed(): number {
+  const found = classify(readBuffer(), localDate(new Date()));
+  if (found.status === 'ok') return found.record.seed;
+  return Math.floor(Math.random() * 1_000_000_000);
+}
+
+let ready = await prepareWorld(hintedSeed());
+const session = new SimSession(ready.seed, ready.terrain);
+setWorldTerrainSource(async (seed) => {
+  if (seed !== ready.seed) ready = await prepareWorld(seed);
+  return ready.terrain;
+});
 let stage: Stage | undefined;
 
 window.addEventListener('pagehide', () => {
@@ -22,11 +42,13 @@ window.addEventListener('pagehide', () => {
   stage?.dispose();
 });
 
-// The worker opens while the first frame is drawn. Until it is ready the
+// The journal worker opens while the island is drawn. Until it is ready the
 // snapshot preview uses the direct store; the first write then switches over.
 const opening = openJournal().catch(() => null);
 const note = await restoreWorld(session);
 stage = new Stage(host, session.spider);
+stage.placeIsland(ready.island);
+stage.setIslandSource(async (seed) => (await prepareWorld(seed)).island);
 stage.bind(
   (dt) => session.frame(dt),
   () => session.world,

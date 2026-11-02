@@ -24,7 +24,7 @@ import {
   restingY,
   VIEW_DISTANCE,
 } from '../world.js';
-import { TERRAIN } from '../terrain.js';
+import { Terrain, TERRAIN } from '../terrain.js';
 import { CARRY_LIMIT } from '../config.js';
 import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal, type Goal } from './goals.js';
 import { planRoute } from '../route.js';
@@ -62,8 +62,8 @@ export class SimSession {
   readonly spider = new Spider();
   readonly world: WorldState;
 
-  constructor(seed?: number) {
-    this.world = createWorld(seed);
+  constructor(seed?: number, terrain?: Terrain) {
+    this.world = terrain ? createWorld(terrain.seed, terrain) : createWorld(seed);
     this.spider.bindGround((x, z) => this.world.terrain.height(x, z), TERRAIN.half - 1);
     this.spider.bindBlocked((x, z) => blockedAt(x, z, this.world.blocks));
   }

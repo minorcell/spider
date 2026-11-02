@@ -16,29 +16,35 @@ export const TERRAIN = {
   segments: 104,
 } as const;
 
+const GRID_VERTS = (TERRAIN.segments + 1) ** 2;
+
+/** Noise at every ground vertex. The page asks the world worker for this. */
+export function bakeTerrainGrid(seed: number): Float32Array {
+  const noise = createNoise(seed);
+  const warp = createNoise(seed ^ 0x9e3779b9);
+  // 直接从种子里取一个方向；不要再开一条随机流，地形构造要保持纯函数。
+  const angle = ((seed * 2654435761) % 6283) / 1000;
+  const cols = TERRAIN.segments + 1;
+  const grid = new Float32Array(cols * cols);
+  const half = TERRAIN.half;
+  const cell = (half * 2) / TERRAIN.segments;
+  for (let j = 0; j < cols; j++) {
+    const z = -half + j * cell;
+    const row = j * cols;
+    for (let i = 0; i < cols; i++) grid[row + i] = sample(noise, warp, angle, -half + i * cell, z);
+  }
+  return grid;
+}
+
 export class Terrain {
   readonly seed: number;
-  readonly #noise: (x: number, y: number) => number;
-  readonly #warp: (x: number, y: number) => number;
-  readonly #angle: number;
   /** Analytic height at each ground vertex. Lookups interpolate this grid. */
   readonly #grid: Float32Array;
 
-  constructor(seed: number) {
+  constructor(seed: number, grid?: Float32Array) {
     this.seed = seed >>> 0;
-    this.#noise = createNoise(this.seed);
-    this.#warp = createNoise(this.seed ^ 0x9e3779b9);
-    // 直接从种子里取一个方向；不要再开一条随机流，地形构造要保持纯函数。
-    this.#angle = ((this.seed * 2654435761) % 6283) / 1000;
-    const cols = TERRAIN.segments + 1;
-    this.#grid = new Float32Array(cols * cols);
-    const half = TERRAIN.half;
-    const cell = (half * 2) / TERRAIN.segments;
-    for (let j = 0; j < cols; j++) {
-      const z = -half + j * cell;
-      const row = j * cols;
-      for (let i = 0; i < cols; i++) this.#grid[row + i] = this.#sample(-half + i * cell, z);
-    }
+    if (grid && grid.length !== GRID_VERTS) throw new Error('bad terrain grid');
+    this.#grid = grid ?? bakeTerrainGrid(this.seed);
   }
 
   /**
@@ -66,39 +72,45 @@ export class Terrain {
     if (fx + fz <= 1) return h00 * (1 - fx - fz) + h01 * fz + h10 * fx;
     return h01 * (1 - fx) + h11 * (fx + fz - 1) + h10 * (1 - fz);
   }
+}
 
-  /**
-   * Analytic height. The origin is flattened.
-   *
-   * 三层地形：扭曲过的 fbm 做缓坡，脊线噪声做山脊，再加一条随种子转向的
-   * 长坡，岛的边缘用低频噪声咬出不规则的海岸。近处压平给巢穴，远处收到 0。
-   */
-  #sample(x: number, z: number): number {
-    const radius = Math.hypot(x, z);
-    if (radius >= TERRAIN.island) return 0;
-    // 海岸只往里收，保证 island 之外永远是平的。
-    const coast =
-      TERRAIN.island * (0.86 + 0.11 * (this.#noise(x * 0.016 + 11.3, z * 0.016 - 7.7) * 0.5 + 0.5));
-    const rim = radius / coast;
-    if (rim >= 1) return 0;
-    const edge = rim <= 0.8 ? 1 : (1 - rim) / 0.2;
-    const mask = edge * edge * (3 - 2 * edge);
-    let pad = 1;
-    if (radius <= TERRAIN.flat) pad = 0;
-    else if (radius < TERRAIN.pad) {
-      const u = (radius - TERRAIN.flat) / (TERRAIN.pad - TERRAIN.flat);
-      pad = u * u * (3 - 2 * u);
-    }
-
-    const wx = x + 6 * this.#warp(x * 0.027 + 4.1, z * 0.027 - 3.7);
-    const wz = z + 6 * this.#warp(x * 0.027 - 7.3, z * 0.027 + 5.9);
-    const base = fbm(this.#noise, wx * 0.045, wz * 0.045);
-    const ridge = 1 - Math.abs(fbm(this.#noise, wx * 0.075 + 13.1, wz * 0.075 - 5.7));
-    const axis = (x * Math.cos(this.#angle) + z * Math.sin(this.#angle)) / TERRAIN.island;
-    const h = base * 7 + (ridge - 0.5) * 3.4 + axis * 2.4;
-    // 不把低处压成 0：留出真正的谷地，巢穴外面才不是一圈等高的环。
-    return h * mask * pad;
+/**
+ * Analytic height. The origin is flattened.
+ *
+ * 三层地形：扭曲过的 fbm 做缓坡，脊线噪声做山脊，再加一条随种子转向的
+ * 长坡，岛的边缘用低频噪声咬出不规则的海岸。近处压平给巢穴，远处收到 0。
+ */
+function sample(
+  noise: (x: number, y: number) => number,
+  warp: (x: number, y: number) => number,
+  angle: number,
+  x: number,
+  z: number,
+): number {
+  const radius = Math.hypot(x, z);
+  if (radius >= TERRAIN.island) return 0;
+  // 海岸只往里收，保证 island 之外永远是平的。
+  const coast =
+    TERRAIN.island * (0.86 + 0.11 * (noise(x * 0.016 + 11.3, z * 0.016 - 7.7) * 0.5 + 0.5));
+  const rim = radius / coast;
+  if (rim >= 1) return 0;
+  const edge = rim <= 0.8 ? 1 : (1 - rim) / 0.2;
+  const mask = edge * edge * (3 - 2 * edge);
+  let pad = 1;
+  if (radius <= TERRAIN.flat) pad = 0;
+  else if (radius < TERRAIN.pad) {
+    const u = (radius - TERRAIN.flat) / (TERRAIN.pad - TERRAIN.flat);
+    pad = u * u * (3 - 2 * u);
   }
+
+  const wx = x + 6 * warp(x * 0.027 + 4.1, z * 0.027 - 3.7);
+  const wz = z + 6 * warp(x * 0.027 - 7.3, z * 0.027 + 5.9);
+  const base = fbm(noise, wx * 0.045, wz * 0.045);
+  const ridge = 1 - Math.abs(fbm(noise, wx * 0.075 + 13.1, wz * 0.075 - 5.7));
+  const axis = (x * Math.cos(angle) + z * Math.sin(angle)) / TERRAIN.island;
+  const h = base * 7 + (ridge - 0.5) * 3.4 + axis * 2.4;
+  // 不把低处压成 0：留出真正的谷地，巢穴外面才不是一圈等高的环。
+  return h * mask * pad;
 }
 
 /**

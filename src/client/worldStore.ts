@@ -1,6 +1,7 @@
 import { localDate } from '../shared/dates.js';
 import type { SnapshotStore } from './journal/store.js';
 import {
+  applyBody,
   captureBody,
   chooseRecord,
   classify,
@@ -10,6 +11,7 @@ import {
   type SimBody,
   type WorldRecord,
 } from '../shared/sim/snapshot.js';
+import { Terrain } from '../shared/terrain.js';
 import {
   bufferPut,
   forgetBuffer,
@@ -57,6 +59,13 @@ let onVis: (() => void) | null = null;
 let providedStore: SnapshotStore | null = null;
 let storePromise: Promise<SnapshotStore> | null = null;
 let workTail: Promise<void> = Promise.resolve();
+/** Bakes a seed off the page thread. Null keeps the synchronous terrain. */
+let terrainFor: ((seed: number) => Promise<Terrain>) | null = null;
+
+/** The page points this at the world worker. Tests leave it unset. */
+export function setWorldTerrainSource(source: ((seed: number) => Promise<Terrain>) | null): void {
+  terrainFor = source;
+}
 
 /** The Worker-backed store in the page; IndexedDB directly in tests and old browsers. */
 function resolveStore(): Promise<SnapshotStore> {
@@ -131,6 +140,7 @@ export function resetWorldStore(): void {
   listener = null;
   providedStore = null;
   storePromise = null;
+  terrainFor = null;
 }
 
 export async function restoreWorld(
@@ -172,7 +182,7 @@ export async function restoreWorld(
     };
   }
   if (!readLease()) setLease(chosen.owner, chosen.leaseUntil);
-  session.adopt(strip(chosen));
+  await adoptBody(session, strip(chosen));
   pending = chosen.pending;
   seenSeq = chosen.seq;
   lastBody = captureBody(session, pending);
@@ -303,7 +313,7 @@ async function catchUp(): Promise<void> {
   }
   if (!chosen || chosen.seq <= seenSeq || chosen.owner === owner) return;
   setLease(chosen.owner, chosen.leaseUntil);
-  session.adopt(strip(chosen));
+  await adoptBody(session, strip(chosen));
   pending = chosen.pending;
   seenSeq = chosen.seq;
   lastBody = captureBody(session, pending);
@@ -409,7 +419,7 @@ async function reconcile(): Promise<void> {
   }
   if (idb.status !== 'ok' || idb.record.seq <= seenSeq) return;
   setLease(idb.record.owner, idb.record.leaseUntil);
-  session.adopt(strip(idb.record));
+  await adoptBody(session, strip(idb.record));
   pending = idb.record.pending;
   seenSeq = idb.record.seq;
   lastBody = captureBody(session, pending);
@@ -489,6 +499,19 @@ function yawGap(a: number, b: number): number {
 
 function quant(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+async function adoptBody(session: Restorable, body: SimBody): Promise<void> {
+  const existing = session.world.terrain instanceof Terrain ? session.world.terrain : null;
+  if (existing && existing.seed === body.seed) {
+    applyBody(session, body, existing);
+    return;
+  }
+  if (terrainFor) {
+    applyBody(session, body, await terrainFor(body.seed));
+    return;
+  }
+  session.adopt(body);
 }
 
 function strip(record: WorldRecord): SimBody {

@@ -1,12 +1,19 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { surfaceAt, Terrain, TERRAIN } from '../../src/shared/terrain.js';
+import { bakeTerrainGrid, surfaceAt, Terrain, TERRAIN } from '../../src/shared/terrain.js';
 
 describe('Terrain', () => {
   it('keeps the unsigned seed', () => {
     expect(new Terrain(9).seed).toBe(9);
     expect(new Terrain(-1).seed).toBe(4294967295);
+  });
+
+  it('uses a grid that was baked elsewhere and rejects a short one', () => {
+    const baked = new Terrain(4);
+    const again = new Terrain(4, bakeTerrainGrid(4));
+    expect(again.height(12, -6)).toBeCloseTo(baked.height(12, -6));
+    expect(() => new Terrain(4, new Float32Array(3))).toThrow('bad terrain grid');
   });
 
   it('flattens the birth disk', () => {

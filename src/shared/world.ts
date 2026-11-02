@@ -72,8 +72,10 @@ export function restingY(
  * The same seed builds the same place. Eaten apples stay gone; the island
  * grows a new one elsewhere once the ground has been short of them for a while.
  */
-export function createWorld(seed = Math.floor(Math.random() * 1_000_000_000)): WorldState {
-  const terrain = new Terrain(seed);
+export function createWorld(
+  seed = Math.floor(Math.random() * 1_000_000_000),
+  terrain = new Terrain(seed),
+): WorldState {
   const rng = mulberry32(seed ^ 0x9e3779b9);
   const blocks = nestBlocks();
   const placed: { x: number; z: number }[] = [];

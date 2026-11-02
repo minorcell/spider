@@ -41,7 +41,7 @@ pnpm dev
 
 ## 后台线程与性能
 
-日记、用量、快照的 IndexedDB 读写，以及日记压缩和摘要，都跑在 `src/client/worker/journal.worker.ts` 里，主线程只负责收发消息。首屏恢复会先用直连把上一份快照捞起来，worker 就绪后把后续读写切过去；没有 module Worker 的环境一直用直连，行为不变。
+日记、用量、快照的 IndexedDB 读写，以及日记压缩和摘要，都跑在 `src/client/worker/journal.worker.ts` 里。高度网格和岛的顶点跑在 `src/client/worker/world.worker.ts` 里。主线程只负责收发消息、模拟和上传几何。没有 module Worker 的环境在主线程做同样的事，行为不变。
 
 关键路径有基准和预算测试：
 

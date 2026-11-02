@@ -53,7 +53,9 @@ export default defineConfig({
       // one-line binding to a real Worker global; its handler and transport are tested.
       exclude: [
         'src/client/worker/journal.worker.ts',
+        'src/client/worker/world.worker.ts',
         'src/client/worker/protocol.ts',
+        'src/client/worker/worldProtocol.ts',
         'src/ui/**/*.test.ts',
       ],
       reporter: ['text', 'lcov'],

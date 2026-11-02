@@ -10,6 +10,7 @@ import {
   resetWorldStore,
   restoreWorld,
   setPending,
+  setWorldTerrainSource,
   writesDone,
 } from '../../src/client/worldStore.js';
 import { localDate } from '../../src/shared/dates.js';
@@ -107,6 +108,25 @@ beforeEach(async () => {
 });
 
 describe('restoreWorld', () => {
+  it('reuses the baked terrain, and asks the source when the seed changes', async () => {
+    const session = new SimSession(4);
+    const terrain = session.world.terrain;
+    const same = vi.fn(async () => new Terrain(4));
+    setWorldTerrainSource(same);
+    await restoreWorld(session, new Date(), memoryStore(stamp(session)));
+    expect(same).not.toHaveBeenCalled();
+    expect(session.world.terrain).toBe(terrain);
+
+    const fresh = new Terrain(8);
+    const source = vi.fn(async () => fresh);
+    setWorldTerrainSource(source);
+    const other = new SimSession(1);
+    other.world.terrain = { height: () => 0 };
+    await restoreWorld(other, new Date(), memoryStore(stamp(new SimSession(8))));
+    expect(source).toHaveBeenCalledWith(8);
+    expect(other.world.terrain).toBe(fresh);
+  });
+
   it('adopts the newer buffer and copies it into the database', async () => {
     const live = new SimSession(3);
     const saved = new SimSession(9);

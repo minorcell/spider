@@ -72,10 +72,13 @@ export function captureBody(session: Restorable, pending: SimBody['pending']): S
   };
 }
 
-export function applyBody(session: Restorable, body: SimBody): void {
+export function applyBody(
+  session: Restorable,
+  body: SimBody,
+  terrain = new Terrain(body.seed),
+): void {
   session.cancel();
   const world = session.world;
-  const terrain = new Terrain(body.seed);
   world.terrain = terrain;
   world.seed = terrain.seed;
   world.blocks = nestBlocks();

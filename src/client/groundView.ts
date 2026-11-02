@@ -1,43 +1,15 @@
 import {
   BufferAttribute,
   BufferGeometry,
-  Color,
   Float32BufferAttribute,
   Group,
   LineBasicMaterial,
   LineSegments,
-  MathUtils,
   Mesh,
-  PlaneGeometry,
-  Vector3,
 } from 'three';
 import { PALETTE } from '../shared/config.js';
+import { groundAttributes, islandBuffers, type IslandBuffers } from '../shared/island.js';
 import { groundMat } from '../shared/sim/parts.js';
-import { TERRAIN } from '../shared/terrain.js';
-
-const LINE_STEP = 2;
-/** 等高线间距。地形越高，线越密，噪声的形状就露出来了。 */
-const CONTOUR_STEP = 0.6;
-const CONTOUR_TOP = 6.4;
-const CONTOUR_BOTTOM = -3;
-
-const water = new Color(PALETTE.water);
-const lowland = new Color(PALETTE.ground);
-const earth = new Color(PALETTE.earth);
-const stone = new Color(PALETTE.stone);
-const scratch = new Color();
-
-/** 地势越低越像水，越高越像石头；陡坡再压一点石头色。 */
-function terrainColor(h: number, slope: number, out: Color): void {
-  // 水只留在最低的谷底，陆地大部分是同一个淡草色，土色和石色只轻微变化。
-  if (h < -1) out.copy(water);
-  else if (h < -0.2) out.copy(water).lerp(lowland, MathUtils.smoothstep(h, -1, -0.2));
-  else if (h < 1.8) out.copy(lowland).lerp(earth, MathUtils.smoothstep(h, 0.2, 1.8) * 0.35);
-  else if (h < 3.2) out.copy(earth).lerp(stone, MathUtils.smoothstep(h, 1.8, 3.2) * 0.6);
-  else out.copy(stone);
-  const steep = MathUtils.smoothstep(slope, 0.65, 1.25) * 0.35;
-  if (steep > 0) out.lerp(stone, steep);
-}
 
 const contourInk = new LineBasicMaterial({ color: PALETTE.ink, transparent: true, opacity: 0.2 });
 const contourMajor = new LineBasicMaterial({
@@ -48,106 +20,32 @@ const contourMajor = new LineBasicMaterial({
 
 /** Paper island with ink grid lines draped over the same height function. */
 export function buildIsland(height: (x: number, z: number) => number): Group {
+  return islandGroup(islandBuffers(height));
+}
+
+/** Upload buffers the world worker already filled. */
+export function islandGroup(buffers: IslandBuffers): Group {
   const group = new Group();
-  const geo = groundGeometry(height, TERRAIN.half, TERRAIN.segments);
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new Float32BufferAttribute(buffers.groundPosition, 3));
+  geo.setAttribute('color', new Float32BufferAttribute(buffers.groundColor, 3));
+  geo.setIndex(new BufferAttribute(buffers.groundIndex, 1));
+  geo.computeVertexNormals();
   group.add(new Mesh(geo, groundMat));
 
   const ink = new LineBasicMaterial({ color: PALETTE.grid });
-  const points: Vector3[] = [];
-  const half = TERRAIN.half;
-  for (let x = -half; x <= half; x += LINE_STEP) {
-    for (let z = -half; z < half; z += LINE_STEP) {
-      points.push(new Vector3(x, height(x, z) + 0.02, z));
-      points.push(new Vector3(x, height(x, z + LINE_STEP) + 0.02, z + LINE_STEP));
-    }
-  }
-  for (let z = -half; z <= half; z += LINE_STEP) {
-    for (let x = -half; x < half; x += LINE_STEP) {
-      points.push(new Vector3(x, height(x, z) + 0.02, z));
-      points.push(new Vector3(x + LINE_STEP, height(x + LINE_STEP, z) + 0.02, z));
-    }
-  }
-  group.add(new LineSegments(new BufferGeometry().setFromPoints(points), ink));
-  group.add(contours(height));
+  const grid = new BufferGeometry();
+  grid.setAttribute('position', new Float32BufferAttribute(buffers.grid, 3));
+  group.add(new LineSegments(grid, ink));
+
+  const minor = new BufferGeometry();
+  minor.setAttribute('position', new Float32BufferAttribute(buffers.contourMinor, 3));
+  const major = new BufferGeometry();
+  major.setAttribute('position', new Float32BufferAttribute(buffers.contourMajor, 3));
+  const contours = new Group();
+  contours.add(new LineSegments(minor, contourInk), new LineSegments(major, contourMajor));
+  group.add(contours);
   return group;
-}
-
-/**
- * 等高线：按地形网格的顶点高度走 marching squares。
- * 每个格子只取相邻的两个交点连成一段，鞍点也能画出四条支线。
- */
-function contours(height: (x: number, z: number) => number): Group {
-  const half = TERRAIN.half;
-  const cells = TERRAIN.segments;
-  const cell = (half * 2) / cells;
-  const cols = cells + 1;
-  const heights = new Float32Array(cols * cols);
-  for (let j = 0; j < cols; j++) {
-    for (let i = 0; i < cols; i++) {
-      heights[j * cols + i] = height(-half + i * cell, -half + j * cell);
-    }
-  }
-
-  const levels: number[] = [];
-  for (let level = CONTOUR_BOTTOM; level <= CONTOUR_TOP; level += CONTOUR_STEP) {
-    levels.push(level);
-  }
-
-  const minor: number[] = [];
-  const major: number[] = [];
-  const crossings: [number, number][] = [];
-
-  for (let j = 0; j < cells; j++) {
-    const z0 = -half + j * cell;
-    for (let i = 0; i < cells; i++) {
-      const x0 = -half + i * cell;
-      const h00 = heights[j * cols + i];
-      const h10 = heights[j * cols + i + 1];
-      const h01 = heights[(j + 1) * cols + i];
-      const h11 = heights[(j + 1) * cols + i + 1];
-
-      for (let k = 0; k < levels.length; k++) {
-        const level = levels[k];
-        crossings.length = 0;
-        addCrossing(crossings, level, h00, h10, x0, z0, x0 + cell, z0);
-        addCrossing(crossings, level, h10, h11, x0 + cell, z0, x0 + cell, z0 + cell);
-        addCrossing(crossings, level, h11, h01, x0 + cell, z0 + cell, x0, z0 + cell);
-        addCrossing(crossings, level, h01, h00, x0, z0 + cell, x0, z0);
-        const out = k % 5 === 4 ? major : minor;
-        for (let p = 0; p + 1 < crossings.length; p += 2) {
-          const a = crossings[p];
-          const b = crossings[p + 1];
-          out.push(a[0], level + 0.03, a[1], b[0], level + 0.03, b[1]);
-        }
-      }
-    }
-  }
-
-  const minorGeometry = new BufferGeometry();
-  minorGeometry.setAttribute('position', new Float32BufferAttribute(minor, 3));
-  const majorGeometry = new BufferGeometry();
-  majorGeometry.setAttribute('position', new Float32BufferAttribute(major, 3));
-  const group = new Group();
-  group.add(new LineSegments(minorGeometry, contourInk));
-  group.add(new LineSegments(majorGeometry, contourMajor));
-  return group;
-}
-
-/** 一条边与等高线的交点。 */
-function addCrossing(
-  out: [number, number][],
-  level: number,
-  a: number,
-  b: number,
-  ax: number,
-  az: number,
-  bx: number,
-  bz: number,
-): void {
-  if ((a < level && b >= level) || (b < level && a >= level)) {
-    const t = (level - a) / (b - a);
-    out.push([ax + (bx - ax) * t, az + (bz - az) * t]);
-  }
 }
 
 /** Plane in the x/z ground, displaced by `height`. The normal faces up. */
@@ -156,27 +54,11 @@ export function groundGeometry(
   half: number,
   segments: number,
 ): BufferGeometry {
-  const geo = new PlaneGeometry(half * 2, half * 2, segments, segments);
-  // PlaneGeometry faces +z in the xy plane. -90° about x lays it on xz facing +y.
-  geo.rotateX(-Math.PI / 2);
-  const position = geo.getAttribute('position');
-  const cell = (half * 2) / segments;
-  const colors = new Float32Array(position.count * 3);
-  for (let i = 0; i < position.count; i++) {
-    const x = position.getX(i);
-    const z = position.getZ(i);
-    const y = height(x, z);
-    position.setY(i, y);
-    const slope =
-      Math.hypot(
-        height(x + cell, z) - height(x - cell, z),
-        height(x, z + cell) - height(x, z - cell),
-      ) /
-      (2 * cell);
-    terrainColor(y, slope, scratch);
-    scratch.toArray(colors, i * 3);
-  }
-  geo.setAttribute('color', new BufferAttribute(colors, 3));
+  const baked = groundAttributes(height, half, segments);
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new Float32BufferAttribute(baked.groundPosition, 3));
+  geo.setAttribute('color', new Float32BufferAttribute(baked.groundColor, 3));
+  geo.setIndex(new BufferAttribute(baked.groundIndex, 1));
   geo.computeVertexNormals();
   return geo;
 }
