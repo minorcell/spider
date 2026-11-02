@@ -55,8 +55,12 @@ export interface UsageCall {
   };
   output: { total: number; text: number; reasoning: number };
   tools: UsageTool[];
-  timing: { ttftMs?: number; responseMs: number; stepMs: number };
+  timing: { ttftMs?: number; responseMs?: number; stepMs?: number };
   finishReason: string;
+  /** Requests this row stands for. Absent means one; legacy day rows can stand for several. */
+  count?: number;
+  /** Tool calls in a legacy day row, which has no per-tool detail. */
+  toolCalls?: number;
 }
 
 interface SpiderDB extends DBSchema {
@@ -68,13 +72,13 @@ interface SpiderDB extends DBSchema {
 }
 
 const DB_NAME = 'spider';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 let opening: Promise<IDBPDatabase<SpiderDB>> | null = null;
 
 export function openSpiderDb(): Promise<IDBPDatabase<SpiderDB>> {
   opening ??= openDB<SpiderDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    upgrade(db, _oldVersion, _newVersion, transaction) {
       if (!db.objectStoreNames.contains('sessions')) {
         db.createObjectStore('sessions', { keyPath: 'date' });
       }
@@ -87,6 +91,9 @@ export function openSpiderDb(): Promise<IDBPDatabase<SpiderDB>> {
       if (!db.objectStoreNames.contains('usageCalls')) {
         const calls = db.createObjectStore('usageCalls', { keyPath: 'id' });
         calls.createIndex('date', 'date');
+      } else {
+        const calls = transaction.objectStore('usageCalls');
+        if (!calls.indexNames.contains('date')) calls.createIndex('date', 'date');
       }
       if (!db.objectStoreNames.contains('snapshots')) {
         db.createObjectStore('snapshots', { keyPath: 'id' });

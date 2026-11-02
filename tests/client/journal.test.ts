@@ -402,7 +402,9 @@ describe('Diary', () => {
     const db = await openSpiderDb();
     const original = db.transaction.bind(db);
     vi.spyOn(db, 'transaction').mockImplementation((store, mode, options) => {
-      if (store === 'usage') throw new Error('usage down');
+      if (Array.isArray(store) ? store.includes('usage') : store === 'usage') {
+        throw new Error('usage down');
+      }
       return original(store, mode, options);
     });
     vi.mocked(summarizeDiary).mockResolvedValueOnce({

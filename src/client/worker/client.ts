@@ -122,7 +122,7 @@ export class WorkerJournal implements Journal, SnapshotStore {
     now = new Date(),
     meta?: UsageCallMeta,
   ): Promise<void> {
-    this.#state = await this.#call<'recordUsage'>((id) => ({
+    await this.#call<'recordUsage'>((id) => ({
       id,
       method: 'recordUsage',
       args: meta == null ? [usage, now.getTime()] : [usage, now.getTime(), meta],
@@ -130,10 +130,18 @@ export class WorkerJournal implements Journal, SnapshotStore {
   }
 
   async recordUsageCall(call: UsageCall): Promise<void> {
-    this.#state = await this.#call<'recordUsageCall'>((id) => ({
+    await this.#call<'recordUsageCall'>((id) => ({
       id,
       method: 'recordUsageCall',
       args: [call],
+    }));
+  }
+
+  async recordUsageCalls(calls: UsageCall[]): Promise<void> {
+    await this.#call<'recordUsageCalls'>((id) => ({
+      id,
+      method: 'recordUsageCalls',
+      args: [calls],
     }));
   }
 

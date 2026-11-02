@@ -177,6 +177,8 @@ describe('WorkerJournal', () => {
     };
     await call(port, () => journal.recordUsageCall(recorded), STATE);
     expect(port.last).toMatchObject({ method: 'recordUsageCall', args: [recorded] });
+    await call(port, () => journal.recordUsageCalls([recorded]), null);
+    expect(port.last).toMatchObject({ method: 'recordUsageCalls', args: [[recorded]] });
     expect(await call(port, () => journal.readUsage('2026-11-02', '7'), { range: '7' })).toEqual({
       range: '7',
     });

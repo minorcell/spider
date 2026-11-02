@@ -4,32 +4,28 @@ import { readPilot, writePilot } from '../settings.js';
 export function bindMemory(opts: {
   doc: Document;
   menuMemory: HTMLButtonElement;
-  memoryDialog: HTMLDialogElement;
   memoryForm: HTMLFormElement;
-  memoryClose: HTMLButtonElement;
   memoryEmpty: HTMLElement;
   dateSelect: HTMLSelectElement;
   lineInput: HTMLInputElement;
   notedInput: HTMLTextAreaElement;
   summaryInput: HTMLTextAreaElement;
   autoMemoryInput: HTMLInputElement;
-  setMenu: (shown: boolean) => void;
+  showPage: () => void;
   getJournal: () => Journal | null;
   journalReady: Promise<Journal | null>;
 }): void {
   const {
     doc,
     menuMemory,
-    memoryDialog,
     memoryForm,
-    memoryClose,
     memoryEmpty,
     dateSelect,
     lineInput,
     notedInput,
     summaryInput,
     autoMemoryInput,
-    setMenu,
+    showPage,
     getJournal,
     journalReady,
   } = opts;
@@ -62,15 +58,13 @@ export function bindMemory(opts: {
       notedInput.value = '';
       summaryInput.value = '';
     }
-    setMenu(false);
     autoMemoryInput.checked = readPilot().autoMemory;
-    memoryDialog.showModal();
+    showPage();
   };
 
   menuMemory.addEventListener('click', () => {
     void show();
   });
-  memoryClose.addEventListener('click', () => memoryDialog.close());
   autoMemoryInput.addEventListener('change', () => {
     writePilot({ ...readPilot(), autoMemory: autoMemoryInput.checked });
   });
@@ -81,7 +75,8 @@ export function bindMemory(opts: {
         if (page) fill(page);
       });
   });
-  memoryForm.addEventListener('submit', () => {
+  memoryForm.addEventListener('submit', (event) => {
+    event.preventDefault();
     const journal = getJournal();
     if (!journal) return;
     const date = dateSelect.value || journal.date;

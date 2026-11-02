@@ -153,6 +153,35 @@ describe('journal worker handler', () => {
     })) as { kpis: { calls: number }; requests: unknown[] };
     expect(detailed.kpis.calls).toBeGreaterThanOrEqual(3);
     expect(detailed.requests.length).toBeGreaterThanOrEqual(3);
+    await handle({
+      id: 7,
+      method: 'recordUsageCalls',
+      args: [
+        [
+          {
+            id: 'c2:0',
+            ts: Date.now(),
+            date,
+            kind: 'agent',
+            sessionId: date,
+            turnId: 't',
+            step: 1,
+            provider: 'openai-compatible',
+            modelId: 'deepseek-chat',
+            total: 2,
+            input: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+            output: { total: 1, text: 1, reasoning: 0 },
+            tools: [],
+            timing: {},
+            finishReason: 'stop',
+          },
+        ],
+      ],
+    });
+    const batched = (await handle({ id: 8, method: 'readUsage', args: [date, '7'] })) as {
+      kpis: { calls: number };
+    };
+    expect(batched.kpis.calls).toBeGreaterThanOrEqual(4);
   });
 
   it('keeps concurrent requests in arrival order', async () => {

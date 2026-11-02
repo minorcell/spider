@@ -32,16 +32,16 @@ const DONUT = ['#1b1714', '#8e877e', '#c8c1b7', '#5e5750', '#aaa298'] as const;
 export function bindUsage(opts: {
   doc: Document;
   menuUsage: HTMLButtonElement;
-  usageDialog: HTMLDialogElement;
-  setMenu: (shown: boolean) => void;
+  usagePanel: HTMLElement;
+  showPage: () => void;
   getJournal: () => Journal | null;
   journalReady: Promise<Journal | null>;
-}): { refresh: () => Promise<void>; dialog: HTMLDialogElement } {
-  const { doc, menuUsage, usageDialog, setMenu, getJournal, journalReady } = opts;
+}): { refresh: () => Promise<void> } {
+  const { doc, menuUsage, usagePanel, showPage, getJournal, journalReady } = opts;
   let range: UsageRange = '7';
   const page = doc.createElement('div');
   page.className = 'usage-page';
-  usageDialog.replaceChildren(page);
+  usagePanel.replaceChildren(page);
 
   const emptyOf = (today: string): UsageSnapshot => {
     const span = range === '7' ? 7 : range === '30' ? 30 : 1;
@@ -64,11 +64,14 @@ export function bindUsage(opts: {
         cacheWrite: 0,
         input: 0,
         output: 0,
+        text: 0,
+        reasoning: 0,
         previousCalls: range === 'all' ? null : 0,
       },
       models: [],
       tools: [],
       requests: [],
+      requestTotal: 0,
     };
   };
 
@@ -81,7 +84,6 @@ export function bindUsage(opts: {
     const rangeButton = root.querySelector<HTMLButtonElement>('.range');
     const rangeMenu = root.querySelector<HTMLElement>('#usage-range-menu');
     const exportButton = root.querySelector<HTMLButtonElement>('#usage-export');
-    const closeButton = root.querySelector<HTMLButtonElement>('#usage-close');
     const setOpen = (open: boolean): void => {
       rangeButton?.setAttribute('aria-expanded', String(open));
       rangeMenu!.hidden = !open;
@@ -103,7 +105,6 @@ export function bindUsage(opts: {
     exportButton?.addEventListener('click', () => {
       exportSnapshot(snapshot, exportButton);
     });
-    closeButton?.addEventListener('click', () => usageDialog.close());
   };
 
   const onDocumentClick = (event: MouseEvent): void => {
@@ -130,12 +131,11 @@ export function bindUsage(opts: {
   };
 
   menuUsage.addEventListener('click', () => {
-    setMenu(false);
-    usageDialog.showModal();
+    showPage();
     void refresh();
   });
 
-  return { refresh, dialog: usageDialog };
+  return { refresh };
 }
 
 function buildPage(doc: Document, snapshot: UsageSnapshot, range: UsageRange): HTMLElement {
@@ -148,20 +148,20 @@ function buildPage(doc: Document, snapshot: UsageSnapshot, range: UsageRange): H
       'p',
       { class: 'notice' },
       h(doc, 'b', {}, '统计口径'),
-      '输入、输出、缓存和推理 token 来自模型返回，是精确值。系统提示、历史消息和工具结果各自占多少，只能按文字长度估算。',
+      '输入、输出、缓存和推理 token 来自模型返回；旧记录只有每日汇总，缺失的明细按总量推算。',
     ),
     buildKpis(doc, snapshot.kpis, range),
     buildGrid(doc, snapshot, today, range),
     buildModels(doc, snapshot.models),
     buildTools(doc, snapshot.tools),
-    buildRequests(doc, snapshot.requests),
+    buildRequests(doc, snapshot.requests, snapshot.requestTotal),
     h(
       doc,
       'p',
       { class: 'footer-note' },
       range === 'all'
-        ? '成本需要在模型设置中填写价格后才会出现；完整对话内容、访问密钥和工具参数不会放进统计页。'
-        : `仅显示${RANGE_LABEL[range]}。成本需要在模型设置中填写价格后才会出现；完整对话内容、访问密钥和工具参数不会放进统计页。`,
+        ? '完整对话内容、访问密钥和工具参数不会放进统计页。'
+        : `仅显示${RANGE_LABEL[range]}。完整对话内容、访问密钥和工具参数不会放进统计页。`,
     ),
   );
   return root;
@@ -222,29 +222,22 @@ function buildTop(doc: Document, range: UsageRange): HTMLElement {
         ),
       ),
       h(doc, 'button', { class: 'ghost', type: 'button', id: 'usage-export' }, '导出'),
-      h(
-        doc,
-        'button',
-        { class: 'ghost', type: 'button', id: 'usage-close', value: 'cancel' },
-        '关闭',
-      ),
     ),
   );
 }
 
 function buildKpis(doc: Document, kpis: UsageKpis, range: UsageRange): HTMLElement {
   const delta = weekDelta(kpis, range);
+  const toolFoot =
+    kpis.toolNames === 0 && kpis.toolCalls > 0
+      ? `${kpis.toolCalls} 次 · 历史记录无工具明细`
+      : `${kpis.toolNames} 个工具 · 成功率 ${Math.round(kpis.toolOkRate)}%`;
   return h(
     doc,
     'section',
     { class: 'kpis', 'aria-label': '用量概览' },
     kpi(doc, '模型请求', String(kpis.calls), delta),
-    kpi(
-      doc,
-      '工具调用',
-      String(kpis.toolCalls),
-      `${kpis.toolNames} 个工具 · 成功率 ${Math.round(kpis.toolOkRate)}%`,
-    ),
+    kpi(doc, '工具调用', String(kpis.toolCalls), toolFoot),
     kpi(
       doc,
       '缓存命中',
@@ -414,7 +407,7 @@ function buildModels(doc: Document, models: UsageModelRow[]): HTMLElement {
     models.length === 0
       ? h(doc, 'tr', {}, h(doc, 'td', { colspan: '5' }, '还没有按模型的记录。'))
       : models.map((row, index) => {
-          const avg = row.responseMs / row.calls;
+          const avg = row.timedCalls === 0 ? undefined : row.responseMs / row.timedCalls;
           return h(
             doc,
             'tr',
@@ -441,7 +434,7 @@ function buildModels(doc: Document, models: UsageModelRow[]): HTMLElement {
   return tableCard(
     doc,
     '按模型',
-    '模型返回的精确值',
+    '模型返回的 token 为精确值',
     ['模型', '请求', '总 token', '输入 / 输出', '平均响应'],
     body,
   );
@@ -502,22 +495,20 @@ function tableCard(
   );
 }
 
-function buildRequests(doc: Document, requests: UsageCall[]): HTMLElement {
+function buildRequests(doc: Document, requests: UsageCall[], total: number): HTMLElement {
   const list =
     requests.length === 0
       ? h(doc, 'p', { id: 'usage-empty', class: 'usage-empty' }, '还没有用量。')
       : h(doc, 'div', { class: 'requests' }, ...requests.map((call) => requestRow(doc, call)));
+  const hint =
+    total > requests.length
+      ? `仅显示最近 ${requests.length} 次，共 ${total} 次`
+      : '点击展开每次请求和工具';
   return h(
     doc,
     'section',
     { class: 'card section' },
-    h(
-      doc,
-      'div',
-      { class: 'card-head' },
-      h(doc, 'h2', {}, '请求明细'),
-      h(doc, 'small', {}, '点击展开每次请求和工具'),
-    ),
+    h(doc, 'div', { class: 'card-head' }, h(doc, 'h2', {}, '请求明细'), h(doc, 'small', {}, hint)),
     list,
   );
 }
@@ -529,8 +520,10 @@ function requestRow(doc: Document, call: UsageCall): HTMLElement {
   const details = h(doc, 'details', { class: 'request' });
   const chevron = h(doc, 'span', { class: 'chevron' }, '›');
   const summary = h(doc, 'summary');
+  const times =
+    call.count != null && call.count > 1 ? `汇总 ${call.count} 次` : `第 ${call.step + 1} 次`;
   summary.append(
-    h(doc, 'span', { class: 'step' }, `${shortDate(call.date)} · 第 ${call.step + 1} 次`),
+    h(doc, 'span', { class: 'step' }, `${shortDate(call.date)} · ${times}`),
     h(
       doc,
       'span',
@@ -549,7 +542,7 @@ function requestRow(doc: Document, call: UsageCall): HTMLElement {
       doc,
       'span',
       { class: 'request-time' },
-      formatDuration(call.timing.stepMs || call.timing.responseMs),
+      formatDuration(call.timing.stepMs ?? call.timing.responseMs),
       h(
         doc,
         'small',
@@ -559,9 +552,29 @@ function requestRow(doc: Document, call: UsageCall): HTMLElement {
     ),
     chevron,
   );
+  details.append(summary);
+  let filled = false;
+  details.addEventListener('toggle', () => {
+    if (!details.open || filled) return;
+    filled = true;
+    details.append(requestDetail(doc, call, finish));
+  });
+  return details;
+}
+
+function requestDetail(doc: Document, call: UsageCall, finish: string): HTMLElement {
   const tools =
     call.tools.length === 0
-      ? [h(doc, 'span', { class: 'pill' }, '没有工具调用')]
+      ? [
+          h(
+            doc,
+            'span',
+            { class: 'pill' },
+            call.toolCalls != null && call.toolCalls > 0
+              ? `历史 ${call.toolCalls} 次工具调用，无明细`
+              : '没有工具调用',
+          ),
+        ]
       : call.tools.map((tool) =>
           h(
             doc,
@@ -570,69 +583,43 @@ function requestRow(doc: Document, call: UsageCall): HTMLElement {
             `${tool.name} · ${formatDuration(tool.durationMs)} · ${tool.ok ? '成功' : '失败'}`,
           ),
         );
-  details.append(
-    summary,
+  return h(
+    doc,
+    'div',
+    { class: 'request-detail' },
     h(
       doc,
       'div',
-      { class: 'request-detail' },
-      h(
-        doc,
-        'div',
-        {},
-        h(doc, 'strong', {}, '输出'),
-        `文本 ${formatTokens(call.output.text)} · 推理 ${formatTokens(call.output.reasoning)}`,
-      ),
-      h(
-        doc,
-        'div',
-        {},
-        h(doc, 'strong', {}, '缓存'),
-        `读 ${formatTokens(call.input.cacheRead)} · 写 ${formatTokens(call.input.cacheWrite)}`,
-      ),
-      h(
-        doc,
-        'div',
-        {},
-        h(doc, 'strong', {}, '结束原因'),
-        h(doc, 'span', { class: 'pill' }, finish),
-      ),
-      h(doc, 'div', { class: 'tool-list' }, ...tools),
+      {},
+      h(doc, 'strong', {}, '输出'),
+      `文本 ${formatTokens(call.output.text)} · 推理 ${formatTokens(call.output.reasoning)}`,
     ),
+    h(
+      doc,
+      'div',
+      {},
+      h(doc, 'strong', {}, '缓存'),
+      `读 ${formatTokens(call.input.cacheRead)} · 写 ${formatTokens(call.input.cacheWrite)}`,
+    ),
+    h(doc, 'div', {}, h(doc, 'strong', {}, '结束原因'), h(doc, 'span', { class: 'pill' }, finish)),
+    h(doc, 'div', { class: 'tool-list' }, ...tools),
   );
-  return details;
 }
 
 function compositionOf(
   snapshot: UsageSnapshot,
 ): Array<{ name: string; value: number; tone: string }> {
-  const calls = snapshot.requests;
-  const noCache =
-    calls.length > 0
-      ? calls.reduce((sum, call) => sum + call.input.noCache, 0)
-      : Math.max(0, snapshot.sum.input - snapshot.sum.cacheRead);
-  const cacheRead =
-    calls.length > 0
-      ? calls.reduce((sum, call) => sum + call.input.cacheRead, 0)
-      : snapshot.sum.cacheRead;
-  const cacheWrite =
-    calls.length > 0
-      ? calls.reduce((sum, call) => sum + call.input.cacheWrite, 0)
-      : snapshot.sum.cacheWrite;
-  const text =
-    calls.length > 0
-      ? calls.reduce((sum, call) => sum + call.output.text, 0)
-      : snapshot.sum.textTokens;
-  const reasoning =
-    calls.length > 0
-      ? calls.reduce((sum, call) => sum + call.output.reasoning, 0)
-      : snapshot.sum.reasoning;
+  const kpis = snapshot.kpis;
   return [
-    { name: '新输入', value: noCache, tone: '' },
-    { name: '缓存读取', value: cacheRead, tone: 'cache' },
-    { name: '缓存写入', value: cacheWrite, tone: 'write' },
-    { name: '文本输出', value: text, tone: 'text' },
-    { name: '推理输出', value: reasoning, tone: 'reason' },
+    {
+      name: '新输入',
+      value: Math.max(0, kpis.input - kpis.cacheRead - kpis.cacheWrite),
+      tone: '',
+    },
+    { name: '缓存读取', value: kpis.cacheRead, tone: 'cache' },
+    { name: '缓存写入', value: kpis.cacheWrite, tone: 'write' },
+    { name: '文本输出', value: kpis.text, tone: 'text' },
+    { name: '推理输出', value: kpis.reasoning, tone: 'reason' },
   ];
 }
 
@@ -674,15 +661,19 @@ function exportSnapshot(snapshot: UsageSnapshot, button: HTMLButtonElement): voi
       calls: row.calls,
       ok: row.ok,
     })),
-    note: '模型返回的 token 为精确值，消息类型拆分为估算值。',
+    note: '模型返回的 token 为精确值，旧记录的明细按总量推算。',
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const href = URL.createObjectURL(blob);
-  const link = button.ownerDocument.createElement('a');
+  const doc = button.ownerDocument;
+  const link = doc.createElement('a');
   link.href = href;
   link.download = 'token-usage-summary.json';
+  link.hidden = true;
+  doc.body.append(link);
   link.click();
-  URL.revokeObjectURL(href);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(href), 0);
   button.textContent = '已导出';
   window.setTimeout(() => {
     button.textContent = '导出';
@@ -716,8 +707,8 @@ function formatRatio(input: number, output: number): string {
   return `${(Math.round((input / output) * 10) / 10).toFixed(1)} : 1`;
 }
 
-function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return '0ms';
+function formatDuration(ms: number | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms <= 0) return '—';
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = Math.round(ms / 100) / 10;
   return `${seconds.toFixed(1)}s`;

@@ -27,6 +27,7 @@ export interface Journal {
     meta?: UsageCallMeta,
   ): Promise<void>;
   recordUsageCall(call: UsageCall): Promise<void>;
+  recordUsageCalls(calls: UsageCall[]): Promise<void>;
   readUsage(today: string, range?: UsageRange): Promise<UsageSnapshot>;
 }
 

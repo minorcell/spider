@@ -29,23 +29,22 @@ export function mountPanel(
   const model = doc.querySelector<HTMLElement>('#pilot-model');
   const trace = doc.querySelector<HTMLOListElement>('#trace');
   const open = doc.querySelector<HTMLButtonElement>('#settings-open');
-  const menu = doc.querySelector<HTMLElement>('#corner-menu');
   const menuModel = doc.querySelector<HTMLButtonElement>('#menu-model');
   const menuMemory = doc.querySelector<HTMLButtonElement>('#menu-memory');
   const menuUsage = doc.querySelector<HTMLButtonElement>('#menu-usage');
   const map = doc.querySelector<HTMLButtonElement>('#observe-open');
   const lookHint = doc.querySelector<HTMLElement>('#look-hint');
   const dialog = doc.querySelector<HTMLDialogElement>('#settings');
+  const panelModel = doc.querySelector<HTMLElement>('#panel-model');
   const settingsForm = doc.querySelector<HTMLFormElement>('#settings-form');
   const close = doc.querySelector<HTMLButtonElement>('#settings-close');
-  const memoryDialog = doc.querySelector<HTMLDialogElement>('#memory');
+  const memoryPanel = doc.querySelector<HTMLElement>('#memory');
   const memoryForm = doc.querySelector<HTMLFormElement>('#memory-form');
-  const memoryClose = doc.querySelector<HTMLButtonElement>('#memory-close');
   const memoryEmpty = doc.querySelector<HTMLElement>('#memory-empty');
   const leave = doc.querySelector<HTMLDialogElement>('#leave');
   const leaveClose = doc.querySelector<HTMLButtonElement>('#leave-close');
   const leaveSummarize = doc.querySelector<HTMLButtonElement>('#leave-summarize');
-  const usageDialog = doc.querySelector<HTMLDialogElement>('#usage');
+  const usagePanel = doc.querySelector<HTMLElement>('#usage');
   if (
     !form ||
     !goal ||
@@ -53,22 +52,21 @@ export function mountPanel(
     !model ||
     !trace ||
     !open ||
-    !menu ||
     !menuModel ||
     !menuMemory ||
     !menuUsage ||
     !map ||
     !dialog ||
+    !panelModel ||
     !settingsForm ||
     !close ||
-    !memoryDialog ||
+    !memoryPanel ||
     !memoryForm ||
-    !memoryClose ||
     !memoryEmpty ||
     !leave ||
     !leaveClose ||
     !leaveSummarize ||
-    !usageDialog
+    !usagePanel
   ) {
     throw new Error('Missing pilot chrome');
   }
@@ -173,27 +171,36 @@ export function mountPanel(
     field('compactKb').value = settings.compactKb == null ? '' : String(settings.compactKb);
   };
 
-  const setMenu = (shown: boolean): void => {
-    menu.hidden = !shown;
-    open.setAttribute('aria-expanded', shown ? 'true' : 'false');
+  const pages = { model: panelModel, memory: memoryPanel, usage: usagePanel } as const;
+  const nav = { model: menuModel, memory: menuMemory, usage: menuUsage } as const;
+
+  const showPage = (page: keyof typeof pages): void => {
+    for (const name of Object.keys(pages) as Array<keyof typeof pages>) {
+      pages[name].hidden = name !== page;
+      if (name === page) nav[name].setAttribute('aria-current', 'page');
+      else nav[name].removeAttribute('aria-current');
+    }
+    open.setAttribute('aria-expanded', 'true');
+    if (!dialog.open) dialog.showModal();
   };
 
-  open.addEventListener('click', () => setMenu(menu.hasAttribute('hidden')));
-  menuModel.addEventListener('click', () => {
-    setMenu(false);
+  open.addEventListener('click', () => {
+    if (dialog.open) {
+      dialog.close();
+      return;
+    }
     fill(readPilot());
-    dialog.showModal();
+    showPage('model');
   });
-  doc.addEventListener('click', (event) => {
-    /* v8 ignore next */
-    if (!(event.target instanceof Node)) return;
-    if (open.contains(event.target) || menu.contains(event.target)) return;
-    setMenu(false);
+  menuModel.addEventListener('click', () => {
+    fill(readPilot());
+    showPage('model');
   });
   close.addEventListener('click', () => dialog.close());
 
   const persist = (): void => {
     writePilot({
+      ...readPilot(),
       baseURL: field('baseURL').value,
       model: field('model').value,
       apiKey: field('apiKey').value,
@@ -205,8 +212,14 @@ export function mountPanel(
   };
 
   settingsForm.addEventListener('input', persist);
-  settingsForm.addEventListener('submit', persist);
-  dialog.addEventListener('close', persist);
+  settingsForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    persist();
+  });
+  dialog.addEventListener('close', () => {
+    open.setAttribute('aria-expanded', 'false');
+    persist();
+  });
 
   let journal: Journal | null = null;
   let lastActivity = Date.now();
@@ -256,16 +269,14 @@ export function mountPanel(
   bindMemory({
     doc,
     menuMemory,
-    memoryDialog,
     memoryForm,
-    memoryClose,
     memoryEmpty,
     dateSelect,
     lineInput,
     notedInput,
     summaryInput,
     autoMemoryInput,
-    setMenu,
+    showPage: () => showPage('memory'),
     getJournal,
     journalReady,
   });
@@ -273,8 +284,8 @@ export function mountPanel(
   const usage = bindUsage({
     doc,
     menuUsage,
-    usageDialog,
-    setMenu,
+    usagePanel,
+    showPage: () => showPage('usage'),
     getJournal,
     journalReady,
   });
@@ -352,7 +363,7 @@ export function mountPanel(
       });
       const answer = reply.text;
       if (reply.calls && reply.calls.length > 0) {
-        for (const call of reply.calls) await opened?.recordUsageCall(call);
+        await opened?.recordUsageCalls(reply.calls);
       } else {
         await opened?.recordUsage(reply.usage);
       }
@@ -374,7 +385,7 @@ export function mountPanel(
         if (recorded) release(controller);
         if (!failed && !sawText && answer.trim()) show(answer.trim(), 'speech');
       }
-      if (usage.dialog.open) await usage.refresh();
+      if (dialog.open && !usagePanel.hidden) await usage.refresh();
     } catch (error) {
       if (controller.signal.aborted || isAbort(error)) {
         if (!replaced.has(controller)) show('已停止', 'note');
@@ -410,7 +421,7 @@ export function mountPanel(
     if (!pilotReady(settings)) {
       show('还没有填写模型', 'note');
       fill(settings);
-      dialog.showModal();
+      showPage('model');
       return;
     }
     if (!text) return;

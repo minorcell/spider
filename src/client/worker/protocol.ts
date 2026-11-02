@@ -31,6 +31,7 @@ export type JournalRequest =
       args: [LanguageModelUsage | null | undefined, number?, UsageCallMeta?];
     }
   | { id: number; method: 'recordUsageCall'; args: [UsageCall] }
+  | { id: number; method: 'recordUsageCalls'; args: [UsageCall[]] }
   | { id: number; method: 'readUsage'; args: [string, UsageRange?] }
   | { id: number; method: 'snapshotRead' }
   | { id: number; method: 'snapshotPut'; args: [WorldRecord] }
@@ -52,8 +53,9 @@ export interface JournalResultMap {
   read: MemoryView | null;
   write: MemoryView;
   dismiss: JournalState;
-  recordUsage: JournalState;
-  recordUsageCall: JournalState;
+  recordUsage: null;
+  recordUsageCall: null;
+  recordUsageCalls: null;
   readUsage: UsageSnapshot;
   snapshotRead: unknown;
   snapshotPut: null;

@@ -18,6 +18,7 @@ import {
   readUsage,
   recordUsage,
   recordUsageCall,
+  recordUsageCalls,
   type UsageCall,
   type UsageCallMeta,
   type UsageRange,
@@ -180,6 +181,10 @@ export class Diary implements Journal {
 
   recordUsageCall(call: UsageCall): Promise<void> {
     return recordUsageCall(call);
+  }
+
+  recordUsageCalls(calls: UsageCall[]): Promise<void> {
+    return recordUsageCalls(calls);
   }
 
   readUsage(today: string, range?: UsageRange): Promise<UsageSnapshot> {

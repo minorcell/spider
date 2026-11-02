@@ -6,6 +6,7 @@ import {
   readUsage,
   recordUsage,
   recordUsageCall,
+  recordUsageCalls,
   usageCallFromStep,
   usageCallFromUsage,
 } from '../../src/client/journal/usage.js';
@@ -131,6 +132,42 @@ describe('recordUsage', () => {
     expect((await readUsage('2026-11-02')).days).toEqual([]);
   });
 
+  it('ignores an empty batch', async () => {
+    await recordUsageCalls([]);
+    expect((await readUsage('2026-11-02')).days).toEqual([]);
+  });
+
+  it('keeps a legacy day when the first migration pass cannot read', async () => {
+    const db = await openSpiderDb();
+    await db.put('usage', {
+      date: '2026-11-02',
+      input: 9,
+      output: 1,
+      total: 10,
+      calls: 2,
+      cacheRead: 0,
+      cacheWrite: 0,
+      reasoning: 0,
+      textTokens: 1,
+      toolCalls: 0,
+    });
+    const original = db.getAllKeys.bind(db);
+    let thrown = false;
+    vi.spyOn(db, 'getAllKeys').mockImplementation((store, query, count) => {
+      if (!thrown) {
+        thrown = true;
+        return Promise.reject(new Error('keys down'));
+      }
+      return original(store, query, count);
+    });
+    await recordUsage(usage(1, 1, 2), day);
+    const snapshot = await readUsage('2026-11-02');
+    expect(snapshot.today.calls).toBe(3);
+    expect(snapshot.requests.some((row) => row.id === 'legacy:2026-11-02' && row.count === 2)).toBe(
+      true,
+    );
+  });
+
   it('keeps a prior day as one request when later steps arrive', async () => {
     const db = await openSpiderDb();
     await db.put('usage', {
@@ -147,9 +184,119 @@ describe('recordUsage', () => {
     });
     await recordUsage(usage(1, 1, 2), day);
     const snapshot = await readUsage('2026-11-02');
-    expect(snapshot.today.calls).toBe(2);
+    expect(snapshot.today.calls).toBe(3);
     expect(snapshot.today.input).toBe(10);
     expect(snapshot.requests).toHaveLength(2);
+    expect(snapshot.requests[1]).toMatchObject({ id: 'legacy:2026-11-02', count: 2 });
+  });
+
+  it('migrates a legacy day into a counted call for the detail list', async () => {
+    const db = await openSpiderDb();
+    await db.put('usage', {
+      date: '2026-11-01',
+      input: 7,
+      output: 1,
+      total: 8,
+      calls: 2,
+      cacheRead: 3,
+      cacheWrite: 1,
+      reasoning: 0,
+      textTokens: 1,
+      toolCalls: 4,
+    });
+    const snapshot = await readUsage('2026-11-02');
+    expect(snapshot.requests[0]).toMatchObject({
+      id: 'legacy:2026-11-01',
+      count: 2,
+      toolCalls: 4,
+      input: { total: 7, noCache: 3, cacheRead: 3, cacheWrite: 1 },
+      output: { total: 1, text: 1, reasoning: 0 },
+    });
+    expect(snapshot.kpis).toMatchObject({ calls: 2, input: 7, toolCalls: 4 });
+    expect((await readUsage('2026-11-02')).requests).toHaveLength(1);
+  });
+
+  it('does not copy a day that already has a call', async () => {
+    const db = await openSpiderDb();
+    await db.put('usage', {
+      date: '2026-11-02',
+      input: 100,
+      output: 0,
+      total: 100,
+      calls: 9,
+      cacheRead: 0,
+      cacheWrite: 0,
+      reasoning: 0,
+      textTokens: 0,
+      toolCalls: 0,
+    });
+    await db.put('usageCalls', {
+      id: 'real',
+      ts: 2,
+      date: '2026-11-02',
+      kind: 'agent',
+      sessionId: '2026-11-02',
+      turnId: 't',
+      step: 0,
+      provider: '',
+      modelId: 'kept',
+      total: 2,
+      input: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+      output: { total: 1, text: 1, reasoning: 0 },
+      tools: [],
+      timing: { responseMs: 4 },
+      finishReason: 'stop',
+    });
+    const snapshot = await readUsage('2026-11-02');
+    expect(snapshot.requests.map((row) => row.id)).toEqual(['real']);
+    expect(snapshot.kpis.calls).toBe(1);
+  });
+
+  it('skips a stored day that recorded no requests', async () => {
+    const db = await openSpiderDb();
+    await db.put('usage', {
+      date: '2026-11-01',
+      input: 0,
+      output: 0,
+      total: 0,
+      calls: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      reasoning: 0,
+      textTokens: 0,
+      toolCalls: 0,
+    });
+    await readUsage('2026-11-02');
+    expect(await db.get('usageCalls', 'legacy:2026-11-01')).toBeUndefined();
+  });
+
+  it('stores a legacy call with no clock time when the date cannot be parsed', async () => {
+    const db = await openSpiderDb();
+    await db.put('usage', {
+      date: 'not-a-date',
+      input: 1,
+      output: 1,
+      total: 2,
+      calls: 1,
+      cacheRead: 0,
+      cacheWrite: 0,
+      reasoning: 0,
+      textTokens: 1,
+      toolCalls: 0,
+    });
+    await readUsage('2026-11-02');
+    expect(await db.get('usageCalls', 'legacy:not-a-date')).toMatchObject({ ts: 0 });
+  });
+
+  it('makes the token parts add up to the reported total', async () => {
+    await recordUsage(usage(10, 2, 12, 4, 0), day);
+    const snapshot = await readUsage('2026-11-02');
+    const { input, output, cacheRead, cacheWrite, text, reasoning } = snapshot.kpis;
+    const parts =
+      Math.max(0, input - cacheRead - cacheWrite) + cacheRead + cacheWrite + text + reasoning;
+    expect(parts).toBe(input + output);
+    expect(snapshot.requests[0]?.input.noCache).toBe(6);
+    expect(snapshot.requests[0]?.output.text).toBe(2);
   });
 });
 
@@ -194,6 +341,60 @@ describe('recordUsageCall', () => {
     expect(snapshot.models[0]).toMatchObject({ modelId: 'deepseek-chat', calls: 3 });
     expect(snapshot.tools[0]).toMatchObject({ name: 'observe', calls: 2, ok: 2 });
     expect(snapshot.requests).toHaveLength(3);
+  });
+
+  it('writes several steps in one batch', async () => {
+    const base = {
+      ts: day.getTime(),
+      date: '2026-11-02',
+      kind: 'agent' as const,
+      sessionId: '2026-11-02',
+      turnId: 'turn-batch',
+      provider: 'openai-compatible',
+      modelId: 'deepseek-chat',
+      total: 2,
+      input: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+      output: { total: 1, text: 1, reasoning: 0 },
+      tools: [],
+      timing: { responseMs: 5, stepMs: 6 },
+      finishReason: 'stop',
+    };
+    await recordUsageCalls([0, 1, 2].map((step) => ({ ...base, id: `batch-${step}`, step })));
+    const snapshot = await readUsage('2026-11-02', '7');
+    expect(snapshot.today.calls).toBe(3);
+    expect(snapshot.requests).toHaveLength(3);
+    expect(snapshot.kpis.calls).toBe(3);
+  });
+
+  it('caps the request list but keeps totals over the cap', async () => {
+    const base = {
+      ts: day.getTime(),
+      date: '2026-11-02',
+      kind: 'agent' as const,
+      sessionId: '2026-11-02',
+      turnId: 'turn-cap',
+      provider: 'openai-compatible',
+      modelId: 'deepseek-chat',
+      total: 2,
+      input: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+      output: { total: 1, text: 1, reasoning: 0 },
+      tools: [],
+      timing: { responseMs: 5, stepMs: 6 },
+      finishReason: 'stop',
+    };
+    await recordUsageCalls(
+      Array.from({ length: 205 }, (_, index) => ({
+        ...base,
+        id: `cap-${index}`,
+        step: index,
+        ts: day.getTime() + index,
+      })),
+    );
+    const snapshot = await readUsage('2026-11-02');
+    expect(snapshot.requests).toHaveLength(200);
+    expect(snapshot.requestTotal).toBe(205);
+    expect(snapshot.kpis.calls).toBe(205);
+    expect(snapshot.models[0]?.calls).toBe(205);
   });
 
   it('treats missing provider fields as zero and keeps a failed tool', async () => {
@@ -242,6 +443,8 @@ describe('recordUsageCall', () => {
     expect(snapshot.tools[0]).toMatchObject({ name: 'pick_up', calls: 1, ok: 0 });
     expect(snapshot.chart).toHaveLength(7);
     expect(Number.isNaN(snapshot.kpis.toolOkRate)).toBe(false);
+    expect(snapshot.requests[0]?.timing.responseMs).toBeUndefined();
+    expect(snapshot.requests[0]?.timing.stepMs).toBe(12);
   });
 
   it('marks a diary summary separately from an agent turn', async () => {
@@ -274,6 +477,28 @@ describe('recordUsageCall', () => {
 });
 
 describe('usageCall helpers', () => {
+  it('derives missing detail tokens from the totals', () => {
+    const call = usageCallFromUsage(usage(10, 2, 12, 4, 1), new Date(2026, 10, 2, 15))!;
+    expect(call.input).toMatchObject({ total: 10, noCache: 6, cacheRead: 4 });
+    expect(call.output).toMatchObject({ total: 2, text: 1, reasoning: 1 });
+    expect(call.timing).toEqual({});
+    const written = usageCallFromUsage(
+      {
+        inputTokens: 10,
+        outputTokens: 2,
+        totalTokens: 12,
+        inputTokenDetails: {
+          noCacheTokens: undefined,
+          cacheReadTokens: 3,
+          cacheWriteTokens: 2,
+        },
+        outputTokenDetails: { textTokens: undefined, reasoningTokens: 0 },
+      },
+      new Date(2026, 10, 2, 15),
+    )!;
+    expect(written.input.noCache).toBe(5);
+  });
+
   it('reads tools off the step when none are supplied', () => {
     const call = usageCallFromStep(
       {
@@ -571,6 +796,29 @@ describe('openSpiderDb', () => {
     expect([...db.objectStoreNames].filter((name) => name === 'usageCalls')).toEqual([
       'usageCalls',
     ]);
+  });
+
+  it('adds the date index to an existing usageCalls store', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('spider', 4);
+      request.addEventListener('upgradeneeded', () => {
+        const database = request.result;
+        database.createObjectStore('sessions', { keyPath: 'date' });
+        database.createObjectStore('memories', { keyPath: 'date' });
+        database.createObjectStore('usage', { keyPath: 'date' });
+        database.createObjectStore('usageCalls', { keyPath: 'id' });
+        database.createObjectStore('snapshots', { keyPath: 'id' });
+      });
+      request.addEventListener('success', () => {
+        request.result.close();
+        resolve();
+      });
+      request.addEventListener('error', () => reject(request.error ?? new Error('open failed')));
+    });
+    const db = await openSpiderDb();
+    const tx = db.transaction('usageCalls');
+    expect(tx.store.indexNames.contains('date')).toBe(true);
+    await tx.done;
   });
 
   it('adds the usageCalls store to a database created before it', async () => {

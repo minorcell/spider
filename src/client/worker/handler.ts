@@ -74,12 +74,17 @@ export function createHandler(): Handler {
         const opened = await open();
         const [usage, now, meta] = request.args;
         await opened.recordUsage(usage, now == null ? undefined : new Date(now), meta);
-        return stateOf(opened);
+        return null;
       }
       case 'recordUsageCall': {
         const opened = await open();
         await opened.recordUsageCall(request.args[0]);
-        return stateOf(opened);
+        return null;
+      }
+      case 'recordUsageCalls': {
+        const opened = await open();
+        await opened.recordUsageCalls(request.args[0]);
+        return null;
       }
       case 'readUsage':
         return (await open()).readUsage(request.args[0], request.args[1]);

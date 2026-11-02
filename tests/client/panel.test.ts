@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetSpiderDb } from '../../src/client/journal/db.js';
+import { openSpiderDb, resetSpiderDb } from '../../src/client/journal/db.js';
 import { Diary } from '../../src/client/journal/diary.js';
 import { localDate, shiftDate } from '../../src/shared/dates.js';
 import * as usageLedger from '../../src/client/journal/usage.js';
@@ -45,41 +45,40 @@ const CHROME = `
   </form>
   <span id="pilot-model"></span>
   <ol id="trace"></ol>
-  <button id="settings-open" type="button"></button>
-  <menu id="corner-menu" hidden>
-    <button id="menu-model" type="button">模型</button>
-    <button id="menu-memory" type="button">记忆</button>
-    <button id="menu-usage" type="button">用量</button>
-  </menu>
+  <button id="settings-open" type="button" aria-expanded="false"></button>
   <button id="observe-open" type="button"></button>
   <span id="look-hint"></span>
   <dialog id="settings">
-    <form id="settings-form">
-      <input name="baseURL" />
-      <input name="model" />
-      <input name="apiKey" />
-      <input name="contextTokens" />
-      <input name="compact" type="checkbox" />
-      <input name="compactKb" />
-    </form>
+    <button id="menu-model" type="button">模型</button>
+    <button id="menu-memory" type="button">记忆</button>
+    <button id="menu-usage" type="button">用量</button>
+    <section id="panel-model">
+      <form id="settings-form">
+        <input name="baseURL" />
+        <input name="model" />
+        <input name="apiKey" />
+        <input name="contextTokens" />
+        <input name="compact" type="checkbox" />
+        <input name="compactKb" />
+      </form>
+    </section>
+    <section id="memory" hidden>
+      <form id="memory-form">
+        <input name="autoMemory" type="checkbox" />
+        <select name="date"></select>
+        <input name="line" />
+        <textarea name="noted"></textarea>
+        <textarea name="summary"></textarea>
+      </form>
+      <p id="memory-empty" hidden></p>
+    </section>
+    <section id="usage" hidden></section>
     <button id="settings-close" type="button"></button>
-  </dialog>
-  <dialog id="memory">
-    <form id="memory-form">
-      <input name="autoMemory" type="checkbox" />
-      <select name="date"></select>
-      <input name="line" />
-      <textarea name="noted"></textarea>
-      <textarea name="summary"></textarea>
-    </form>
-    <p id="memory-empty" hidden></p>
-    <button id="memory-close" type="button"></button>
   </dialog>
   <dialog id="leave">
     <button id="leave-close" type="button"></button>
     <button id="leave-summarize" type="button"></button>
   </dialog>
-  <dialog id="usage"></dialog>
 `;
 
 let stage: {
@@ -218,10 +217,12 @@ describe('settings dialog', () => {
     ready();
     mount();
     clickButton('#settings-open');
-    expect(document.querySelector<HTMLElement>('#corner-menu')!.hidden).toBe(false);
+    expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(true);
+    expect(document.querySelector('#settings-open')!.getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelector<HTMLElement>('#panel-model')!.hidden).toBe(false);
+    expect(document.querySelector('#menu-model')!.getAttribute('aria-current')).toBe('page');
     clickButton('#menu-model');
     expect(field('baseURL').value).toBe('https://example.com');
-    expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(true);
 
     field('model').value = ' next ';
     field('model').dispatchEvent(new Event('input', { bubbles: true }));
@@ -241,6 +242,11 @@ describe('settings dialog', () => {
 
     document.querySelector('#settings')!.dispatchEvent(new Event('close'));
     expect(readPilot().baseURL).toBe('https://other.example');
+
+    clickButton('#settings-open');
+    clickButton('#settings-open');
+    expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(false);
+    expect(document.querySelector('#settings-open')!.getAttribute('aria-expanded')).toBe('false');
   });
 });
 
@@ -644,7 +650,9 @@ describe('diary panel', () => {
     await flush();
     clickButton('#menu-memory');
     await flush();
-    expect(document.querySelector<HTMLDialogElement>('#memory')!.open).toBe(true);
+    expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(true);
+    expect(document.querySelector<HTMLElement>('#memory')!.hidden).toBe(false);
+    expect(document.querySelector<HTMLElement>('#panel-model')!.hidden).toBe(true);
     expect(document.querySelector<HTMLSelectElement>('[name="date"]')!.value).toBe(day.date);
     expect(document.querySelector<HTMLInputElement>('[name="line"]')!.value).toBe('不要吃红的');
     expect(document.querySelector<HTMLTextAreaElement>('[name="noted"]')!.value).toBe('记住');
@@ -665,7 +673,7 @@ describe('diary panel', () => {
     await flush();
     clickButton('#menu-memory');
     await flush();
-    expect(document.querySelector<HTMLDialogElement>('#memory')!.open).toBe(false);
+    expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(false);
     spy.mockRestore();
   });
 
@@ -675,7 +683,7 @@ describe('diary panel', () => {
     await flush();
     clickButton('#menu-memory');
     await flush();
-    expect(document.querySelector<HTMLDialogElement>('#memory')!.open).toBe(false);
+    expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(false);
   });
 
   it('loads another day when the date changes', async () => {
@@ -733,6 +741,8 @@ describe('diary panel', () => {
     expect(readPilot().autoMemory).toBe(false);
     box.checked = true;
     box.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(readPilot().autoMemory).toBe(true);
+    clickButton('#settings-close');
     expect(readPilot().autoMemory).toBe(true);
   });
 
@@ -828,9 +838,9 @@ describe('diary panel', () => {
     expect(field('contextTokens').value).toBe('4');
     expect(field('compact').checked).toBe(true);
     expect(field('compactKb').value).toBe('400');
+    clickButton('#settings-close');
     writePilot({ baseURL: 'https://example.com', model: 'model-1', apiKey: 'key' });
     clickButton('#settings-open');
-    clickButton('#menu-model');
     expect(field('contextTokens').value).toBe('');
     expect(field('compactKb').value).toBe('');
   });
@@ -875,8 +885,8 @@ describe('diary panel', () => {
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     clickButton('#leave-close');
     clickButton('#leave-summarize');
-    clickButton('#memory-close');
-    expect(document.querySelector<HTMLDialogElement>('#memory')!.open).toBe(false);
+    clickButton('#settings-close');
+    expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(false);
     expect(document.querySelector<HTMLDialogElement>('#leave')!.open).toBe(false);
     spy.mockRestore();
   });
@@ -977,7 +987,7 @@ describe('diary panel', () => {
     vi.spyOn(Diary.prototype, 'backfill').mockRejectedValueOnce(new Error('no model'));
     mount();
     await flush();
-    expect(document.querySelector<HTMLDialogElement>('#memory')!.open).toBe(false);
+    expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(false);
   });
 
   it('runs without a diary', async () => {
@@ -1158,16 +1168,16 @@ describe('usage dialog', () => {
 
   it('opens an empty ledger', async () => {
     mount();
-    clickButton('#settings-open');
     clickButton('#menu-usage');
     await flush();
-    expect(document.querySelector<HTMLElement>('#corner-menu')!.hidden).toBe(true);
-    expect(document.querySelector<HTMLDialogElement>('#usage')!.open).toBe(true);
+    expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(true);
+    expect(document.querySelector<HTMLElement>('#usage')!.hidden).toBe(false);
+    expect(document.querySelector('#menu-usage')!.getAttribute('aria-current')).toBe('page');
     expect(document.querySelector('.kpis')!.textContent).toContain('模型请求');
     expect(document.querySelector('.kpis')!.textContent).toContain('0');
     expect(document.querySelector('#usage-empty')!.textContent).toBe('还没有用量。');
-    clickButton('#usage-close');
-    expect(document.querySelector<HTMLDialogElement>('#usage')!.open).toBe(false);
+    clickButton('#settings-close');
+    expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(false);
   });
 
   it('renders an empty ledger when the diary cannot open', async () => {
@@ -1176,7 +1186,8 @@ describe('usage dialog', () => {
     await flush();
     clickButton('#menu-usage');
     await flush();
-    expect(document.querySelector<HTMLDialogElement>('#usage')!.open).toBe(true);
+    expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(true);
+    expect(document.querySelector<HTMLElement>('#usage')!.hidden).toBe(false);
     expect(document.querySelector('#usage-empty')!.textContent).toBe('还没有用量。');
   });
 
@@ -1203,6 +1214,8 @@ describe('usage dialog', () => {
     expect(page).toContain('deepseek-chat');
     expect(page).toContain('deepseek-reasoner');
     expect(document.querySelector('#usage-empty')).toBeNull();
+    expect(page).not.toContain('0ms');
+    expect(document.querySelector('.table tbody td.num:last-child')!.textContent).toBe('—');
     document
       .querySelector('.request summary')!
       .dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -1348,9 +1361,8 @@ describe('usage dialog', () => {
     document.querySelector<HTMLButtonElement>('.range')!.click();
     document.querySelector<HTMLButtonElement>('[data-value="all"]')!.click();
     await flush();
-    expect(document.querySelector('.footer-note')!.textContent).toContain(
-      '成本需要在模型设置中填写价格',
-    );
+    expect(document.querySelector('.footer-note')!.textContent).not.toContain('成本');
+    expect(document.querySelector('.footer-note')!.textContent).toContain('完整对话内容');
     document.querySelector<HTMLButtonElement>('.range')!.click();
     document
       .querySelector('#usage-range-menu')!
@@ -1372,6 +1384,69 @@ describe('usage dialog', () => {
     expect(document.querySelector('#usage-export')!.textContent).toBe('已导出');
     await vi.advanceTimersByTimeAsync(1400);
     expect(document.querySelector('#usage-export')!.textContent).toBe('导出');
+  });
+
+  it('shows a legacy day as one counted row without tool names', async () => {
+    const today = localDate(new Date());
+    const db = await openSpiderDb();
+    await db.put('usage', {
+      date: today,
+      input: 7,
+      output: 1,
+      total: 8,
+      calls: 2,
+      cacheRead: 3,
+      cacheWrite: 1,
+      reasoning: 0,
+      textTokens: 1,
+      toolCalls: 4,
+    });
+    mount();
+    clickButton('#menu-usage');
+    await flush();
+    const page = document.querySelector('#usage')!;
+    expect(page.textContent).toContain('历史记录无工具明细');
+    expect(page.textContent).toContain('汇总 2 次');
+    const details = page.querySelector<HTMLDetailsElement>('.request')!;
+    details.open = true;
+    details.dispatchEvent(new Event('toggle'));
+    expect(page.textContent).toContain('历史 4 次工具调用，无明细');
+    const center = Number(page.querySelector('.donut-center strong')!.textContent);
+    const parts = [...page.querySelectorAll('.break-row strong')].map((node) =>
+      Number(node.textContent),
+    );
+    expect(parts.reduce((sum, value) => sum + value, 0)).toBe(center);
+  });
+
+  it('says when the request list is shorter than the ledger', async () => {
+    const today = localDate(new Date());
+    const base = {
+      ts: Date.now(),
+      date: today,
+      kind: 'agent' as const,
+      sessionId: today,
+      turnId: 'turn-cap',
+      provider: 'openai-compatible',
+      modelId: 'deepseek-chat',
+      total: 2,
+      input: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+      output: { total: 1, text: 1, reasoning: 0 },
+      tools: [],
+      timing: { responseMs: 5, stepMs: 6 },
+      finishReason: 'stop',
+    };
+    await usageLedger.recordUsageCalls(
+      Array.from({ length: 201 }, (_, index) => ({
+        ...base,
+        id: `cap-${index}`,
+        step: index,
+        ts: base.ts + index,
+      })),
+    );
+    mount();
+    clickButton('#menu-usage');
+    await flush();
+    expect(document.querySelector('#usage')!.textContent).toContain('仅显示最近 200 次，共 201 次');
   });
 
   it('renders failed tools, second models, and empty range charts', async () => {
@@ -1414,6 +1489,10 @@ describe('usage dialog', () => {
     mount();
     clickButton('#menu-usage');
     await flush();
+    for (const details of document.querySelectorAll<HTMLDetailsElement>('.request')) {
+      details.open = true;
+      details.dispatchEvent(new Event('toggle'));
+    }
     const page = document.querySelector('#usage')!.textContent ?? '';
     expect(page).toContain('失败');
     expect(page).toContain('other-model');
