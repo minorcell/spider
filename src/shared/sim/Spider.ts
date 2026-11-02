@@ -2,6 +2,7 @@ import {
   BoxGeometry,
   CylinderGeometry,
   EdgesGeometry,
+  Euler,
   Group,
   LineSegments,
   MathUtils,
@@ -38,6 +39,20 @@ const axisY = new Vector3();
 const axisZ = new Vector3();
 const basisM = new Matrix4();
 
+/**
+ * The two shells in #buildBody. Clearance samples their lower halves so the
+ * belly stays above the ground it actually covers, including the slope tilt.
+ */
+const SHELLS: readonly {
+  c: readonly [number, number, number];
+  r: readonly [number, number, number];
+}[] = [
+  { c: [0, 0.78, -0.12], r: [0.55, 0.18, 0.46] },
+  { c: [0, 0.84, 1.08], r: [0.46, 0.32, 0.62] },
+];
+const shellEuler = new Euler(0, 0, 0, 'XYZ');
+const shellPoint = new Vector3();
+
 export class Spider {
   readonly root = new Group();
   /** The legs are solved and placed in world space, so rig is a sibling of root. */
@@ -67,6 +82,11 @@ export class Spider {
   #stepping = false;
   /** How long the body has been fully still, in seconds. */
   #stillFor = 0;
+  /** Ground height under the shell, cached for one pose. */
+  #shellX = Number.NaN;
+  #shellZ = Number.NaN;
+  #shellYaw = Number.NaN;
+  #shellGround = 0;
 
   constructor() {
     this.root.add(this.chassis);
@@ -81,6 +101,7 @@ export class Spider {
     this.#limit = limit;
     this.fall = 0;
     this.#seeded = false;
+    this.#shellX = Number.NaN;
     this.update(0, IDLE_CONTROLS);
   }
 
@@ -298,7 +319,53 @@ export class Spider {
   }
 
   #support(): number {
-    return this.#ground(this.root.position.x, this.root.position.z) + this.heightSet;
+    return this.#shellGroundAt() + this.heightSet;
+  }
+
+  /** Highest ground under the shell. One pose reuses the samples. */
+  #shellGroundAt(): number {
+    const x = this.root.position.x;
+    const z = this.root.position.z;
+    if (x === this.#shellX && z === this.#shellZ && this.yaw === this.#shellYaw) {
+      return this.#shellGround;
+    }
+    const center = this.#ground(x, z);
+    // Same tilt #applySlope adds, so the lift accounts for the belly dipping.
+    const ahead = this.#ground(x + worldFwd.x * 0.8, z + worldFwd.z * 0.8) - center;
+    const side = this.#ground(x + worldRight.x * 0.8, z + worldRight.z * 0.8) - center;
+    shellEuler.set(
+      -MathUtils.clamp(ahead / 0.8, -0.35, 0.35),
+      0,
+      -MathUtils.clamp(side / 0.8, -0.25, 0.25),
+      'XYZ',
+    );
+    const cos = Math.cos(this.yaw);
+    const sin = Math.sin(this.yaw);
+    let lift = 0;
+    for (const shell of SHELLS) {
+      for (const phi of [-1.2, -0.55, 0]) {
+        const cp = Math.cos(phi);
+        const sy = Math.sin(phi);
+        for (let i = 0; i < 8; i++) {
+          const theta = (i / 8) * Math.PI * 2;
+          shellPoint.set(
+            shell.c[0] + shell.r[0] * cp * Math.cos(theta),
+            shell.c[1] + shell.r[1] * sy,
+            shell.c[2] + shell.r[2] * cp * Math.sin(theta),
+          );
+          shellPoint.applyEuler(shellEuler);
+          const wx = x + shellPoint.x * cos + shellPoint.z * sin;
+          const wz = z - shellPoint.x * sin + shellPoint.z * cos;
+          lift = Math.max(lift, this.#ground(wx, wz) - center - shellPoint.y);
+        }
+      }
+    }
+    this.#shellX = x;
+    this.#shellZ = z;
+    this.#shellYaw = this.yaw;
+    // A hair of pad so the ink shell does not z-fight a face between samples.
+    this.#shellGround = center + (lift > 0 ? lift + 0.04 : 0);
+    return this.#shellGround;
   }
 
   /** Tip the shell with the ground, on top of the gait's pitch and roll. */

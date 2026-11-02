@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { Vector3 } from 'three';
+import { Matrix4, Vector3 } from 'three';
 import { GAIT } from '../../../src/shared/config.js';
 import { Spider } from '../../../src/shared/sim/Spider.js';
 
@@ -15,6 +15,31 @@ function mountWorld(spider: Spider, index: number): Vector3 {
 function specDir(spider: Spider, index: number): Vector3 {
   const spec = spider.legs[index].spec;
   return new Vector3(spec.x, 0, spec.z).normalize();
+}
+
+function shellClearance(spider: Spider, ground: (x: number, z: number) => number): number {
+  spider.root.updateMatrixWorld(true);
+  const point = new Vector3();
+  let worst = Infinity;
+  spider.chassis.traverse((node) => {
+    const geometry = (node as { geometry?: { getAttribute(name: string): MatrixAttr | undefined } })
+      .geometry;
+    const position = geometry?.getAttribute('position');
+    if (!position) return;
+    const world = (node as { matrixWorld: Matrix4 }).matrixWorld;
+    for (let i = 0; i < position.count; i++) {
+      point.set(position.getX(i), position.getY(i), position.getZ(i)).applyMatrix4(world);
+      worst = Math.min(worst, point.y - ground(point.x, point.z));
+    }
+  });
+  return worst;
+}
+
+interface MatrixAttr {
+  count: number;
+  getX(index: number): number;
+  getY(index: number): number;
+  getZ(index: number): number;
 }
 
 function worldRight(spider: Spider): Vector3 {
@@ -100,6 +125,18 @@ describe('Spider', () => {
     expect(spider.heightSet).toBeCloseTo(GAIT.heightMax);
     for (let i = 0; i < 80; i++) spider.update(0.1, { ...IDLE, lift: -1 });
     expect(spider.heightSet).toBeCloseTo(GAIT.heightMin);
+  });
+
+  it('keeps the shell above a steep face', () => {
+    const rise = 1.6;
+    const grounds = [(x: number, z: number) => -z * rise, (x: number, z: number) => x * rise];
+    for (const ground of grounds) {
+      const spider = new Spider();
+      spider.yaw = 0.8;
+      spider.bindGround(ground);
+      for (let i = 0; i < 45; i++) spider.update(1 / 30, IDLE);
+      expect(shellClearance(spider, ground)).toBeGreaterThan(-0.02);
+    }
   });
 
   it('stops dead against a solid', () => {
