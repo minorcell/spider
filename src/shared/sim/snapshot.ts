@@ -214,7 +214,30 @@ function readEntity(value: unknown): EntityState | null {
   if (raw.footprint) entity.footprint = raw.footprint as Footprint;
   if (vx !== undefined) entity.vx = vx;
   if (vz !== undefined) entity.vz = vz;
+  const spin = readSpin(raw);
+  if (spin === null) return null;
+  if (spin) {
+    entity.qx = spin.qx;
+    entity.qy = spin.qy;
+    entity.qz = spin.qz;
+    entity.qw = spin.qw;
+  }
   return entity;
+}
+
+/** Identity when absent. A partial or non-finite orientation is a bad record. */
+function readSpin(
+  raw: Record<string, unknown>,
+): { qx: number; qy: number; qz: number; qw: number } | null | undefined {
+  const qx = optionalNumber(raw.qx);
+  const qy = optionalNumber(raw.qy);
+  const qz = optionalNumber(raw.qz);
+  const qw = optionalNumber(raw.qw);
+  if (qx === null || qy === null || qz === null || qw === null) return null;
+  if (qx === undefined && qy === undefined && qz === undefined && qw === undefined)
+    return undefined;
+  if (qx === undefined || qy === undefined || qz === undefined || qw === undefined) return null;
+  return { qx, qy, qz, qw };
 }
 
 /** 缺省或有限数字；其他值是坏记录。 */

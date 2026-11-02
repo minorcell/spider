@@ -1,3 +1,4 @@
+import { Quaternion, Vector3 } from 'three';
 import { PHYSICS } from '../config.js';
 import { kindOf } from '../kinds.js';
 import { BODY_RADIUS, blockedAt } from '../sight.js';
@@ -18,16 +19,38 @@ const CLEARANCE = 0.08;
 interface Mover {
   entity: EntityState;
   radius: number;
+  rolls: boolean;
   vx: number;
   vz: number;
   slope: number;
+  x0: number;
+  z0: number;
 }
 
+const spinQ = new Quaternion();
+const spinDelta = new Quaternion();
+const spinAxis = new Vector3();
+
 /** Contact radius of a loose body. Fixed kinds stay out of the solver. */
-function looseRadius(entity: EntityState): number | null {
+function looseOf(entity: EntityState): { radius: number; rolls: boolean } | null {
   const physics = kindOf(entity.kind)?.physics;
   if (!physics?.loose) return null;
-  return physics.radius;
+  return { radius: physics.radius, rolls: physics.rolls };
+}
+
+/** Turn a round body by the arc length of this step, around the axis across its travel. */
+function roll(entity: EntityState, radius: number, dx: number, dz: number): void {
+  const dist = Math.hypot(dx, dz);
+  if (dist < 1e-8 || radius <= 0) return;
+  // Up × travel. Positive travel on +X spins so the bottom kicks backward.
+  spinAxis.set(dz / dist, 0, -dx / dist);
+  spinDelta.setFromAxisAngle(spinAxis, dist / radius);
+  spinQ.set(entity.qx ?? 0, entity.qy ?? 0, entity.qz ?? 0, entity.qw ?? 1);
+  spinQ.premultiply(spinDelta).normalize();
+  entity.qx = spinQ.x;
+  entity.qy = spinQ.y;
+  entity.qz = spinQ.z;
+  entity.qw = spinQ.w;
 }
 
 export function stepPhysics(world: WorldState, body: Body, dt: number): void {
@@ -35,14 +58,17 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
   const rules = world.physics ?? PHYSICS;
   const movers: Mover[] = [];
   for (const entity of world.entities) {
-    const radius = looseRadius(entity);
-    if (radius === null) continue;
+    const loose = looseOf(entity);
+    if (!loose) continue;
     movers.push({
       entity,
-      radius,
+      radius: loose.radius,
+      rolls: loose.rolls,
       vx: entity.vx ?? 0,
       vz: entity.vz ?? 0,
       slope: 0,
+      x0: entity.x,
+      z0: entity.z,
     });
   }
   if (movers.length === 0) return;
@@ -139,6 +165,9 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
   // Sit on the ground. Sleep only when the slope will not wake the body.
   for (const mover of movers) {
     mover.entity.y = world.terrain.height(mover.entity.x, mover.entity.z) + CLEARANCE;
+    if (mover.rolls) {
+      roll(mover.entity, mover.radius, mover.entity.x - mover.x0, mover.entity.z - mover.z0);
+    }
     if (mover.slope <= rules.sleepSlope && Math.hypot(mover.vx, mover.vz) < rules.sleepSpeed) {
       mover.entity.vx = 0;
       mover.entity.vz = 0;

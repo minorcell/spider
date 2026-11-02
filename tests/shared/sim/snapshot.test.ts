@@ -103,6 +103,41 @@ describe('snapshot', () => {
     expect(classify(badVz, today).status).toBe('malformed');
   });
 
+  it('keeps a rolled orientation and rejects a partial one', () => {
+    const base = good();
+    const apple = base.entities.find((entity) => entity.kind === 'apple')!;
+    const spun = {
+      ...base,
+      entities: base.entities.map((entity) =>
+        entity === apple ? { ...entity, qx: 0, qy: 0, qz: 0.2, qw: 0.98 } : entity,
+      ),
+    };
+    const ok = classify(spun, today);
+    expect(ok.status).toBe('ok');
+    if (ok.status === 'ok') {
+      expect(ok.record.entities.find((entity) => entity.id === apple.id)).toMatchObject({
+        qx: 0,
+        qy: 0,
+        qz: 0.2,
+        qw: 0.98,
+      });
+    }
+    const partial = {
+      ...spun,
+      entities: spun.entities.map((entity) =>
+        entity.id === apple.id ? { ...entity, qw: undefined } : entity,
+      ),
+    };
+    expect(classify(partial, today).status).toBe('malformed');
+    const broken = {
+      ...spun,
+      entities: spun.entities.map((entity) =>
+        entity.id === apple.id ? { ...entity, qy: 'nope' } : entity,
+      ),
+    };
+    expect(classify(broken, today).status).toBe('malformed');
+  });
+
   it('cuts a long sentence down to the stored limit', () => {
     const body = captureBody(session(), { text: '虫'.repeat(5000), tool: 'n'.repeat(40) });
     expect(body.pending?.text).toHaveLength(4000);

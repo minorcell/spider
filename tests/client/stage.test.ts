@@ -207,6 +207,36 @@ describe('world sync', () => {
     expect(sound.take).toHaveBeenCalled();
   });
 
+  it('spins a round prop around its center and leaves the bottom on the ground', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const apple = entity({
+      id: 'apple-1',
+      x: 2,
+      y: 0.5,
+      z: 0,
+      qx: 0,
+      qy: 0,
+      qz: 0.1,
+      qw: 0.995,
+    });
+    const nest = entity({ id: 'home', kind: 'nest', x: 0, y: 0.02, z: 0 });
+    stage.bind(vi.fn(), () => makeWorld({ entities: [apple, nest] }));
+    stage.start();
+    frame();
+    const scene = renderer().render.mock.calls.at(-1)?.[0] as {
+      children: {
+        position: { x: number; y: number; z: number };
+        quaternion: { z: number; w: number };
+        children: { position: { y: number } }[];
+      }[];
+    };
+    const prop = scene.children.find((child) => Math.abs(child.position.x - 2) < 1e-6);
+    expect(prop?.position.y).toBeCloseTo(0.5 + 0.36);
+    expect(prop?.quaternion.z).toBeCloseTo(0.1);
+    expect(prop?.quaternion.w).toBeCloseTo(0.995);
+    expect(prop?.children[0]?.position.y).toBeCloseTo(-0.36);
+  });
+
   it('retile drops the baked island and builds it again', () => {
     const stage = new Stage(makeHost(), new RealSpider());
     stage.retile();

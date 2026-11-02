@@ -24,6 +24,8 @@ export interface PhysicsSpec {
   radius: number;
   /** The shared solver moves it: slope, contact, and neighbors. */
   loose: boolean;
+  /** A round loose body spins as it travels. The angle is arc length / radius. */
+  rolls: boolean;
 }
 
 export interface KindSpec {
@@ -42,10 +44,18 @@ export const KINDS: Record<string, KindSpec> = {
     properties: ['edible', 'carryable'],
     eat: { duration: 3, stages: 2, removes: true },
     rest: 0,
-    physics: { solid: true, radius: 0.36, loose: true },
+    physics: { solid: true, radius: 0.36, loose: true, rolls: true },
   },
-  grass: { properties: ['cover'], rest: 0, physics: { solid: false, radius: 0, loose: false } },
-  nest: { properties: ['home'], rest: 0, physics: { solid: true, radius: 0, loose: false } },
+  grass: {
+    properties: ['cover'],
+    rest: 0,
+    physics: { solid: false, radius: 0, loose: false, rolls: false },
+  },
+  nest: {
+    properties: ['home'],
+    rest: 0,
+    physics: { solid: true, radius: 0, loose: false, rolls: false },
+  },
 };
 
 export function kindOf(kind: string): KindSpec | null {

@@ -41,6 +41,11 @@ export interface EntityState {
   /** Horizontal velocity for props that physics moves. */
   vx?: number;
   vz?: number;
+  /** Orientation of a body that rolls. Identity when omitted. */
+  qx?: number;
+  qy?: number;
+  qz?: number;
+  qw?: number;
 }
 
 /** A solid the spider cannot enter, and cannot see through. */

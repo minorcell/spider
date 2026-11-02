@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
+import { Quaternion, Vector3 } from 'three';
 import { PHYSICS } from '../../../src/shared/config.js';
+import { KINDS } from '../../../src/shared/kinds.js';
 import { stepPhysics } from '../../../src/shared/sim/physics.js';
 import type { Block, EntityState, WorldState } from '../../../src/shared/state.js';
 
@@ -37,6 +39,46 @@ describe('stepPhysics', () => {
     const empty = world();
     stepPhysics(empty, body, 1 / 60);
     expect(empty.entities).toEqual([]);
+  });
+
+  it('spins a round body by the arc it travels, and leaves a slider unturned', () => {
+    const slope = world({
+      terrain: { height: (x: number) => x * 0.4 },
+      entities: [apple({ x: 3 })],
+    });
+    stepPhysics(slope, body, 1 / 20);
+    stepPhysics(slope, body, 1 / 20);
+    const moved = slope.entities[0];
+    const dx = moved.x - 3;
+    expect(dx).toBeLessThan(0);
+    const bottom = new Vector3(0, -1, 0).applyQuaternion(
+      new Quaternion(moved.qx, moved.qy, moved.qz, moved.qw),
+    );
+    expect(Math.sign(bottom.x)).toBe(Math.sign(-dx));
+
+    KINDS.slide = {
+      properties: [],
+      rest: 0,
+      physics: { solid: true, radius: 0.2, loose: true, rolls: false },
+    };
+    KINDS.disk = {
+      properties: [],
+      rest: 0,
+      physics: { solid: true, radius: 0, loose: true, rolls: true },
+    };
+    try {
+      const sliding = world({
+        terrain: { height: (x: number) => x * 0.4 },
+        entities: [item('slide', { x: 3 }), item('disk', { id: 'disk-1', x: 4 })],
+      });
+      stepPhysics(sliding, body, 1 / 20);
+      expect(sliding.entities[0].x).toBeLessThan(3);
+      expect(sliding.entities[0].qx).toBeUndefined();
+      expect(sliding.entities[1].qx).toBeUndefined();
+    } finally {
+      delete KINDS.slide;
+      delete KINDS.disk;
+    }
   });
 
   it('rests an apple on flat ground', () => {

@@ -9,6 +9,7 @@ import {
   type Object3D,
 } from 'three';
 import { PALETTE } from '../shared/config.js';
+import { kindOf } from '../shared/kinds.js';
 import { TERRAIN } from '../shared/terrain.js';
 import type { EntityState, WorldState } from '../shared/state.js';
 import type { Spider } from '../shared/sim/Spider.js';
@@ -228,10 +229,21 @@ export class Stage {
       prop = undefined;
       if (previous != null && entity.stage > previous) this.#sound.bite();
     }
+    const spec = kindOf(entity.kind)?.physics;
+    const roll = spec?.rolls ? spec.radius : 0;
     if (!prop) {
       const built = buildProp(entity.kind, entity.stage, entity.footprint, entity.id);
       if (!built) return;
-      prop = built;
+      if (roll > 0) {
+        // The mesh origin is its bottom. Spin around the center, so the
+        // contact point stays on the ground while the body turns.
+        const pivot = new Group();
+        built.position.y = -roll;
+        pivot.add(built);
+        prop = pivot;
+      } else {
+        prop = built;
+      }
       this.#props.set(entity.id, prop);
       this.#scene.add(prop);
     }
@@ -242,8 +254,14 @@ export class Stage {
         drapeGrass(prop, x, z, (px, pz) => world.terrain.height(px, pz));
         this.#drapedGrass.set(entity.id, { x, z, terrain: world.terrain });
       }
-    } else if (prop.position.x !== x || prop.position.y !== y || prop.position.z !== z) {
-      prop.position.set(x, y, z);
+      return;
+    }
+    const py = y + roll;
+    if (prop.position.x !== x || prop.position.y !== py || prop.position.z !== z) {
+      prop.position.set(x, py, z);
+    }
+    if (roll > 0) {
+      prop.quaternion.set(entity.qx ?? 0, entity.qy ?? 0, entity.qz ?? 0, entity.qw ?? 1);
     }
   }
 
