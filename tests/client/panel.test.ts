@@ -7,7 +7,13 @@ import { summarizeDiary } from '../../src/client/journal/summarize.js';
 import { buildChrome } from '../../src/client/panel/chrome.js';
 import { AUTO_MEMORY_IDLE_MS, mountPanel } from '../../src/client/panel.js';
 import { pendingNow, resetWorldStore, type BootNote } from '../../src/client/worldStore.js';
-import { readPilot, writePilot, type PilotSettings } from '../../src/client/settings.js';
+import {
+  flushSettings,
+  readPilot,
+  resetPilotStore,
+  writePilot,
+  type PilotSettings,
+} from '../../src/client/settings.js';
 import type { Stage } from '../../src/client/stage.js';
 import type { SimSession } from '../../src/shared/sim/session.js';
 
@@ -101,7 +107,9 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 50; i++) await vi.advanceTimersByTimeAsync(1);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await flushSettings().catch(() => undefined);
+  resetPilotStore();
   vi.unstubAllEnvs();
   localStorage.clear();
   history.replaceState(null, '', '/');
@@ -245,6 +253,23 @@ describe('settings dialog', () => {
     clickButton('#settings-open');
     expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(false);
     expect(document.querySelector('#settings-open')!.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('preserves settings changed after the model form was filled', () => {
+    ready();
+    mount();
+    clickButton('#settings-open');
+    writePilot({ ...readPilot(), apiKey: 'new-key', contextTokens: 32, autoMemory: true });
+    field('model').value = 'next-model';
+    field('model').dispatchEvent(new Event('input', { bubbles: true }));
+    clickButton('#settings-close');
+
+    expect(readPilot()).toMatchObject({
+      model: 'next-model',
+      apiKey: 'new-key',
+      contextTokens: 32,
+      autoMemory: true,
+    });
   });
 });
 
@@ -749,7 +774,12 @@ describe('diary panel', () => {
     box.dispatchEvent(new Event('change', { bubbles: true }));
     expect(readPilot().autoMemory).toBe(true);
     clickButton('#settings-close');
-    expect(readPilot().autoMemory).toBe(true);
+    expect(readPilot()).toMatchObject({
+      baseURL: 'https://example.com',
+      model: 'model-1',
+      apiKey: 'key',
+      autoMemory: true,
+    });
   });
 
   it('dismisses the leave dialog', async () => {
@@ -843,7 +873,12 @@ describe('diary panel', () => {
     expect(document.querySelector('[name="compact"]')).toBeNull();
     expect(document.querySelector('[name="compactKb"]')).toBeNull();
     clickButton('#settings-close');
-    writePilot({ baseURL: 'https://example.com', model: 'model-1', apiKey: 'key' });
+    writePilot({
+      baseURL: 'https://example.com',
+      model: 'model-1',
+      apiKey: 'key',
+      contextTokens: null,
+    });
     clickButton('#settings-open');
     expect(field('contextTokens').value).toBe('');
   });
@@ -1170,6 +1205,7 @@ describe('usage dialog', () => {
   });
 
   it('opens an empty ledger', async () => {
+    ready();
     mount();
     clickButton('#menu-usage');
     await flush();
@@ -1181,6 +1217,7 @@ describe('usage dialog', () => {
     expect(document.querySelector('#usage-empty')!.textContent).toBe('还没有用量。');
     clickButton('#settings-close');
     expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(false);
+    expect(readPilot()).toEqual(PILOT);
   });
 
   it('renders an empty ledger when the diary cannot open', async () => {

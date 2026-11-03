@@ -98,6 +98,29 @@ function memoryStore(value: unknown = null): MemoryStore {
   return store;
 }
 
+function delayedTerrain(): {
+  started: Promise<void>;
+  release(terrain: Terrain): void;
+  load(): Promise<Terrain>;
+} {
+  let enter!: () => void;
+  let release!: (terrain: Terrain) => void;
+  const started = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const terrain = new Promise<Terrain>((resolve) => {
+    release = resolve;
+  });
+  return {
+    started,
+    release,
+    load() {
+      enter();
+      return terrain;
+    },
+  };
+}
+
 beforeEach(async () => {
   gate.mode = 'ok';
   vi.useRealTimers();
@@ -145,6 +168,54 @@ describe('restoreWorld', () => {
     expect(stored?.seq).toBe(4);
   });
 
+  it.each([1, 2])('rewrites matching format %s copies into the current format', async (format) => {
+    const saved = new SimSession(9);
+    saved.spider.root.position.x = 0.4;
+    const record = {
+      ...stamp(saved, { seq: 4, pending: { text: '旧世界', tool: null } }),
+      format,
+    };
+    localStorage.setItem(KEY, JSON.stringify(record));
+    await put(record as WorldRecord);
+
+    const session = new SimSession(1);
+    const note = await restoreWorld(session);
+    const db = await openSpiderDb();
+    const expected = { ...record, format: 3 };
+
+    expect(note).toMatchObject({ restored: true, cause: null, pendingText: '旧世界' });
+    expect(session.world.seed).toBe(saved.world.seed);
+    expect(session.spider.root.position.x).toBe(0.4);
+    expect(JSON.parse(String(localStorage.getItem(KEY)))).toEqual(expected);
+    expect(await db.get('snapshots', 'current')).toEqual(expected);
+  });
+
+  it.each(['future format', 'newer sequence', 'later timestamp'] as const)(
+    'keeps a %s buffer that arrives while restoring terrain',
+    async (update) => {
+      const saved = stamp(new SimSession(9), { seq: 4 });
+      const store = memoryStore(saved);
+      const source = delayedTerrain();
+      setWorldTerrainSource(source.load);
+      const session = new SimSession(1);
+      const restoring = restoreWorld(session, new Date(), store);
+      await source.started;
+      const arrived = {
+        ...saved,
+        format: update === 'future format' ? 4 : 3,
+        seq: update === 'newer sequence' ? 5 : 4,
+        savedAt: saved.savedAt + 1,
+      };
+      localStorage.setItem(KEY, JSON.stringify(arrived));
+      source.release(new Terrain(saved.seed));
+      await restoring;
+
+      expect(JSON.parse(String(localStorage.getItem(KEY)))).toEqual(arrived);
+      expect(store.value).toEqual(saved);
+      expect(store.calls).not.toContain('put');
+    },
+  );
+
   it('migrates the previous p5-art buffer into the new key', async () => {
     const saved = new SimSession(9);
     saved.spider.root.position.set(3, saved.spider.root.position.y, 1);
@@ -187,19 +258,18 @@ describe('restoreWorld', () => {
     expect(localStorage.getItem(KEY)).toContain('"seq":2');
   });
 
-  it('starts a new island when the snapshot is too old', async () => {
+  it('keeps the current world after a long absence', async () => {
     const saved = new SimSession(4);
     const record = stamp(saved, { day: '2020-01-01' });
     localStorage.setItem(KEY, JSON.stringify(record));
     await put(record);
     const session = new SimSession(8);
-    const born = session.world.terrain.seed;
     const note = await restoreWorld(session);
-    expect(note).toMatchObject({ restored: false, cause: null });
-    expect(session.world.terrain.seed).toBe(born);
-    expect(localStorage.getItem(KEY)).toBeNull();
+    expect(note).toMatchObject({ restored: true, cause: null });
+    expect(session.world.terrain.seed).toBe(saved.world.terrain.seed);
+    expect(JSON.parse(String(localStorage.getItem(KEY)))).toMatchObject({ seed: record.seed });
     const db = await openSpiderDb();
-    expect(await db.get('snapshots', 'current')).toBeUndefined();
+    expect(await db.get('snapshots', 'current')).toMatchObject({ seed: record.seed });
   });
 
   it('does not overwrite a snapshot from a newer page', async () => {
@@ -248,6 +318,113 @@ describe('restoreWorld', () => {
 });
 
 describe('flushWorld', () => {
+  it('keeps a fresh world when the page is reopened before its first change', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    flushWorld('hide');
+    await writesDone();
+    resetWorldStore();
+
+    const reopened = new SimSession(9);
+    const note = await restoreWorld(reopened, new Date(), store);
+
+    expect(note.restored).toBe(true);
+    expect(reopened.world.seed).toBe(session.world.seed);
+    expect(reopened.world.entities).toEqual(session.world.entities);
+  });
+
+  it('does not replace the hide buffer with an older queued write', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    await writesDone();
+
+    let releaseRead!: (value: unknown) => void;
+    let readEntered!: () => void;
+    const readStarted = new Promise<void>((resolve) => {
+      readEntered = resolve;
+    });
+    const readGate = new Promise<unknown>((resolve) => {
+      releaseRead = resolve;
+    });
+    const storedBefore = store.value;
+    let reads = 0;
+    store.readSnapshot = () => {
+      reads += 1;
+      if (reads === 1) {
+        readEntered();
+        return readGate;
+      }
+      return Promise.resolve(store.value);
+    };
+
+    let releasePut!: () => void;
+    let putEntered!: () => void;
+    const putStarted = new Promise<void>((resolve) => {
+      putEntered = resolve;
+    });
+    const putGate = new Promise<void>((resolve) => {
+      releasePut = resolve;
+    });
+    const originalPut = store.putSnapshot.bind(store);
+    let puts = 0;
+    store.putSnapshot = async (record) => {
+      puts += 1;
+      if (puts === 1) {
+        putEntered();
+        await putGate;
+      }
+      await originalPut(record);
+    };
+
+    session.spider.root.position.x = 0.3;
+    flushWorld('poke');
+    await readStarted;
+    session.spider.root.position.x = 0.6;
+    flushWorld('hide');
+    expect(JSON.parse(String(localStorage.getItem(KEY))).spider.position.x).toBe(0.6);
+
+    releaseRead(storedBefore);
+    await putStarted;
+    const buffered = JSON.parse(String(localStorage.getItem(KEY))) as WorldRecord;
+    releasePut();
+    await writesDone();
+
+    expect(buffered.spider.position.x).toBe(0.6);
+  });
+
+  it.each(['small movement', 'height', 'prop orientation'] as const)(
+    'keeps a %s change when the page hides',
+    async (change) => {
+      const session = new SimSession(2);
+      session.spider.root.position.x = 0.3;
+      session.spider.heightSet = 0.2;
+      const prop = session.world.entities.find((entity) => entity.kind === 'apple')!;
+      Object.assign(prop, { qx: 0, qy: 0, qz: 0, qw: 1 });
+      const store = memoryStore(stamp(session, { owner: 'tab-a' }));
+      sessionStorage.setItem('spider.world.owner', 'tab-a');
+      await restoreWorld(session, new Date(), store);
+      installWorldStore(session, store);
+      if (change === 'small movement') session.spider.root.position.x += 0.01;
+      if (change === 'height') session.spider.heightSet += 0.1;
+      if (change === 'prop orientation') {
+        const restoredProp = session.world.entities.find((entity) => entity.id === prop.id)!;
+        Object.assign(restoredProp, { qx: 0.5, qy: 0.5, qz: 0.5, qw: 0.5 });
+      }
+      const expected = captureBody(session, null);
+      flushWorld('hide');
+      const buffered = JSON.parse(String(localStorage.getItem(KEY))) as WorldRecord;
+      await writesDone();
+
+      expect(buffered.spider.position.x).toBe(expected.spider.position.x);
+      expect(buffered.spider.height).toBe(expected.spider.height);
+      expect(buffered.entities).toEqual(expected.entities);
+    },
+  );
+
   it('serializes overlapping writes and keeps the latest body', async () => {
     const store = memoryStore();
     const session = new SimSession(2);
@@ -306,9 +483,64 @@ describe('flushWorld', () => {
   it('does nothing until the store is installed', async () => {
     const record = stamp(new SimSession(2), { seq: 6 });
     localStorage.setItem(KEY, JSON.stringify(record));
+    flushSoon('poke');
     flushWorld('hide');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(6);
+  });
+
+  it.each(['hide', 'poke'] as const)(
+    'keeps a concurrent future snapshot while a %s flush checks ownership',
+    async (reason) => {
+      const store = memoryStore();
+      const session = new SimSession(2);
+      await restoreWorld(session, new Date(), store);
+      installWorldStore(session, store);
+      const future = { ...stamp(new SimSession(9), { seq: 5 }), format: 4 };
+      const originalGet = Storage.prototype.getItem;
+      let arrived = false;
+      const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (
+        this: Storage,
+        key: string,
+      ) {
+        if (this === localStorage && key === LEASE && !arrived) {
+          arrived = true;
+          localStorage.setItem(KEY, JSON.stringify(future));
+        }
+        return originalGet.call(this, key);
+      });
+
+      session.spider.root.position.x = 0.4;
+      flushWorld(reason);
+      await writesDone();
+      read.mockRestore();
+      flushWorld('hide');
+      await writesDone();
+
+      expect(arrived).toBe(true);
+      expect(JSON.parse(String(localStorage.getItem(KEY)))).toEqual(future);
+      expect(store.value).toBeNull();
+      expect(store.calls).not.toContain('put');
+    },
+  );
+
+  it('saves a tool change within the same pending sentence', async () => {
+    const saved = stamp(new SimSession(2), {
+      owner: 'tab-a',
+      pending: { text: '走回去', tool: 'observe' },
+    });
+    const store = memoryStore(saved);
+    sessionStorage.setItem('spider.world.owner', 'tab-a');
+    const session = new SimSession(1);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+
+    setPending({ text: '走回去', tool: 'walk' });
+    flushWorld('poke');
+    await writesDone();
+    expect(store.value).toMatchObject({ seq: 2, pending: { text: '走回去', tool: 'walk' } });
+    setPending({ text: '', tool: null });
+    expect(pendingNow()).toBeNull();
   });
 
   it('writes a move, and ignores a small apple tick until the page hides', async () => {
@@ -326,6 +558,10 @@ describe('flushWorld', () => {
     flushWorld('hide');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(first + 1);
+    session.world.appleIn = (session.world.appleIn ?? 24) - 5;
+    flushWorld('interval');
+    await writesDone();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(first + 2);
 
     session.spider.root.position.x += 0.1;
     flushWorld('interval');
@@ -504,6 +740,31 @@ describe('flushWorld', () => {
     putSnap.mockRestore();
   });
 
+  it('retries an unchanged hide snapshot after both stores recover', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    session.spider.root.position.x = 0.4;
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('full');
+    });
+    store.failWrite = true;
+    flushWorld('hide');
+    await writesDone();
+    expect(localStorage.getItem(KEY)).toBeNull();
+    expect(store.value).toBeNull();
+
+    setItem.mockRestore();
+    store.failWrite = false;
+    flushWorld('hide');
+    const buffered = JSON.parse(String(localStorage.getItem(KEY))) as WorldRecord;
+    await writesDone();
+
+    expect(buffered).toMatchObject({ seed: session.world.seed, spider: { position: { x: 0.4 } } });
+    expect(store.value).toEqual(buffered);
+  });
+
   it('adopts a newer save when the tab becomes visible again', async () => {
     const session = new SimSession(2);
     await restoreWorld(session);
@@ -617,6 +878,118 @@ describe('injected snapshot store', () => {
     expect(pendingNow()?.text).toBe('换岛');
   });
 
+  it('keeps a newer buffer arriving while deferred terrain is prepared', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    store.hangRead = true;
+    const session = new SimSession(2);
+    const opening = restoreWorld(session, new Date(), store);
+    await vi.advanceTimersByTimeAsync(1500);
+    await opening;
+    vi.useRealTimers();
+    const saved = stamp(new SimSession(9), { seq: 4 });
+    store.hangRead = false;
+    store.value = saved;
+    const source = delayedTerrain();
+    setWorldTerrainSource(source.load);
+    const heard = vi.fn();
+    onRestore(heard);
+    installWorldStore(session, store);
+    await source.started;
+    const arrived = stamp(new SimSession(7), { seq: 5 });
+    localStorage.setItem(KEY, JSON.stringify(arrived));
+    source.release(new Terrain(saved.seed));
+    await writesDone();
+
+    expect(JSON.parse(String(localStorage.getItem(KEY)))).toEqual(arrived);
+    expect(store.value).toEqual(saved);
+    expect(store.calls).not.toContain('put');
+    expect(heard).not.toHaveBeenCalled();
+  });
+
+  it('keeps a newer buffer arriving while visible-tab terrain is prepared', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    const saved = stamp(new SimSession(9), { seq: 4 });
+    store.value = saved;
+    const source = delayedTerrain();
+    setWorldTerrainSource(source.load);
+    const heard = vi.fn();
+    onRestore(heard);
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await source.started;
+    const arrived = stamp(new SimSession(7), { seq: 5 });
+    localStorage.setItem(KEY, JSON.stringify(arrived));
+    source.release(new Terrain(saved.seed));
+    await writesDone();
+
+    expect(JSON.parse(String(localStorage.getItem(KEY)))).toEqual(arrived);
+    expect(store.value).toEqual(saved);
+    expect(store.calls).not.toContain('put');
+    expect(heard).not.toHaveBeenCalled();
+  });
+
+  it('flushes the adopted deferred world instead of an earlier staged snapshot', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    store.hangRead = true;
+    sessionStorage.setItem('spider.world.owner', 'tab-a');
+    const session = new SimSession(2);
+    const opening = restoreWorld(session, new Date(), store);
+    await vi.advanceTimersByTimeAsync(1500);
+    await opening;
+    vi.useRealTimers();
+
+    const saved = stamp(new SimSession(11), { seq: 5, owner: 'tab-a' });
+    store.value = saved;
+    let release!: (record: unknown) => void;
+    let readEntered!: () => void;
+    const readStarted = new Promise<void>((resolve) => {
+      readEntered = resolve;
+    });
+    const readGate = new Promise<unknown>((resolve) => {
+      release = resolve;
+    });
+    store.readSnapshot = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        readEntered();
+        return readGate;
+      })
+      .mockImplementation(() => Promise.resolve(store.value));
+    const writes: WorldRecord[] = [];
+    const originalPut = store.putSnapshot.bind(store);
+    store.putSnapshot = (record) => {
+      writes.push(structuredClone(record));
+      return originalPut(record);
+    };
+
+    installWorldStore(session, store);
+    const reconciling = writesDone();
+    flushWorld('hide');
+    expect(JSON.parse(String(localStorage.getItem(KEY)))).toMatchObject({ seq: 1, seed: 2 });
+    await readStarted;
+    release(saved);
+    await reconciling;
+    await writesDone();
+    expect(session.world.seed).toBe(saved.seed);
+
+    flushWorld('interval');
+    await writesDone();
+
+    expect(JSON.parse(String(localStorage.getItem(KEY)))).toEqual(saved);
+    expect(store.value).toEqual(saved);
+    expect(writes.every((record) => record.seq === saved.seq && record.seed === saved.seed)).toBe(
+      true,
+    );
+  });
+
   it('falls back when the deferred store cannot be read', async () => {
     vi.useFakeTimers();
     const store = memoryStore();
@@ -674,6 +1047,38 @@ describe('injected snapshot store', () => {
     flushWorld('poke');
     await writesDone();
     expect(store.calls).not.toContain('put');
+  });
+
+  it('keeps a future-format buffer that arrives while a write reads the store', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    let release!: (record: unknown) => void;
+    let readEntered!: () => void;
+    const readStarted = new Promise<void>((resolve) => {
+      readEntered = resolve;
+    });
+    const readGate = new Promise<unknown>((resolve) => {
+      release = resolve;
+    });
+    store.readSnapshot = () => {
+      readEntered();
+      return readGate;
+    };
+    session.spider.root.position.x = 0.4;
+    flushWorld('poke');
+    await readStarted;
+    const future = { ...stamp(new SimSession(9), { seq: 5 }), format: 4 };
+    localStorage.setItem(KEY, JSON.stringify(future));
+    release(null);
+    await writesDone();
+    flushWorld('hide');
+    await writesDone();
+
+    expect(JSON.parse(String(localStorage.getItem(KEY)))).toEqual(future);
+    expect(store.calls).not.toContain('put');
+    expect(store.value).toBeNull();
   });
 
   it('still writes the store when the hide buffer is full', async () => {
@@ -1066,6 +1471,8 @@ describe('write cadence and leases', () => {
       get: () => 'visible',
     });
     installWorldStore(session, store);
+    flushWorld('poke');
+    await writesDone();
     localStorage.removeItem(LEASE);
     await vi.advanceTimersByTimeAsync(10_000);
     await writesDone();

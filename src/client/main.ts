@@ -4,6 +4,8 @@ import { paintDocument, paintStage } from '../ui/dress.js';
 import { mountPanel } from './panel.js';
 import { Stage } from './stage.js';
 import { syncStars } from './stars.js';
+import { restoreSettings } from './settings.js';
+import { dbSnapshotStore, type SnapshotStore } from './journal/store.js';
 import { readBuffer } from './world/storage.js';
 import {
   flushWorld,
@@ -23,6 +25,16 @@ paintDocument(document);
 paintStage(parent, host);
 parent.append(buildChrome(document));
 syncStars(document);
+
+const opening = openJournal().catch(() => null);
+const backend = opening.then((opened) => opened?.store ?? dbSnapshotStore());
+const store: SnapshotStore = {
+  readSnapshot: async () => (await backend).readSnapshot(),
+  putSnapshot: async (record) => (await backend).putSnapshot(record),
+  removeSnapshot: async () => (await backend).removeSnapshot(),
+  sweepSnapshots: async (today) => (await backend).sweepSnapshots(today),
+};
+await restoreSettings();
 
 function hintedSeed(): number {
   const found = classify(readBuffer(), localDate(new Date()));
@@ -44,10 +56,7 @@ window.addEventListener('pagehide', () => {
   stage?.dispose();
 });
 
-// The journal worker opens while the island is drawn. Until it is ready the
-// snapshot preview uses the direct store; the first write then switches over.
-const opening = openJournal().catch(() => null);
-const note = await restoreWorld(session);
+const note = await restoreWorld(session, new Date(), store);
 stage = new Stage(host, session.spider);
 stage.placeIsland(ready.island);
 stage.setIslandSource(async (seed) => (await prepareWorld(seed)).island);
@@ -57,7 +66,5 @@ stage.bind(
 );
 stage.start();
 mountPanel(document, session, stage, note, opening);
-installWorldStore(session);
-void opening.then((opened) => {
-  if (opened) installWorldStore(session, opened.store);
-});
+installWorldStore(session, store);
+flushWorld('poke');

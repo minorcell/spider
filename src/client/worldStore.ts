@@ -1,5 +1,6 @@
 import { localDate } from '../shared/dates.js';
 import type { SnapshotStore } from './journal/store.js';
+import { PersistentCache } from './store/cache.js';
 import {
   applyBody,
   captureBody,
@@ -59,6 +60,9 @@ let onVis: (() => void) | null = null;
 let providedStore: SnapshotStore | null = null;
 let storePromise: Promise<SnapshotStore> | null = null;
 let workTail: Promise<void> = Promise.resolve();
+let writeRevision = 0;
+let stagedRevision = 0;
+let cache = worldCache();
 /** Bakes a seed off the page thread. Null keeps the synchronous terrain. */
 let terrainFor: ((seed: number) => Promise<Terrain>) | null = null;
 
@@ -72,6 +76,37 @@ function resolveStore(): Promise<SnapshotStore> {
   if (providedStore) return Promise.resolve(providedStore);
   storePromise ??= import('./journal/store.js').then((module) => module.dbSnapshotStore());
   return storePromise;
+}
+
+function worldCache(): PersistentCache<WorldRecord> {
+  return new PersistentCache<WorldRecord>(
+    {
+      read: async () => (await resolveStore()).readSnapshot(),
+      write: async (record) => {
+        const store = await resolveStore();
+        await store.putSnapshot(record);
+        await store.sweepSnapshots(record.day);
+      },
+    },
+    { read: readBuffer, write: bufferPut },
+  );
+}
+
+function stageRecord(record: WorldRecord): boolean {
+  const latest = classify(cache.readRecovery(), localDate(new Date()));
+  if (latest.status === 'format') {
+    readonly = true;
+    return false;
+  }
+  if (
+    latest.status === 'ok' &&
+    (latest.record.seq > record.seq ||
+      (latest.record.seq === record.seq && latest.record.savedAt > record.savedAt))
+  ) {
+    return false;
+  }
+  cache.stage(record);
+  return true;
 }
 
 /** Keep a quiet tab's ownership without rewriting the snapshot. */
@@ -141,6 +176,10 @@ export function resetWorldStore(): void {
   providedStore = null;
   storePromise = null;
   terrainFor = null;
+  writeRevision = 0;
+  stagedRevision = 0;
+  cache = worldCache();
+  workTail = Promise.resolve();
 }
 
 export async function restoreWorld(
@@ -151,7 +190,7 @@ export async function restoreWorld(
   if (store) providedStore = store;
   const today = localDate(now);
   let ls = classify(readBuffer(), today);
-  if (ls.status !== 'ok') {
+  if (ls.status !== 'ok' && ls.status !== 'format') {
     const leftover = classify(peekLegacyBuffer(), today);
     if (leftover.status === 'ok') {
       bufferPut(leftover.record);
@@ -186,6 +225,7 @@ export async function restoreWorld(
   pending = chosen.pending;
   seenSeq = chosen.seq;
   lastBody = captureBody(session, pending);
+  cache.hydrate(chosen);
   if (dbOpen && !dbDeferred) await mirror(chosen, ls, idb);
   return {
     restored: true,
@@ -201,7 +241,6 @@ export function installWorldStore(session: Restorable, store?: SnapshotStore): v
   if (!owner) owner = pageOwner();
   if (readonly) return;
   if (!readLease()) setLease(owner, Date.now() + LEASE_MS);
-  if (!lastBody) lastBody = captureBody(session, pending);
   if (onVis) document.removeEventListener('visibilitychange', onVis);
   onVis = () => {
     if (document.visibilityState === 'hidden') {
@@ -238,26 +277,34 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
   const today = localDate(new Date(now));
   const body = captureBody(session, pending);
   const slack = reason === 'interval' ? APPLE_DIRTY_S : 0.05;
-  const dirty = !lastBody || changed(lastBody, body, slack);
+  const dirty =
+    !lastBody ||
+    (reason === 'hide'
+      ? JSON.stringify(lastBody) !== JSON.stringify(body)
+      : changed(lastBody, body, slack));
+  const revision = ++writeRevision;
 
   const local = classify(readBuffer(), today);
   if (local.status === 'format') {
     readonly = true;
     return;
   }
-  const localRec = local.status === 'ok' ? local.record : undefined;
+  let localRec = local.status === 'ok' ? local.record : undefined;
+  if (localRec && localRec.owner !== owner && localRec.seq > seenSeq && localRec.leaseUntil > now) {
+    return;
+  }
 
   // pagehide cannot wait for IndexedDB. The buffer is written before any await.
   let staged: WorldRecord | null = null;
   if (reason === 'hide' || dbDeferred) {
     const stagingLease = readLease() ?? leaseOf(localRec);
-    if (dirty && mayWrite(stagingLease, owner, now)) {
+    if ((dirty || cache.pending()) && mayWrite(stagingLease, owner, now)) {
       const seq = Math.max(localRec?.seq ?? 0, seenSeq) + 1;
       staged = stamp(body, seq, now, today);
-      if (bufferPut(staged)) {
-        seenSeq = seq;
-        lastBody = body;
-      } else staged = null;
+      if (!stageRecord(staged)) return;
+      stagedRevision = revision;
+      seenSeq = seq;
+      lastBody = body;
     }
   }
   if (dbDeferred) return;
@@ -278,28 +325,35 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
     // The buffer is the copy when the database cannot be opened.
   }
 
+  if (revision < stagedRevision) return;
+  const latest = classify(cache.readRecovery(), today);
+  if (latest.status === 'format') {
+    readonly = true;
+    return;
+  }
+  if (latest.status === 'ok') localRec = latest.record;
+
   const held = prefer(idbRec, localRec);
   const lease = readLease() ?? leaseOf(held);
   if (!mayWrite(lease, owner, now)) return;
-  if (!dirty && !staged) return;
+  if (!dirty && !staged) {
+    try {
+      await cache.flush();
+    } catch {}
+    return;
+  }
 
   const floor = Math.max(idbRec?.seq ?? 0, localRec?.seq ?? 0, seenSeq);
   const record =
     staged && staged.seq > (idbRec?.seq ?? 0) ? staged : stamp(body, floor + 1, now, today);
-  const storedLocal = bufferPut(record);
-  let storedDb = false;
-  try {
-    const store = await resolveStore();
-    await store.putSnapshot(record);
-    storedDb = true;
-    await store.sweepSnapshots(today);
-  } catch {
-    // The walk continues when the ledger cannot be written.
-  }
-  if (!storedLocal && !storedDb) return;
+  if ((!staged || record !== staged) && !stageRecord(record)) return;
+  stagedRevision = revision;
   setLease(record.owner, record.leaseUntil);
   seenSeq = record.seq;
   lastBody = body;
+  try {
+    await cache.flush();
+  } catch {}
 }
 
 async function catchUp(): Promise<void> {
@@ -317,6 +371,8 @@ async function catchUp(): Promise<void> {
   pending = chosen.pending;
   seenSeq = chosen.seq;
   lastBody = captureBody(session, pending);
+  if (!stageRecord(chosen)) return;
+  stagedRevision = ++writeRevision;
   listener?.({
     restored: true,
     cause: null,
@@ -344,15 +400,19 @@ async function currentRecord(today: string): Promise<WorldRecord | 'format' | un
 
 async function mirror(chosen: WorldRecord, ls: Classify, idb: Classify): Promise<void> {
   const lsSame =
-    ls.status === 'ok' && ls.record.seq === chosen.seq && ls.record.savedAt === chosen.savedAt;
+    ls.status === 'ok' &&
+    !ls.migrated &&
+    ls.record.seq === chosen.seq &&
+    ls.record.savedAt === chosen.savedAt;
   const idbSame =
-    idb.status === 'ok' && idb.record.seq === chosen.seq && idb.record.savedAt === chosen.savedAt;
-  if (!lsSame) {
-    bufferPut(chosen);
-  }
-  if (!idbSame) {
+    idb.status === 'ok' &&
+    !idb.migrated &&
+    idb.record.seq === chosen.seq &&
+    idb.record.savedAt === chosen.savedAt;
+  if (!lsSame || !idbSame) {
+    if (!stageRecord(chosen)) return;
     try {
-      await (await resolveStore()).putSnapshot(chosen);
+      await cache.flush();
     } catch {
       // The buffer still wins on the next launch.
     }
@@ -360,7 +420,7 @@ async function mirror(chosen: WorldRecord, ls: Classify, idb: Classify): Promise
 }
 
 async function forget(item: Classify, side: 'local' | 'idb', today: string): Promise<void> {
-  if (item.status !== 'expired' && item.status !== 'malformed') return;
+  if (item.status !== 'malformed') return;
   if (side === 'local') {
     forgetBuffer();
     return;
@@ -423,6 +483,8 @@ async function reconcile(): Promise<void> {
   pending = idb.record.pending;
   seenSeq = idb.record.seq;
   lastBody = captureBody(session, pending);
+  if (!stageRecord(idb.record)) return;
+  stagedRevision = ++writeRevision;
   listener?.({
     restored: true,
     cause: null,
@@ -431,7 +493,7 @@ async function reconcile(): Promise<void> {
 }
 
 async function readIdb(): Promise<unknown> {
-  return (await resolveStore()).readSnapshot();
+  return cache.readPersistent();
 }
 
 function stamp(body: SimBody, seq: number, now: number, today: string): WorldRecord {

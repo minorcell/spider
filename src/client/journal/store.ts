@@ -32,7 +32,7 @@ export async function dbSnapshotStore(): Promise<SnapshotStore> {
       const rows = await db.getAll('snapshots');
       for (const row of rows) {
         const status = classify(row, today).status;
-        if (row.id !== 'current' || status === 'expired' || status === 'malformed') {
+        if (row.id !== 'current' || status === 'malformed') {
           await db.delete('snapshots', row.id);
         }
       }

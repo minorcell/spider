@@ -1,5 +1,4 @@
 import { CARRY_LIMIT, MOUNTS } from '../config.js';
-import { shiftDate } from '../dates.js';
 import { KINDS } from '../kinds.js';
 import type { EntityState, Footprint, SpiderState, WorldState } from '../state.js';
 import { blockedAt } from '../sight.js';
@@ -8,7 +7,6 @@ import { Terrain } from '../terrain.js';
 import type { Spider } from './Spider.js';
 
 export const FORMAT = 3;
-export const RETAIN_DAYS = 3;
 export const MAX_ENTITIES = 64;
 export const MAX_PENDING = 4000;
 export const MAX_JSON = 64_000;
@@ -37,7 +35,7 @@ export interface WorldRecord extends SimBody {
   id: 'current';
   format: 3;
   savedAt: number;
-  /** Local day of the write. Retention uses this string, not a new timezone. */
+  /** Local day of the write. */
   day: string;
   owner: string;
   seq: number;
@@ -45,18 +43,14 @@ export interface WorldRecord extends SimBody {
 }
 
 export type Classify =
-  | { status: 'ok'; record: WorldRecord }
-  | { status: 'expired' | 'malformed' | 'format' | 'empty' };
+  | { status: 'ok'; record: WorldRecord; migrated?: boolean }
+  | { status: 'malformed' | 'format' | 'empty' };
 
 export interface Restorable {
   cancel(): void;
   adopt(body: SimBody): void;
   readonly world: WorldState;
   readonly spider: Spider;
-}
-
-export function expiredDay(day: string, today: string): boolean {
-  return day < shiftDate(today, -(RETAIN_DAYS - 1));
 }
 
 export function captureBody(session: Restorable, pending: SimBody['pending']): SimBody {
@@ -110,7 +104,7 @@ export function newer(a: WorldRecord, b: WorldRecord): WorldRecord {
   return a.savedAt >= b.savedAt ? a : b;
 }
 
-export function classify(input: unknown, today: string): Classify {
+export function classify(input: unknown, _today?: string): Classify {
   if (input == null || input === '') return { status: 'empty' };
   let value: unknown = input;
   if (typeof value === 'string') {
@@ -123,9 +117,11 @@ export function classify(input: unknown, today: string): Classify {
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { status: 'malformed' };
   const raw = value as Record<string, unknown>;
-  if (raw.format !== FORMAT) return { status: 'format' };
+  if (!isFiniteNumber(raw.format) || !Number.isSafeInteger(raw.format) || raw.format < 1) {
+    return { status: 'malformed' };
+  }
+  if (raw.format > FORMAT) return { status: 'format' };
   if (!isDay(raw.day)) return { status: 'malformed' };
-  if (expiredDay(raw.day, today)) return { status: 'expired' };
   if (
     !isFiniteNumber(raw.savedAt) ||
     !isFiniteNumber(raw.seq) ||
@@ -150,7 +146,7 @@ export function classify(input: unknown, today: string): Classify {
     seq: raw.seq as number,
     leaseUntil: raw.leaseUntil as number,
   };
-  return { status: 'ok', record };
+  return raw.format < FORMAT ? { status: 'ok', record, migrated: true } : { status: 'ok', record };
 }
 
 function bodyOf(raw: Record<string, unknown>): SimBody | null {
@@ -336,16 +332,8 @@ function placed(x: unknown, y: unknown, z: unknown): boolean {
 
 function isDay(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  const monthText = String(month).padStart(2, '0');
-  const dayText = String(day).padStart(2, '0');
-  return (
-    value === `${year}-${monthText}-${dayText}` &&
-    month >= 1 &&
-    month <= 12 &&
-    day >= 1 &&
-    day <= 31
-  );
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 function isFiniteNumber(value: unknown): value is number {

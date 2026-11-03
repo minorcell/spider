@@ -1,7 +1,13 @@
 import { describe, test } from 'vitest';
 import { buildProp } from '../src/client/props.js';
 import { localDate } from '../src/shared/dates.js';
-import { applyBody, captureBody, classify, type WorldRecord } from '../src/shared/sim/snapshot.js';
+import {
+  applyBody,
+  captureBody,
+  classify,
+  FORMAT,
+  type WorldRecord,
+} from '../src/shared/sim/snapshot.js';
 import { SimSession } from '../src/shared/sim/session.js';
 
 const idle = new SimSession(7);
@@ -9,7 +15,7 @@ const body = captureBody(idle, { text: '去巢边', tool: 'walk' });
 const record: WorldRecord = {
   ...body,
   id: 'current',
-  format: 1,
+  format: FORMAT,
   savedAt: Date.now(),
   day: localDate(new Date()),
   owner: 'bench',

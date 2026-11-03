@@ -10,7 +10,7 @@ import {
   captureBody,
   chooseRecord,
   classify,
-  expiredDay,
+  FORMAT,
   newer,
   type WorldRecord,
 } from '../../../src/shared/sim/snapshot.js';
@@ -44,6 +44,57 @@ function good(): WorldRecord {
 }
 
 describe('snapshot', () => {
+  it.each([1, 2])('migrates format %s with the original optional fields absent', (format) => {
+    const base = good();
+    const entities = base.entities.map(({ id, kind, x, y, z, stage, footprint }) => ({
+      id,
+      kind,
+      x,
+      y,
+      z,
+      stage,
+      footprint,
+    }));
+    const carried = entities.find((entity) => entity.kind === 'apple')!;
+    const legacy = {
+      ...base,
+      format,
+      day: '2020-01-01',
+      entities: entities.filter((entity) => entity.id !== carried.id),
+      carrying: [carried],
+      pending: { text: '带回去' },
+    };
+    const parsed = classify(JSON.stringify(legacy), today);
+
+    expect(parsed).toMatchObject({ status: 'ok', migrated: true });
+    if (parsed.status !== 'ok') return;
+    expect(parsed.record).toEqual({
+      ...legacy,
+      format: FORMAT,
+      pending: { text: '带回去', tool: null },
+    });
+    expect(parsed.record.carrying[0]).not.toHaveProperty('vx');
+    expect(parsed.record.carrying[0]).not.toHaveProperty('qx');
+    expect(legacy.format).toBe(format);
+    expect(classify(parsed.record, today)).not.toHaveProperty('migrated');
+  });
+
+  it.each([1, 2])('validates format %s before migrating it', (format) => {
+    const base = { ...good(), format };
+    const badEntity = { ...base.entities[0], x: Number.NaN };
+
+    expect(classify({ ...base, spider: { ...base.spider, feet: [] } }, today).status).toBe(
+      'malformed',
+    );
+    expect(classify({ ...base, entities: [badEntity] }, today).status).toBe('malformed');
+    expect(classify({ ...base, appleIn: -1 }, today).status).toBe('malformed');
+    expect(classify({ ...base, pending: undefined }, today)).toMatchObject({
+      status: 'ok',
+      migrated: true,
+      record: { pending: null },
+    });
+  });
+
   it('keeps a pose that sits past the island rim', () => {
     const record = good();
     record.spider.feet[0].x = 40;
@@ -175,11 +226,14 @@ describe('snapshot', () => {
     expect(newer(older, later)).toBe(later);
   });
 
-  it('expires a snapshot on the third local day', () => {
-    expect(expiredDay('2026-10-31', today)).toBe(false);
-    expect(expiredDay('2026-10-30', today)).toBe(true);
-    expect(classify({ ...good(), day: '2026-10-30' }, today).status).toBe('expired');
-    expect(classify({ ...good(), day: '2026-02-31' }, today).status).toBe('expired');
+  it('keeps the current world regardless of its age', () => {
+    const stored = { ...good(), day: '2020-01-01' };
+
+    expect(classify(stored, today)).toEqual({ status: 'ok', record: stored });
+    expect(chooseRecord(null, stored, today)).toEqual(stored);
+    expect(classify({ ...stored, day: '2024-02-29' }, today).status).toBe('ok');
+    expect(classify({ ...stored, day: '2026-02-29' }, today).status).toBe('malformed');
+    expect(classify({ ...stored, day: '2026-02-31' }, today).status).toBe('malformed');
   });
 
   it('sorts empty, unknown, and broken records', () => {
@@ -191,7 +245,19 @@ describe('snapshot', () => {
     expect(classify([], today).status).toBe('malformed');
     expect(classify(1, today).status).toBe('malformed');
     expect(classify({ ...good(), format: 4 }, today).status).toBe('format');
-    expect(classify({ ...good(), format: undefined }, today).status).toBe('format');
+    expect(classify({ format: 4 }, today).status).toBe('format');
+    expect(classify({ ...good(), format: undefined }, today).status).toBe('malformed');
+    expect(classify({ ...good(), format: null }, today).status).toBe('malformed');
+    expect(classify({ ...good(), format: '3' }, today).status).toBe('malformed');
+    expect(classify({ ...good(), format: 0 }, today).status).toBe('malformed');
+    expect(classify({ ...good(), format: -1 }, today).status).toBe('malformed');
+    expect(classify({ ...good(), format: 1.5 }, today).status).toBe('malformed');
+    expect(classify({ ...good(), format: Number.POSITIVE_INFINITY }, today).status).toBe(
+      'malformed',
+    );
+    expect(classify({ ...good(), format: Number.MAX_SAFE_INTEGER + 1 }, today).status).toBe(
+      'malformed',
+    );
 
     const bad = (patch: Record<string, unknown>) => classify({ ...good(), ...patch }, today).status;
     expect(bad({ day: '2026-13-01' })).toBe('malformed');

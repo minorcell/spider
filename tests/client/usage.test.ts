@@ -765,6 +765,24 @@ describe('openSpiderDb', () => {
     const db = await openSpiderDb();
     expect(db.objectStoreNames.contains('usage')).toBe(true);
     expect(db.objectStoreNames.contains('sessions')).toBe(true);
+    expect(db.objectStoreNames.contains('preferences')).toBe(true);
+  });
+
+  it('keeps existing preferences when upgrading a database', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('spider', 5);
+      request.addEventListener('upgradeneeded', () => {
+        const preferences = request.result.createObjectStore('preferences', { keyPath: 'id' });
+        preferences.put({ id: 'pilot', updatedAt: 1, value: { model: 'kept' } });
+      });
+      request.addEventListener('success', () => {
+        request.result.close();
+        resolve();
+      });
+      request.addEventListener('error', () => reject(request.error ?? new Error('open failed')));
+    });
+    const db = await openSpiderDb();
+    expect(await db.get('preferences', 'pilot')).toMatchObject({ value: { model: 'kept' } });
   });
 
   it('keeps a usage store that was created ahead of the upgrade', async () => {

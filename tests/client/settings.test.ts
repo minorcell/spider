@@ -1,7 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { contextTokensOf, pilotReady, readPilot, writePilot } from '../../src/client/settings.js';
+import {
+  contextTokensOf,
+  flushSettings,
+  pilotReady,
+  readPilot,
+  resetPilotStore,
+  restoreSettings,
+  writePilot,
+} from '../../src/client/settings.js';
+import { openSpiderDb, resetSpiderDb } from '../../src/client/journal/db.js';
 
-beforeEach(() => {
+beforeEach(async () => {
+  await flushSettings().catch(() => undefined);
+  resetPilotStore();
+  await resetSpiderDb();
   localStorage.clear();
 });
 
@@ -48,6 +60,7 @@ describe('pilot settings', () => {
         compactKb: 400,
       }),
     );
+    resetPilotStore();
     expect(readPilot()).toEqual({
       ...EMPTY,
       baseURL: 'https://example.com',
@@ -74,6 +87,8 @@ describe('pilot settings', () => {
     });
     expect(readPilot().autoMemory).toBe(true);
     writePilot({ baseURL: 'https://example.com', model: 'gpt', apiKey: 'key' });
+    expect(readPilot().autoMemory).toBe(true);
+    writePilot({ ...readPilot(), autoMemory: false });
     expect(readPilot().autoMemory).toBe(false);
   });
 
@@ -135,6 +150,7 @@ describe('pilot settings', () => {
       'p5-art.pilot',
       JSON.stringify({ baseURL: 'https://old.example', model: 'o', apiKey: 'old' }),
     );
+    resetPilotStore();
     expect(readPilot().baseURL).toBe('https://new.example');
     expect(localStorage.getItem('p5-art.pilot')).toBeNull();
   });
@@ -156,6 +172,23 @@ describe('pilot settings', () => {
     expect(readPilot()).toEqual(EMPTY);
   });
 
+  it('returns detached settings and preserves omitted options', () => {
+    writePilot({
+      baseURL: 'https://example.com',
+      model: 'gpt',
+      apiKey: 'key',
+      contextTokens: 8,
+      autoMemory: true,
+    });
+    const detached = readPilot();
+    detached.model = 'changed';
+    expect(readPilot().model).toBe('gpt');
+    writePilot({ baseURL: 'https://other.example', model: 'next', apiKey: 'new' });
+    expect(readPilot()).toMatchObject({ contextTokens: 8, autoMemory: true });
+    writePilot({ ...readPilot(), contextTokens: null, autoMemory: false });
+    expect(readPilot()).toMatchObject({ contextTokens: null, autoMemory: false });
+  });
+
   it('needs all three fields', () => {
     expect(pilotReady({ baseURL: 'a', model: 'b', apiKey: 'c' })).toBe(true);
     expect(pilotReady({ baseURL: '', model: 'b', apiKey: 'c' })).toBe(false);
@@ -167,5 +200,219 @@ describe('pilot settings', () => {
     expect(contextTokensOf(null)).toBeNull();
     expect(contextTokensOf(8)).toBe(8000);
     expect(contextTokensOf(128)).toBe(128_000);
+  });
+});
+
+describe('persistent settings', () => {
+  it('restores IndexedDB after the synchronous recovery buffer is lost', async () => {
+    writePilot({
+      baseURL: 'https://example.com',
+      model: 'saved',
+      apiKey: 'key',
+      contextTokens: 32,
+      autoMemory: true,
+    });
+    await flushSettings();
+    localStorage.clear();
+    resetPilotStore();
+
+    await restoreSettings();
+
+    expect(readPilot()).toMatchObject({ model: 'saved', contextTokens: 32, autoMemory: true });
+    expect(localStorage.getItem('spider.pilot')).toContain('saved');
+  });
+
+  it('migrates both old settings keys into preferences', async () => {
+    localStorage.setItem('spider.pilot', '{nope');
+    localStorage.setItem('p5-art.pilot', JSON.stringify({ ...EMPTY, model: 'legacy' }));
+
+    await restoreSettings();
+
+    const db = await openSpiderDb();
+    expect(await db.get('preferences', 'pilot')).toMatchObject({ value: { model: 'legacy' } });
+    expect(localStorage.getItem('p5-art.pilot')).toBeNull();
+  });
+
+  it('migrates options saved before model credentials were filled', () => {
+    for (const option of [{ contextTokens: 8 }, { autoMemory: true }]) {
+      localStorage.clear();
+      resetPilotStore();
+      localStorage.setItem('p5-art.pilot', JSON.stringify({ ...EMPTY, ...option }));
+      expect(readPilot()).toEqual({ ...EMPTY, ...option });
+      expect(localStorage.getItem('p5-art.pilot')).toBeNull();
+    }
+  });
+
+  it('keeps an intentionally cleared current setting over the legacy key', async () => {
+    writePilot({ ...EMPTY });
+    await flushSettings();
+    localStorage.setItem('p5-art.pilot', JSON.stringify({ ...EMPTY, model: 'legacy' }));
+    resetPilotStore();
+
+    await restoreSettings();
+
+    expect(readPilot()).toEqual(EMPTY);
+    expect(localStorage.getItem('p5-art.pilot')).toBeNull();
+  });
+
+  it('takes the newer persistent record over an older recovery buffer', async () => {
+    localStorage.setItem(
+      'spider.pilot',
+      JSON.stringify({ id: 'pilot', updatedAt: 1, value: { ...EMPTY, model: 'old' } }),
+    );
+    const db = await openSpiderDb();
+    await db.put('preferences', {
+      id: 'pilot',
+      updatedAt: 2,
+      value: { ...EMPTY, model: 'new' },
+    });
+
+    await restoreSettings();
+
+    expect(readPilot().model).toBe('new');
+  });
+
+  it('keeps the recovery copy when mirroring a persistent record is full', async () => {
+    localStorage.setItem(
+      'spider.pilot',
+      JSON.stringify({ id: 'pilot', updatedAt: 1, value: { ...EMPTY, model: 'old' } }),
+    );
+    const db = await openSpiderDb();
+    await db.put('preferences', {
+      id: 'pilot',
+      updatedAt: 2,
+      value: { ...EMPTY, model: 'new' },
+    });
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('full');
+    });
+
+    await restoreSettings();
+
+    expect(readPilot().model).toBe('new');
+    setItem.mockRestore();
+  });
+
+  it('recovers newer synchronous settings when an earlier database write is left behind', async () => {
+    localStorage.setItem(
+      'spider.pilot',
+      JSON.stringify({ id: 'pilot', updatedAt: 2, value: { ...EMPTY, model: 'latest' } }),
+    );
+    const db = await openSpiderDb();
+    await db.put('preferences', {
+      id: 'pilot',
+      updatedAt: 1,
+      value: { ...EMPTY, model: 'old' },
+    });
+
+    await restoreSettings();
+
+    expect(readPilot().model).toBe('latest');
+    expect(await db.get('preferences', 'pilot')).toMatchObject({ value: { model: 'latest' } });
+  });
+
+  it('keeps memory and the recovery buffer when IndexedDB reads or writes fail', async () => {
+    localStorage.setItem('spider.pilot', JSON.stringify({ ...EMPTY, model: 'recovered' }));
+    const db = await openSpiderDb();
+    const get = vi.spyOn(db, 'get').mockRejectedValue(new Error('unavailable'));
+    const put = vi.spyOn(db, 'put').mockRejectedValue(new Error('unavailable'));
+
+    await restoreSettings();
+    writePilot({ ...readPilot(), apiKey: 'latest' });
+    await expect(flushSettings()).rejects.toThrow('unavailable');
+
+    expect(readPilot()).toMatchObject({ model: 'recovered', apiKey: 'latest' });
+    expect(localStorage.getItem('spider.pilot')).toContain('latest');
+    get.mockRestore();
+    put.mockRestore();
+    await flushSettings();
+    expect(await db.get('preferences', 'pilot')).toMatchObject({ value: { apiKey: 'latest' } });
+  });
+
+  it('keeps edits in memory when both storage systems are unavailable', async () => {
+    const db = await openSpiderDb();
+    const put = vi.spyOn(db, 'put').mockRejectedValue(new Error('unavailable'));
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('full');
+    });
+
+    expect(() => writePilot({ ...EMPTY, model: 'retained' })).not.toThrow();
+    await expect(flushSettings()).rejects.toThrow('unavailable');
+    expect(readPilot().model).toBe('retained');
+
+    setItem.mockRestore();
+    put.mockRestore();
+    await flushSettings();
+    expect(await db.get('preferences', 'pilot')).toMatchObject({ value: { model: 'retained' } });
+  });
+
+  it('retains legacy data when its synchronous migration cannot be written', () => {
+    localStorage.setItem('p5-art.pilot', JSON.stringify({ ...EMPTY, model: 'legacy' }));
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('full');
+    });
+
+    expect(readPilot().model).toBe('legacy');
+    expect(localStorage.getItem('p5-art.pilot')).toContain('legacy');
+  });
+
+  it('ignores malformed records and keeps valid empty legacy settings', async () => {
+    for (const value of [
+      null,
+      [],
+      4,
+      { id: 'other' },
+      { id: 'pilot', updatedAt: 1, value: null },
+    ]) {
+      localStorage.setItem('spider.pilot', JSON.stringify(value));
+      resetPilotStore();
+      expect(readPilot()).toEqual(EMPTY);
+    }
+    localStorage.setItem('spider.pilot', JSON.stringify(EMPTY));
+    resetPilotStore();
+    expect(readPilot()).toEqual(EMPTY);
+    const db = await openSpiderDb();
+    await db.put('preferences', { id: 'pilot', updatedAt: 1, value: [] });
+    await restoreSettings();
+    expect(readPilot()).toEqual(EMPTY);
+  });
+
+  it('starts with no settings in either store', async () => {
+    await restoreSettings();
+    expect(readPilot()).toEqual(EMPTY);
+  });
+
+  it('does not replace edits made while a slow database is opening', async () => {
+    const db = await openSpiderDb();
+    let release!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(db, 'get').mockReturnValue(pending as ReturnType<typeof db.get>);
+    vi.useFakeTimers();
+    const restoring = restoreSettings();
+    await vi.advanceTimersByTimeAsync(1500);
+    await restoring;
+    vi.useRealTimers();
+
+    writePilot({ ...EMPTY, model: 'typed' });
+    release({ id: 'pilot', updatedAt: Date.now() + 10_000, value: { ...EMPTY, model: 'late' } });
+    await flushSettings();
+
+    expect(readPilot().model).toBe('typed');
+  });
+
+  it('ignores an old restoration after its cache has been reset', async () => {
+    const db = await openSpiderDb();
+    let release!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(db, 'get').mockReturnValue(pending as ReturnType<typeof db.get>);
+    const restoring = restoreSettings();
+    resetPilotStore();
+    release({ id: 'pilot', updatedAt: 1, value: { ...EMPTY, model: 'late' } });
+    await restoring;
+    expect(readPilot()).toEqual(EMPTY);
   });
 });

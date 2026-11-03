@@ -10,6 +10,12 @@ export interface MemoryPage {
   updatedAt: number;
 }
 
+export interface PreferenceRecord {
+  id: string;
+  updatedAt: number;
+  value: unknown;
+}
+
 /** One local day's model usage. `total` is input plus output, as the provider reported it. */
 export interface UsageDay {
   date: string;
@@ -69,15 +75,17 @@ interface SpiderDB extends DBSchema {
   usage: { key: string; value: UsageDay };
   usageCalls: { key: string; value: UsageCall; indexes: { date: string } };
   snapshots: { key: string; value: WorldRecord };
+  preferences: { key: string; value: PreferenceRecord };
 }
 
 const DB_NAME = 'spider';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 let opening: Promise<IDBPDatabase<SpiderDB>> | null = null;
 
 export function openSpiderDb(): Promise<IDBPDatabase<SpiderDB>> {
-  opening ??= openDB<SpiderDB>(DB_NAME, DB_VERSION, {
+  if (opening) return opening;
+  const connection = openDB<SpiderDB>(DB_NAME, DB_VERSION, {
     upgrade(db, _oldVersion, _newVersion, transaction) {
       if (!db.objectStoreNames.contains('sessions')) {
         db.createObjectStore('sessions', { keyPath: 'date' });
@@ -98,7 +106,21 @@ export function openSpiderDb(): Promise<IDBPDatabase<SpiderDB>> {
       if (!db.objectStoreNames.contains('snapshots')) {
         db.createObjectStore('snapshots', { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains('preferences')) {
+        db.createObjectStore('preferences', { keyPath: 'id' });
+      }
     },
+    blocking() {
+      void connection.then((db) => db.close());
+      opening = null;
+    },
+    terminated() {
+      opening = null;
+    },
+  });
+  opening = connection.catch((error: unknown) => {
+    opening = null;
+    throw error;
   });
   return opening;
 }

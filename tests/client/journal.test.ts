@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { forceCloseDatabase } from 'fake-indexeddb';
+import { openDB, unwrap } from 'idb';
 import { openSpiderDb, resetSpiderDb } from '../../src/client/journal/db.js';
 import { Diary } from '../../src/client/journal/diary.js';
 import { localDate, shiftDate } from '../../src/shared/dates.js';
@@ -76,6 +78,47 @@ describe('resetSpiderDb', () => {
     });
     await expect(resetSpiderDb()).rejects.toThrow('delete failed');
     spy.mockRestore();
+  });
+});
+
+describe('database connections', () => {
+  it('shares one connection while the database is open', async () => {
+    const first = openSpiderDb();
+    expect(openSpiderDb()).toBe(first);
+    await first;
+  });
+
+  it('closes a connection that would block a later schema upgrade', async () => {
+    const previous = await openSpiderDb();
+    const next = await openDB('spider', previous.version + 1);
+    expect(next.version).toBe(previous.version + 1);
+    next.close();
+    await resetSpiderDb();
+    const reopened = await openSpiderDb();
+    expect(reopened).not.toBe(previous);
+  });
+
+  it('opens a fresh connection after an abnormal close', async () => {
+    const previous = await openSpiderDb();
+    const closed = new Promise<void>((resolve) => {
+      previous.addEventListener('close', () => resolve(), { once: true });
+    });
+    forceCloseDatabase(unwrap(previous));
+    await closed;
+
+    const reopened = await openSpiderDb();
+
+    expect(reopened).not.toBe(previous);
+    await expect(reopened.get('preferences', 'pilot')).resolves.toBeUndefined();
+  });
+
+  it('retries instead of retaining a rejected open request', async () => {
+    const newer = await openDB('spider', 7);
+    newer.close();
+    await expect(openSpiderDb()).rejects.toMatchObject({ name: 'VersionError' });
+    await resetSpiderDb();
+
+    await expect(openSpiderDb()).resolves.toMatchObject({ version: 6 });
   });
 });
 

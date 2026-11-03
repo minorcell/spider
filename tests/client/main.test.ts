@@ -28,9 +28,12 @@ const opening = vi.hoisted(() => ({
   openJournal: vi.fn(async () => ({ journal: {}, store: {} })),
 }));
 
+const settings = vi.hoisted(() => ({ restoreSettings: vi.fn(async () => {}) }));
+
 const stars = vi.hoisted(() => ({ syncStars: vi.fn() }));
 
 vi.mock('../../src/client/journal/api.js', () => ({ openJournal: opening.openJournal }));
+vi.mock('../../src/client/settings.js', () => settings);
 
 vi.mock('../../src/client/stars.js', () => ({
   REPO: 'minorcell/spider',
@@ -106,6 +109,7 @@ beforeEach(() => {
   opening.openJournal.mockReset();
   opening.openJournal.mockResolvedValue({ journal: {}, store: {} });
   stars.syncStars.mockReset();
+  settings.restoreSettings.mockClear();
 });
 
 describe('main', () => {
@@ -133,7 +137,7 @@ describe('main', () => {
     expect(control.placeIsland).toHaveBeenCalledTimes(1);
     expect(control.setIslandSource).toHaveBeenCalledTimes(1);
     expect(world.setWorldTerrainSource).toHaveBeenCalledTimes(1);
-    expect(world.installWorldStore).toHaveBeenCalledTimes(2);
+    expect(world.installWorldStore).toHaveBeenCalledTimes(1);
     expect(control.panels[0][0]).toBe(document);
     expect(control.panels[0][1]).toBe(session);
     expect(control.panels[0][2]).toBe(stage);
@@ -175,6 +179,37 @@ describe('main', () => {
     expect(control.stages).toHaveLength(1);
     expect(control.start).toHaveBeenCalledTimes(1);
     expect(world.installWorldStore).toHaveBeenCalledTimes(1);
+    const store = world.restoreWorld.mock.calls[0][2] as unknown as {
+      readSnapshot(): Promise<unknown>;
+    };
+    await expect(store.readSnapshot()).resolves.toBeNull();
+  });
+
+  it('keeps one persistence adapter for restoration and every checkpoint', async () => {
+    const host = document.createElement('div');
+    host.id = 'stage';
+    document.body.append(host);
+    const store = {
+      readSnapshot: vi.fn(async () => 'saved'),
+      putSnapshot: vi.fn(async () => {}),
+      removeSnapshot: vi.fn(async () => {}),
+      sweepSnapshots: vi.fn(async () => {}),
+    };
+    opening.openJournal.mockResolvedValueOnce({ journal: {}, store });
+
+    await import('../../src/client/main.js');
+
+    const adapter = world.restoreWorld.mock.calls[0][2] as unknown as typeof store;
+    expect(world.installWorldStore.mock.calls[0][1]).toBe(adapter);
+    await expect(adapter.readSnapshot()).resolves.toBe('saved');
+    await adapter.putSnapshot();
+    await adapter.removeSnapshot();
+    await adapter.sweepSnapshots();
+    expect(store.putSnapshot).toHaveBeenCalledOnce();
+    expect(store.removeSnapshot).toHaveBeenCalledOnce();
+    expect(store.sweepSnapshots).toHaveBeenCalledOnce();
+    expect(settings.restoreSettings).toHaveBeenCalledOnce();
+    expect(world.flushWorld).toHaveBeenCalledWith('poke');
   });
 
   it('bakes the seed stored on this machine', async () => {

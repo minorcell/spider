@@ -169,12 +169,21 @@ export function mountPanel(
     return element;
   };
 
+  const modelFields = (): Record<'baseURL' | 'model' | 'apiKey' | 'contextTokens', string> => ({
+    baseURL: field('baseURL').value,
+    model: field('model').value,
+    apiKey: field('apiKey').value,
+    contextTokens: field('contextTokens').value,
+  });
+  let shownFields: ReturnType<typeof modelFields> | null = null;
+
   const fill = (settings: PilotSettings): void => {
     field('baseURL').value = settings.baseURL;
     field('model').value = settings.model;
     field('apiKey').value = settings.apiKey;
     field('contextTokens').value =
       settings.contextTokens == null ? '' : String(settings.contextTokens);
+    shownFields = modelFields();
   };
 
   const pages = { model: panelModel, memory: memoryPanel, usage: usagePanel } as const;
@@ -205,13 +214,23 @@ export function mountPanel(
   close.addEventListener('click', () => closeDialog(dialog));
 
   const persist = (): void => {
-    writePilot({
-      ...readPilot(),
-      baseURL: field('baseURL').value,
-      model: field('model').value,
-      apiKey: field('apiKey').value,
-      contextTokens: numberOrNull(field('contextTokens').value),
-    });
+    if (!shownFields) return;
+    const values = modelFields();
+    const next = readPilot();
+    let changed = false;
+    for (const name of ['baseURL', 'model', 'apiKey'] as const) {
+      if (values[name] !== shownFields[name]) {
+        next[name] = values[name];
+        changed = true;
+      }
+    }
+    if (values.contextTokens !== shownFields.contextTokens) {
+      next.contextTokens = numberOrNull(values.contextTokens);
+      changed = true;
+    }
+    if (!changed) return;
+    writePilot(next);
+    shownFields = values;
     paint();
   };
 
