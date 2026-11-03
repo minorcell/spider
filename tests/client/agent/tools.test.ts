@@ -62,7 +62,6 @@ beforeEach(() => {
     store: vi.fn(() => outcome()),
     sleep: vi.fn(async () => outcome()),
     setHeight: vi.fn(async () => outcome()),
-    drive: vi.fn(async () => outcome()),
     wait: vi.fn(async () => outcome()),
     near: vi.fn(() => [
       {
@@ -82,7 +81,6 @@ describe('spiderTools', () => {
     expect(Object.keys(spiderTools(session as unknown as SimSession)).sort()).toEqual([
       'approach',
       'drink',
-      'drive',
       'drop',
       'eat',
       'move_to',
@@ -92,7 +90,6 @@ describe('spiderTools', () => {
       'sleep',
       'store',
       'turn',
-      'turn_to',
       'wait',
       'walk',
     ]);
@@ -164,7 +161,6 @@ describe('spiderTools', () => {
       ['walk', { distance: 1 }],
       ['move_to', { x: 1, z: 2 }],
       ['approach', { id: 'apple-1' }],
-      ['drive', { seconds: 1 }],
       ['eat', { id: 'apple-1' }],
       ['pick_up', { id: 'apple-1' }],
       ['drop', {}],
@@ -179,7 +175,7 @@ describe('spiderTools', () => {
     }
     const plain = [
       ['turn', { degrees: 10 }],
-      ['turn_to', { heading: 0 }],
+      ['turn', { heading: 0 }],
       ['drink', {}],
       ['set_height', { level: 0 }],
       ['wait', { seconds: 1 }],
@@ -198,14 +194,29 @@ describe('spiderTools', () => {
     const tools = spiderTools(session as unknown as SimSession);
     await execute(tools.walk, { distance: 3, fast: true });
     await execute(tools.turn, { degrees: 45 });
-    await execute(tools.turn_to, { heading: -90 });
+    const byHeading = (await execute(tools.turn, { heading: -90 })) as Record<string, unknown>;
     await execute(tools.move_to, { x: 1, z: 2, fast: true });
     await execute(tools.approach, { id: 'apple-1', standoff: 0.5, fast: true });
     expect(session.walk).toHaveBeenCalledWith(3, true);
     expect(session.turn).toHaveBeenCalledWith(45);
     expect(session.turnTo).toHaveBeenCalledWith(-90);
+    expect(byHeading.heading).toBe(-90);
     expect(session.moveTo).toHaveBeenCalledWith(1, 2, true);
     expect(session.approach).toHaveBeenCalledWith('apple-1', 0.5, true);
+  });
+
+  it('turns relative or absolute, but not both', async () => {
+    const tools = spiderTools(session as unknown as SimSession);
+    await expect(execute(tools.turn, {})).resolves.toMatchObject({
+      ok: false,
+      reason: 'need-turn',
+    });
+    await expect(execute(tools.turn, { degrees: 10, heading: 0 })).resolves.toMatchObject({
+      ok: false,
+      reason: 'ambiguous-turn',
+    });
+    expect(session.turn).not.toHaveBeenCalled();
+    expect(session.turnTo).not.toHaveBeenCalled();
   });
 
   it('uses defaults for optional movement arguments', async () => {
@@ -242,23 +253,9 @@ describe('spiderTools', () => {
     expect(session.setHeight).toHaveBeenCalledWith(0.3);
   });
 
-  it('passes drive and wait through', async () => {
+  it('passes wait through', async () => {
     const tools = spiderTools(session as unknown as SimSession);
-    await execute(tools.drive, { seconds: 1, throttle: 1, turn: 0.5, lift: -1, boost: 1 });
-    await execute(tools.drive, { seconds: 2 });
     await execute(tools.wait, { seconds: 0.5 });
-    expect(session.drive).toHaveBeenNthCalledWith(1, 1, {
-      throttle: 1,
-      turn: 0.5,
-      lift: -1,
-      boost: 1,
-    });
-    expect(session.drive).toHaveBeenNthCalledWith(2, 2, {
-      throttle: undefined,
-      turn: undefined,
-      lift: undefined,
-      boost: undefined,
-    });
     expect(session.wait).toHaveBeenCalledWith(0.5);
   });
 

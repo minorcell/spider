@@ -15,6 +15,8 @@ import type { MemoryApi } from '../journal/diary.js';
 export interface ToolResult extends GoalOutcome {
   observation?: Observation;
   self?: Sense;
+  /** Present after an absolute turn. */
+  heading?: number;
   /** Present after a move or after handling something on the ground. */
   near?: NearEntity[];
 }
@@ -79,19 +81,26 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         finish(await session.walk(distance, fast ?? false), true),
     }),
     turn: tool({
-      description: '原地转过若干度。正数是顺时针。返回要转的度数和实际转过的度数。',
-      inputSchema: call({
-        degrees: z.number().describe('转多少度。正数顺时针。'),
-      }),
-      execute: async ({ degrees }) => finish(await session.turn(degrees), false),
-    }),
-    turn_to: tool({
       description:
-        '转到一个绝对朝向。0 是世界的 -Z，顺时针为正，范围 -180 到 180。返回目标朝向和这次转过的度数。',
+        '原地转。填 degrees 转相对角度，填 heading 转到绝对朝向，两个只填一个。正数是顺时针。' +
+        'heading 的 0 是世界的 -Z，范围 -180 到 180。返回要转的度数和实际转过的度数；按 heading 转时还会返回这个朝向。',
       inputSchema: call({
-        heading: z.number().min(-180).max(180).describe('绝对朝向，单位是度。'),
+        degrees: z.number().optional().describe('相对现在转多少度。正数顺时针。'),
+        heading: z
+          .number()
+          .min(-180)
+          .max(180)
+          .optional()
+          .describe('转到哪个绝对朝向。0 是世界的 -Z，顺时针为正。'),
       }),
-      execute: async ({ heading }) => finish(await session.turnTo(heading), false),
+      execute: async ({ degrees, heading }) => {
+        if (degrees === undefined) {
+          if (heading === undefined) return finish({ ok: false, reason: 'need-turn' }, false);
+          return { ...finish(await session.turnTo(heading), false), heading };
+        }
+        if (heading !== undefined) return finish({ ok: false, reason: 'ambiguous-turn' }, false);
+        return finish(await session.turn(degrees), false);
+      },
     }),
     move_to: tool({
       description:
@@ -182,20 +191,6 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         level: z.number().min(GAIT.heightMin).max(GAIT.heightMax).describe('想离地多高。'),
       }),
       execute: async ({ level }) => finish(await session.setHeight(level), false),
-    }),
-    drive: tool({
-      description:
-        '朝一个方向撑一小会儿。只有别的行动都说不清你要做什么时才用。顶到固体上会提前停下，reason 是 blocked；坡太陡是 steep。返回秒数。' +
-        NEAR,
-      inputSchema: call({
-        seconds: z.number().min(0).max(10).describe('撑多久，秒。'),
-        throttle: z.number().min(-1).max(1).optional().describe('向前 1，向后 -1。默认 0。'),
-        turn: z.number().min(-1).max(1).optional().describe('向右 1，向左 -1。默认 0。'),
-        lift: z.number().min(-1).max(1).optional().describe('抬高 1，放低 -1。默认 0。'),
-        boost: z.number().min(0).max(1).optional().describe('1 是加速。默认 0。'),
-      }),
-      execute: async ({ seconds, throttle, turn, lift, boost }) =>
-        finish(await session.drive(seconds, { throttle, turn, lift, boost }), true),
     }),
     wait: tool({
       description: '停在原地，让时间过去。返回秒数。',
