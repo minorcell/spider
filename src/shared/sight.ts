@@ -186,13 +186,7 @@ function segmentHits(x0: number, z0: number, x1: number, z1: number, block: Bloc
 }
 
 /** Where along the segment the slab starts, or null when the segment misses it. */
-function segmentEntry(
-  x0: number,
-  z0: number,
-  x1: number,
-  z1: number,
-  block: Block,
-): number | null {
+function segmentEntry(x0: number, z0: number, x1: number, z1: number, block: Block): number | null {
   const dx = x1 - x0;
   const dz = z1 - z0;
   const p = [-dx, dx, -dz, dz];

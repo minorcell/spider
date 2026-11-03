@@ -128,7 +128,8 @@ describe('observe budgets', () => {
   });
 });
 
-describe('persistence budgets', () => {  it('captures a body in under 10 ms', () => {
+describe('persistence budgets', () => {
+  it('captures a body in under 10 ms', () => {
     const idle = new SimSession(7);
     expect(bestOf(5, () => void captureBody(idle, { text: '去巢边', tool: 'walk' }))).toBeLessThan(
       10,
