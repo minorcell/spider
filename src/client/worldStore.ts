@@ -21,10 +21,8 @@ import {
   leaseOf,
   mayWrite,
   pageOwner,
-  peekLegacyBuffer,
   readBuffer,
   readLease,
-  resetWorldMigration,
   setLease,
 } from './world/storage.js';
 
@@ -155,7 +153,6 @@ export function writesDone(): Promise<void> {
 
 /** Tests drop the timer and the visibility listener between cases. */
 export function resetWorldStore(): void {
-  resetWorldMigration();
   if (timer) clearInterval(timer);
   timer = undefined;
   if (pokeTimer) clearTimeout(pokeTimer);
@@ -189,14 +186,7 @@ export async function restoreWorld(
 ): Promise<BootNote> {
   if (store) providedStore = store;
   const today = localDate(now);
-  let ls = classify(readBuffer(), today);
-  if (ls.status !== 'ok' && ls.status !== 'format') {
-    const leftover = classify(peekLegacyBuffer(), today);
-    if (leftover.status === 'ok') {
-      bufferPut(leftover.record);
-      ls = leftover;
-    }
-  }
+  const ls = classify(readBuffer(), today);
   const loaded = await loadIdb(today);
   dbDeferred = loaded.deferred;
   const idb = loaded.idb;
@@ -400,15 +390,9 @@ async function currentRecord(today: string): Promise<WorldRecord | 'format' | un
 
 async function mirror(chosen: WorldRecord, ls: Classify, idb: Classify): Promise<void> {
   const lsSame =
-    ls.status === 'ok' &&
-    !ls.migrated &&
-    ls.record.seq === chosen.seq &&
-    ls.record.savedAt === chosen.savedAt;
+    ls.status === 'ok' && ls.record.seq === chosen.seq && ls.record.savedAt === chosen.savedAt;
   const idbSame =
-    idb.status === 'ok' &&
-    !idb.migrated &&
-    idb.record.seq === chosen.seq &&
-    idb.record.savedAt === chosen.savedAt;
+    idb.status === 'ok' && idb.record.seq === chosen.seq && idb.record.savedAt === chosen.savedAt;
   if (!lsSame || !idbSame) {
     if (!stageRecord(chosen)) return;
     try {

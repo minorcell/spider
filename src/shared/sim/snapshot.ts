@@ -43,7 +43,7 @@ export interface WorldRecord extends SimBody {
 }
 
 export type Classify =
-  | { status: 'ok'; record: WorldRecord; migrated?: boolean }
+  | { status: 'ok'; record: WorldRecord }
   | { status: 'malformed' | 'format' | 'empty' };
 
 export interface Restorable {
@@ -122,6 +122,7 @@ export function classify(input: unknown, _today?: string): Classify {
   if (!isFiniteNumber(raw.format) || !Number.isSafeInteger(raw.format) || raw.format < 1) {
     return { status: 'malformed' };
   }
+  if (raw.format < FORMAT) return { status: 'malformed' };
   if (raw.format > FORMAT) return { status: 'format' };
   if (!isDay(raw.day)) return { status: 'malformed' };
   if (
@@ -148,7 +149,7 @@ export function classify(input: unknown, _today?: string): Classify {
     seq: raw.seq as number,
     leaseUntil: raw.leaseUntil as number,
   };
-  return raw.format < FORMAT ? { status: 'ok', record, migrated: true } : { status: 'ok', record };
+  return { status: 'ok', record };
 }
 
 function bodyOf(raw: Record<string, unknown>): SimBody | null {

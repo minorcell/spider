@@ -228,13 +228,13 @@ describe('journal worker handler', () => {
     expect(await handle({ id: 8, method: 'snapshotRead' })).toBeNull();
   });
 
-  it('keeps old and future snapshot formats while sweeping malformed rows', async () => {
+  it('sweeps old snapshot formats and keeps future ones', async () => {
     const handle = createHandler();
     const db = await openSpiderDb();
-    const legacy = { ...record(), format: 1, day: '2020-01-01' } as unknown as WorldRecord;
-    await db.put('snapshots', legacy);
+    const old = { ...record(), format: 1, day: '2020-01-01' } as unknown as WorldRecord;
+    await db.put('snapshots', old);
     await handle({ id: 1, method: 'snapshotSweep', args: [localDate(new Date())] });
-    expect(await handle({ id: 2, method: 'snapshotRead' })).toEqual(legacy);
+    expect(await handle({ id: 2, method: 'snapshotRead' })).toBeNull();
 
     const future = { id: 'current', format: 4, futureBody: { seed: 7 } } as unknown as WorldRecord;
     await db.put('snapshots', future);

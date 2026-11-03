@@ -109,7 +109,6 @@ export async function recordUsageCalls(calls: UsageCall[]): Promise<void> {
   const next = calls.map(normalizeCall);
   try {
     const db = await openSpiderDb();
-    await ensureLegacyCalls(db);
     const tx = db.transaction(['usageCalls', 'usage'], 'readwrite');
     const callStore = tx.objectStore('usageCalls');
     const dayStore = tx.objectStore('usage');
@@ -118,14 +117,6 @@ export async function recordUsageCalls(calls: UsageCall[]): Promise<void> {
       for (const row of await callStore.index('date').getAll(date)) {
         const call = normalizeCall(row);
         stored.set(call.id, call);
-      }
-      if (stored.size === 0) {
-        const prior = normalize(await dayStore.get(date), date);
-        if (prior.calls > 0) {
-          const legacy = legacyCallFromDay(prior);
-          stored.set(legacy.id, legacy);
-          await callStore.put(legacy);
-        }
       }
       for (const call of batch) {
         stored.set(call.id, call);
@@ -144,41 +135,9 @@ export async function recordUsageCall(call: UsageCall): Promise<void> {
   await recordUsageCalls([call]);
 }
 
-/**
- * Move pre-call `usage` days into the call ledger once per database connection.
- * A legacy day keeps its request and tool counts so the KPIs do not lose it.
- */
-let migration: { db: SpiderDb; done: Promise<void> } | null = null;
-
-function ensureLegacyCalls(db: SpiderDb): Promise<void> {
-  if (migration?.db === db) return migration.done;
-  const done = migrateLegacyCalls(db).catch(() => {
-    // One database stays open, so this pass is the only one in flight.
-    migration = null;
-  });
-  migration = { db, done };
-  return done;
-}
-
-async function migrateLegacyCalls(db: SpiderDb): Promise<void> {
-  const dates = await db.getAllKeys('usage');
-  if (dates.length === 0) return;
-  const tx = db.transaction(['usageCalls', 'usage'], 'readwrite');
-  const callStore = tx.objectStore('usageCalls');
-  const dayStore = tx.objectStore('usage');
-  for (const date of dates) {
-    if ((await callStore.index('date').count(date)) > 0) continue;
-    const day = normalize(await dayStore.get(date), date);
-    if (day.calls === 0) continue;
-    await callStore.put(legacyCallFromDay(day));
-  }
-  await tx.done;
-}
-
 /** Today's row, the sum of stored days in range, and those days newest first. */
 export async function readUsage(today: string, range: UsageRange = 'all'): Promise<UsageSnapshot> {
   const db = await openSpiderDb();
-  await ensureLegacyCalls(db);
   const span = range === '7' ? 7 : range === '30' ? 30 : 0;
   const currentFrom = span === 0 ? null : shiftDate(today, 1 - span);
   // The previous period feeds the "compared with last week" KPI.
@@ -373,37 +332,6 @@ function toolsFromStep(step: StepUsageSource): UsageTool[] {
   });
 }
 
-function legacyCallFromDay(day: UsageDay): UsageCall {
-  return {
-    id: `legacy:${day.date}`,
-    ts: startOfDay(day.date),
-    date: day.date,
-    kind: 'agent',
-    sessionId: day.date,
-    turnId: `legacy:${day.date}`,
-    step: 0,
-    provider: '',
-    modelId: '',
-    total: day.total,
-    input: {
-      total: day.input,
-      noCache: inputDetail(undefined, day.input, day.cacheRead, day.cacheWrite),
-      cacheRead: day.cacheRead,
-      cacheWrite: day.cacheWrite,
-    },
-    output: {
-      total: day.output,
-      text: outputDetail(day.textTokens || undefined, day.output, day.reasoning),
-      reasoning: day.reasoning,
-    },
-    tools: [],
-    timing: {},
-    finishReason: '',
-    count: day.calls,
-    toolCalls: day.toolCalls,
-  };
-}
-
 function aggregateDay(date: string, calls: UsageCall[]): UsageDay {
   return calls.reduce((day, call) => add(day, deltaOfCall(call)), blankUsage(date));
 }
@@ -414,12 +342,12 @@ function deltaOfCall(call: UsageCall): UsageDay {
     input: call.input.total,
     output: call.output.total,
     total: call.total,
-    calls: call.count ?? 1,
+    calls: 1,
     cacheRead: call.input.cacheRead,
     cacheWrite: call.input.cacheWrite,
     reasoning: call.output.reasoning,
     textTokens: call.output.text,
-    toolCalls: call.toolCalls ?? call.tools.length,
+    toolCalls: call.tools.length,
   };
 }
 
@@ -491,8 +419,6 @@ function normalizeCall(value: UsageCall): UsageCall {
       stepMs: optionalCount(timing.stepMs),
     },
     finishReason: value.finishReason ?? '',
-    ...(value.count == null ? {} : { count: Math.max(1, count(value.count)) }),
-    ...(value.toolCalls == null ? {} : { toolCalls: count(value.toolCalls) }),
   };
 }
 
@@ -578,7 +504,7 @@ function modelsOf(calls: UsageCall[]): UsageModelRow[] {
       responseMs: 0,
       timedCalls: 0,
     };
-    current.calls += call.count ?? 1;
+    current.calls += 1;
     current.total += call.total;
     current.input += call.input.total;
     current.output += call.output.total;
@@ -641,12 +567,6 @@ function inputDetail(
 function outputDetail(explicit: number | undefined, total: number, reasoning: number): number {
   const stored = count(explicit);
   return stored > 0 ? stored : Math.max(0, total - reasoning);
-}
-
-function startOfDay(date: string): number {
-  const [year, month, day] = date.split('-').map(Number);
-  if (!year || !month || !day) return 0;
-  return new Date(year, month - 1, day).getTime();
 }
 
 function count(value: unknown): number {

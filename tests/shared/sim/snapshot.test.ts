@@ -34,7 +34,7 @@ function good(): WorldRecord {
   return {
     ...body,
     id: 'current',
-    format: 3,
+    format: FORMAT,
     savedAt: 1_700_000_000_000,
     day: today,
     owner: 'tab',
@@ -44,55 +44,12 @@ function good(): WorldRecord {
 }
 
 describe('snapshot', () => {
-  it.each([1, 2])('migrates format %s with the original optional fields absent', (format) => {
-    const base = good();
-    const entities = base.entities.map(({ id, kind, x, y, z, stage, footprint }) => ({
-      id,
-      kind,
-      x,
-      y,
-      z,
-      stage,
-      footprint,
-    }));
-    const carried = entities.find((entity) => entity.kind === 'apple')!;
-    const legacy = {
-      ...base,
-      format,
-      day: '2020-01-01',
-      entities: entities.filter((entity) => entity.id !== carried.id),
-      carrying: [carried],
-      pending: { text: '带回去' },
-    };
-    const parsed = classify(JSON.stringify(legacy), today);
-
-    expect(parsed).toMatchObject({ status: 'ok', migrated: true });
-    if (parsed.status !== 'ok') return;
-    expect(parsed.record).toEqual({
-      ...legacy,
-      format: FORMAT,
-      pending: { text: '带回去', tool: null },
-    });
-    expect(parsed.record.carrying[0]).not.toHaveProperty('vx');
-    expect(parsed.record.carrying[0]).not.toHaveProperty('qx');
-    expect(legacy.format).toBe(format);
-    expect(classify(parsed.record, today)).not.toHaveProperty('migrated');
+  it.each([1, 2])('rejects format %s instead of migrating it', (format) => {
+    expect(classify({ ...good(), format }, today)).toEqual({ status: 'malformed' });
   });
 
-  it.each([1, 2])('validates format %s before migrating it', (format) => {
-    const base = { ...good(), format };
-    const badEntity = { ...base.entities[0], x: Number.NaN };
-
-    expect(classify({ ...base, spider: { ...base.spider, feet: [] } }, today).status).toBe(
-      'malformed',
-    );
-    expect(classify({ ...base, entities: [badEntity] }, today).status).toBe('malformed');
-    expect(classify({ ...base, appleIn: -1 }, today).status).toBe('malformed');
-    expect(classify({ ...base, pending: undefined }, today)).toMatchObject({
-      status: 'ok',
-      migrated: true,
-      record: { pending: null },
-    });
+  it('rejects an older format without reading its body', () => {
+    expect(classify({ format: 2 }, today)).toEqual({ status: 'malformed' });
   });
 
   it('keeps a pose that sits past the island rim', () => {

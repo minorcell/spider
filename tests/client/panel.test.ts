@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { openSpiderDb, resetSpiderDb } from '../../src/client/journal/db.js';
+import { resetSpiderDb } from '../../src/client/journal/db.js';
 import { Diary } from '../../src/client/journal/diary.js';
 import { localDate, shiftDate } from '../../src/shared/dates.js';
 import * as usageLedger from '../../src/client/journal/usage.js';
@@ -1432,38 +1432,6 @@ describe('usage dialog', () => {
     expect(document.querySelector('#usage-export')!.textContent).toBe('已导出');
     await vi.advanceTimersByTimeAsync(1400);
     expect(document.querySelector('#usage-export')!.textContent).toBe('导出');
-  });
-
-  it('shows a legacy day as one counted row without tool names', async () => {
-    const today = localDate(new Date());
-    const db = await openSpiderDb();
-    await db.put('usage', {
-      date: today,
-      input: 7,
-      output: 1,
-      total: 8,
-      calls: 2,
-      cacheRead: 3,
-      cacheWrite: 1,
-      reasoning: 0,
-      textTokens: 1,
-      toolCalls: 4,
-    });
-    mount();
-    clickButton('#menu-usage');
-    await flush();
-    const page = document.querySelector('#usage')!;
-    expect(page.textContent).toContain('历史记录无工具明细');
-    expect(page.textContent).toContain('汇总 2 次');
-    const details = page.querySelector<HTMLDetailsElement>('.request')!;
-    details.open = true;
-    details.dispatchEvent(new Event('toggle'));
-    expect(page.textContent).toContain('历史 4 次工具调用，无明细');
-    const center = Number(page.querySelector('.donut-center strong')!.textContent);
-    const parts = [...page.querySelectorAll('.break-row strong')].map((node) =>
-      Number(node.textContent),
-    );
-    expect(parts.reduce((sum, value) => sum + value, 0)).toBe(center);
   });
 
   it('says when the request list is shorter than the ledger', async () => {

@@ -40,7 +40,7 @@ describe('pilot settings', () => {
     });
   });
 
-  it('stores a context length and drops a legacy compact threshold', () => {
+  it('stores a context length', () => {
     writePilot({
       baseURL: 'https://example.com',
       model: 'gpt',
@@ -48,26 +48,6 @@ describe('pilot settings', () => {
       contextTokens: 8,
     });
     expect(readPilot()).toMatchObject({ contextTokens: 8 });
-    expect(readPilot()).not.toHaveProperty('compact');
-    localStorage.setItem(
-      'spider.pilot',
-      JSON.stringify({
-        baseURL: 'https://example.com',
-        model: 'gpt',
-        apiKey: 'key',
-        contextTokens: 8,
-        compact: true,
-        compactKb: 400,
-      }),
-    );
-    resetPilotStore();
-    expect(readPilot()).toEqual({
-      ...EMPTY,
-      baseURL: 'https://example.com',
-      model: 'gpt',
-      apiKey: 'key',
-      contextTokens: 8,
-    });
     writePilot({
       baseURL: 'https://example.com',
       model: 'gpt',
@@ -75,7 +55,6 @@ describe('pilot settings', () => {
       contextTokens: 0,
     });
     expect(readPilot().contextTokens).toBeNull();
-    expect(localStorage.getItem('spider.pilot')).not.toContain('compact');
   });
 
   it('stores auto memory as an opt-in flag', () => {
@@ -113,56 +92,6 @@ describe('pilot settings', () => {
   it('falls back to empty on malformed JSON', () => {
     localStorage.setItem('spider.pilot', '{nope');
     expect(readPilot()).toEqual(EMPTY);
-  });
-
-  it('keeps the legacy key when the new record is unusable', () => {
-    localStorage.setItem('spider.pilot', '{nope');
-    localStorage.setItem(
-      'p5-art.pilot',
-      JSON.stringify({ baseURL: 'https://old.example', model: 'o', apiKey: 'old' }),
-    );
-    expect(readPilot()).toMatchObject({
-      baseURL: 'https://old.example',
-      model: 'o',
-      apiKey: 'old',
-    });
-    expect(localStorage.getItem('p5-art.pilot')).toBeNull();
-    expect(localStorage.getItem('spider.pilot')).toContain('old.example');
-  });
-
-  it('migrates the previous p5-art key', () => {
-    localStorage.setItem(
-      'p5-art.pilot',
-      JSON.stringify({ baseURL: 'https://example.com', model: 'gpt', apiKey: 'key' }),
-    );
-    expect(readPilot()).toMatchObject({
-      baseURL: 'https://example.com',
-      model: 'gpt',
-      apiKey: 'key',
-    });
-    expect(localStorage.getItem('spider.pilot')).toBeTruthy();
-    expect(localStorage.getItem('p5-art.pilot')).toBeNull();
-  });
-
-  it('keeps the new key when both exist', () => {
-    writePilot({ baseURL: 'https://new.example', model: 'n', apiKey: 'k' });
-    localStorage.setItem(
-      'p5-art.pilot',
-      JSON.stringify({ baseURL: 'https://old.example', model: 'o', apiKey: 'old' }),
-    );
-    resetPilotStore();
-    expect(readPilot().baseURL).toBe('https://new.example');
-    expect(localStorage.getItem('p5-art.pilot')).toBeNull();
-  });
-
-  it('keeps the new key when the old one cannot be deleted', () => {
-    writePilot({ baseURL: 'https://new.example', model: 'n', apiKey: 'k' });
-    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
-      throw new Error('denied');
-    });
-    expect(readPilot().baseURL).toBe('https://new.example');
-    writePilot({ baseURL: 'https://newer.example', model: 'n', apiKey: 'k' });
-    remove.mockRestore();
   });
 
   it('falls back to empty when storage throws', () => {
@@ -222,39 +151,6 @@ describe('persistent settings', () => {
     expect(localStorage.getItem('spider.pilot')).toContain('saved');
   });
 
-  it('migrates both old settings keys into preferences', async () => {
-    localStorage.setItem('spider.pilot', '{nope');
-    localStorage.setItem('p5-art.pilot', JSON.stringify({ ...EMPTY, model: 'legacy' }));
-
-    await restoreSettings();
-
-    const db = await openSpiderDb();
-    expect(await db.get('preferences', 'pilot')).toMatchObject({ value: { model: 'legacy' } });
-    expect(localStorage.getItem('p5-art.pilot')).toBeNull();
-  });
-
-  it('migrates options saved before model credentials were filled', () => {
-    for (const option of [{ contextTokens: 8 }, { autoMemory: true }]) {
-      localStorage.clear();
-      resetPilotStore();
-      localStorage.setItem('p5-art.pilot', JSON.stringify({ ...EMPTY, ...option }));
-      expect(readPilot()).toEqual({ ...EMPTY, ...option });
-      expect(localStorage.getItem('p5-art.pilot')).toBeNull();
-    }
-  });
-
-  it('keeps an intentionally cleared current setting over the legacy key', async () => {
-    writePilot({ ...EMPTY });
-    await flushSettings();
-    localStorage.setItem('p5-art.pilot', JSON.stringify({ ...EMPTY, model: 'legacy' }));
-    resetPilotStore();
-
-    await restoreSettings();
-
-    expect(readPilot()).toEqual(EMPTY);
-    expect(localStorage.getItem('p5-art.pilot')).toBeNull();
-  });
-
   it('takes the newer persistent record over an older recovery buffer', async () => {
     localStorage.setItem(
       'spider.pilot',
@@ -312,7 +208,10 @@ describe('persistent settings', () => {
   });
 
   it('keeps memory and the recovery buffer when IndexedDB reads or writes fail', async () => {
-    localStorage.setItem('spider.pilot', JSON.stringify({ ...EMPTY, model: 'recovered' }));
+    localStorage.setItem(
+      'spider.pilot',
+      JSON.stringify({ id: 'pilot', updatedAt: 1, value: { ...EMPTY, model: 'recovered' } }),
+    );
     const db = await openSpiderDb();
     const get = vi.spyOn(db, 'get').mockRejectedValue(new Error('unavailable'));
     const put = vi.spyOn(db, 'put').mockRejectedValue(new Error('unavailable'));
@@ -346,17 +245,7 @@ describe('persistent settings', () => {
     expect(await db.get('preferences', 'pilot')).toMatchObject({ value: { model: 'retained' } });
   });
 
-  it('retains legacy data when its synchronous migration cannot be written', () => {
-    localStorage.setItem('p5-art.pilot', JSON.stringify({ ...EMPTY, model: 'legacy' }));
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('full');
-    });
-
-    expect(readPilot().model).toBe('legacy');
-    expect(localStorage.getItem('p5-art.pilot')).toContain('legacy');
-  });
-
-  it('ignores malformed records and keeps valid empty legacy settings', async () => {
+  it('ignores malformed records', async () => {
     for (const value of [
       null,
       [],
@@ -368,9 +257,6 @@ describe('persistent settings', () => {
       resetPilotStore();
       expect(readPilot()).toEqual(EMPTY);
     }
-    localStorage.setItem('spider.pilot', JSON.stringify(EMPTY));
-    resetPilotStore();
-    expect(readPilot()).toEqual(EMPTY);
     const db = await openSpiderDb();
     await db.put('preferences', { id: 'pilot', updatedAt: 1, value: [] });
     await restoreSettings();

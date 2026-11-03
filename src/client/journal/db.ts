@@ -63,10 +63,6 @@ export interface UsageCall {
   tools: UsageTool[];
   timing: { ttftMs?: number; responseMs?: number; stepMs?: number };
   finishReason: string;
-  /** Requests this row stands for. Absent means one; legacy day rows can stand for several. */
-  count?: number;
-  /** Tool calls in a legacy day row, which has no per-tool detail. */
-  toolCalls?: number;
 }
 
 interface SpiderDB extends DBSchema {

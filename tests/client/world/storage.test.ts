@@ -3,7 +3,6 @@ import { captureBody, type WorldRecord } from '../../../src/shared/sim/snapshot.
 import { SimSession } from '../../../src/shared/sim/session.js';
 import { localDate } from '../../../src/shared/dates.js';
 import {
-  BUFFER_KEY,
   LEASE_KEY,
   OWNER_KEY,
   bufferPut,
@@ -12,12 +11,9 @@ import {
   forgetOwner,
   leaseOf,
   mayWrite,
-  migrateWorldKeys,
   pageOwner,
-  peekLegacyBuffer,
   readBuffer,
   readLease,
-  resetWorldMigration,
   setLease,
 } from '../../../src/client/world/storage.js';
 
@@ -37,50 +33,8 @@ function record(over: Partial<WorldRecord> = {}): WorldRecord {
 }
 
 beforeEach(() => {
-  resetWorldMigration();
   localStorage.clear();
   sessionStorage.clear();
-});
-
-describe('world storage keys', () => {
-  it('copies legacy keys and then drops them', () => {
-    localStorage.setItem('p5-art.world', 'buffer');
-    localStorage.setItem('p5-art.world.lease', 'lease');
-    sessionStorage.setItem('p5-art.world.owner', 'tab');
-    migrateWorldKeys();
-    expect(localStorage.getItem(BUFFER_KEY)).toBe('buffer');
-    expect(localStorage.getItem(LEASE_KEY)).toBe('lease');
-    expect(sessionStorage.getItem(OWNER_KEY)).toBe('tab');
-    expect(localStorage.getItem('p5-art.world')).toBeNull();
-  });
-
-  it('keeps a leftover legacy copy when the new key already exists', () => {
-    localStorage.setItem(BUFFER_KEY, 'new');
-    localStorage.setItem('p5-art.world', 'old');
-    migrateWorldKeys();
-    expect(localStorage.getItem(BUFFER_KEY)).toBe('new');
-    expect(localStorage.getItem('p5-art.world')).toBe('old');
-    expect(peekLegacyBuffer()).toBe('old');
-  });
-
-  it('runs the copy only once', () => {
-    migrateWorldKeys();
-    localStorage.setItem('p5-art.world', 'late');
-    migrateWorldKeys();
-    expect(localStorage.getItem(BUFFER_KEY)).toBeNull();
-  });
-
-  it('does nothing when neither key exists', () => {
-    migrateWorldKeys();
-    expect(localStorage.getItem(BUFFER_KEY)).toBeNull();
-  });
-
-  it('swallows a blocked migrate', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new Error('denied');
-    });
-    expect(() => migrateWorldKeys()).not.toThrow();
-  });
 });
 
 describe('lease and buffer', () => {

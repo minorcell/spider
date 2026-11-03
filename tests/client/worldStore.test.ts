@@ -168,7 +168,7 @@ describe('restoreWorld', () => {
     expect(stored?.seq).toBe(4);
   });
 
-  it.each([1, 2])('rewrites matching format %s copies into the current format', async (format) => {
+  it.each([1, 2])('drops format %s copies instead of restoring them', async (format) => {
     const saved = new SimSession(9);
     saved.spider.root.position.x = 0.4;
     const record = {
@@ -181,13 +181,11 @@ describe('restoreWorld', () => {
     const session = new SimSession(1);
     const note = await restoreWorld(session);
     const db = await openSpiderDb();
-    const expected = { ...record, format: 3 };
 
-    expect(note).toMatchObject({ restored: true, cause: null, pendingText: '旧世界' });
-    expect(session.world.seed).toBe(saved.world.seed);
-    expect(session.spider.root.position.x).toBe(0.4);
-    expect(JSON.parse(String(localStorage.getItem(KEY)))).toEqual(expected);
-    expect(await db.get('snapshots', 'current')).toEqual(expected);
+    expect(note).toMatchObject({ restored: false, cause: 'malformed', pendingText: null });
+    expect(session.world.seed).toBe(1);
+    expect(localStorage.getItem(KEY)).toBeNull();
+    expect(await db.get('snapshots', 'current')).toBeUndefined();
   });
 
   it.each(['future format', 'newer sequence', 'later timestamp'] as const)(
@@ -215,38 +213,6 @@ describe('restoreWorld', () => {
       expect(store.calls).not.toContain('put');
     },
   );
-
-  it('migrates the previous p5-art buffer into the new key', async () => {
-    const saved = new SimSession(9);
-    saved.spider.root.position.set(3, saved.spider.root.position.y, 1);
-    const record = stamp(saved, { seq: 2, pending: { text: '旧钥匙', tool: null } });
-    localStorage.setItem('p5-art.world', JSON.stringify(record));
-    localStorage.setItem(
-      'p5-art.world.lease',
-      JSON.stringify({ owner: 'tab-a', until: Date.now() + 60_000 }),
-    );
-    sessionStorage.setItem('p5-art.world.owner', 'tab-a');
-    const session = new SimSession(1);
-    const note = await restoreWorld(session);
-    expect(note.restored).toBe(true);
-    expect(note.pendingText).toBe('旧钥匙');
-    expect(localStorage.getItem(KEY)).toBeTruthy();
-    expect(localStorage.getItem('p5-art.world')).toBeNull();
-    expect(sessionStorage.getItem('spider.world.owner')).toBe('tab-a');
-  });
-
-  it('restores the legacy buffer when the new key is unusable', async () => {
-    const saved = new SimSession(9);
-    saved.spider.root.position.set(3, saved.spider.root.position.y, 1);
-    const record = stamp(saved, { seq: 2, pending: { text: '旧钥匙', tool: null } });
-    localStorage.setItem(KEY, '{nope');
-    localStorage.setItem('p5-art.world', JSON.stringify(record));
-    const session = new SimSession(1);
-    const note = await restoreWorld(session);
-    expect(note.restored).toBe(true);
-    expect(note.pendingText).toBe('旧钥匙');
-    expect(JSON.parse(String(localStorage.getItem(KEY))).seq).toBe(2);
-  });
 
   it('drops a broken buffer and keeps a good database copy', async () => {
     const saved = new SimSession(4);

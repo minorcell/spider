@@ -182,10 +182,7 @@ function buildTop(doc: Document, range: UsageRange): HTMLElement {
 
 function buildKpis(doc: Document, kpis: UsageKpis, range: UsageRange): HTMLElement {
   const delta = weekDelta(kpis, range);
-  const toolFoot =
-    kpis.toolNames === 0 && kpis.toolCalls > 0
-      ? `${kpis.toolCalls} 次 · 历史记录无工具明细`
-      : `${kpis.toolNames} 个工具 · 成功率 ${Math.round(kpis.toolOkRate)}%`;
+  const toolFoot = `${kpis.toolNames} 个工具 · 成功率 ${Math.round(kpis.toolOkRate)}%`;
   return kpiGrid(
     doc,
     { label: '用量概览' },
@@ -356,10 +353,8 @@ function requestRow(doc: Document, call: UsageCall): HTMLElement {
   const finish = finishLabel(call.finishReason);
   const sub = call.tools.length > 0 ? '调用了工具' : finish;
   const summary = h(doc, 'summary');
-  const times =
-    call.count != null && call.count > 1 ? `汇总 ${call.count} 次` : `第 ${call.step + 1} 次`;
   summary.append(
-    h(doc, 'span', { class: 'step' }, `${shortDate(call.date)} · ${times}`),
+    h(doc, 'span', { class: 'step' }, `${shortDate(call.date)} · 第 ${call.step + 1} 次`),
     h(
       doc,
       'span',
@@ -397,14 +392,7 @@ function requestRow(doc: Document, call: UsageCall): HTMLElement {
 function requestDetail(doc: Document, call: UsageCall, finish: string): HTMLElement {
   const tools =
     call.tools.length === 0
-      ? [
-          pill(
-            doc,
-            call.toolCalls != null && call.toolCalls > 0
-              ? `历史 ${call.toolCalls} 次工具调用，无明细`
-              : '没有工具调用',
-          ),
-        ]
+      ? [pill(doc, '没有工具调用')]
       : call.tools.map((tool) =>
           pill(
             doc,
@@ -417,7 +405,7 @@ function requestDetail(doc: Document, call: UsageCall, finish: string): HTMLElem
     [
       {
         label: '类型',
-        value: `${call.kind === 'summary' ? '整理对话' : '任务'} · 第 ${call.step + 1} 步 · 合并 ${call.count ?? 1} 次`,
+        value: `${call.kind === 'summary' ? '整理对话' : '任务'} · 第 ${call.step + 1} 步`,
       },
       { label: '模型', value: `${call.modelId || '未知模型'} · ${call.provider || '兼容接口'}` },
       { label: '时间', value: `${call.date} ${formatTime(call.ts)}` },

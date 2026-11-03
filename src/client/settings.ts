@@ -4,7 +4,6 @@ import { openSpiderDb, type PreferenceRecord } from './journal/db.js';
 import { PersistentCache } from './store/cache.js';
 
 const STORAGE_KEY = 'spider.pilot';
-const LEGACY_KEY = 'p5-art.pilot';
 const OPEN_MS = 1500;
 
 export interface PilotSettings {
@@ -87,31 +86,9 @@ function recordOf(raw: unknown): PilotRecord | null {
   const parsed = parsedValue(raw);
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
   const record = parsed as Partial<PilotRecord>;
-  if ('id' in record) {
-    if (record.id !== 'pilot' || !Number.isFinite(record.updatedAt)) return null;
-    const value = parsePilot(record.value);
-    return value ? { id: 'pilot', updatedAt: record.updatedAt as number, value } : null;
-  }
-  const value = parsePilot(parsed) as PilotSettings;
-  return { id: 'pilot', updatedAt: 0, value };
-}
-
-function filled(settings: PilotSettings): boolean {
-  return (
-    settings.baseURL !== '' ||
-    settings.model !== '' ||
-    settings.apiKey !== '' ||
-    settings.contextTokens != null ||
-    settings.autoMemory
-  );
-}
-
-function dropLegacy(): void {
-  try {
-    localStorage.removeItem(LEGACY_KEY);
-  } catch {
-    // The new key is already the source.
-  }
+  if (record.id !== 'pilot' || !Number.isFinite(record.updatedAt)) return null;
+  const value = parsePilot(record.value);
+  return value ? { id: 'pilot', updatedAt: record.updatedAt as number, value } : null;
 }
 
 function readStore(key: string): string | null {
@@ -127,21 +104,9 @@ export function readPilot(): PilotSettings {
   const cached = store.peek();
   if (cached) return cached.value;
   const current = recordOf(store.readRecovery());
-  if (current && (current.updatedAt > 0 || filled(current.value))) {
-    store.hydrate(current);
-    dropLegacy();
-    return structuredClone(current.value);
-  }
-  const legacy = parsePilot(parsedValue(readStore(LEGACY_KEY)));
-  if (legacy && filled(legacy)) {
-    if (store.stage({ id: 'pilot', updatedAt: 0, value: legacy })) dropLegacy();
-    return legacy;
-  }
-  if (current) {
-    store.hydrate(current);
-    return structuredClone(current.value);
-  }
-  return { ...EMPTY };
+  if (!current) return { ...EMPTY };
+  store.hydrate(current);
+  return structuredClone(current.value);
 }
 
 export function writePilot(settings: PilotInput): void {
@@ -159,7 +124,7 @@ export function writePilot(settings: PilotInput): void {
   const store = pilotCache();
   edits += 1;
   const updatedAt = Math.max(Date.now(), (store.peek()?.updatedAt ?? 0) + 1);
-  if (store.stage({ id: 'pilot', updatedAt, value: next })) dropLegacy();
+  store.stage({ id: 'pilot', updatedAt, value: next });
   void store.flush().catch(() => undefined);
 }
 
@@ -176,7 +141,7 @@ export async function restoreSettings(): Promise<void> {
     const current = store.peek();
     const chosen = saved && (!current || saved.updatedAt > current.updatedAt) ? saved : current;
     if (!chosen) return;
-    if (store.stage(chosen)) dropLegacy();
+    store.stage(chosen);
     await store.flush().catch(() => undefined);
   });
   await new Promise<void>((resolve) => {
