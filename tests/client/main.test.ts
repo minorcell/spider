@@ -28,7 +28,15 @@ const opening = vi.hoisted(() => ({
   openJournal: vi.fn(async () => ({ journal: {}, store: {} })),
 }));
 
+const stars = vi.hoisted(() => ({ syncStars: vi.fn() }));
+
 vi.mock('../../src/client/journal/api.js', () => ({ openJournal: opening.openJournal }));
+
+vi.mock('../../src/client/stars.js', () => ({
+  REPO: 'minorcell/spider',
+  REPO_STARS: '6',
+  syncStars: stars.syncStars,
+}));
 
 vi.mock('../../src/client/stage.js', () => ({
   Stage: class {
@@ -97,6 +105,7 @@ beforeEach(() => {
   });
   opening.openJournal.mockReset();
   opening.openJournal.mockResolvedValue({ journal: {}, store: {} });
+  stars.syncStars.mockReset();
 });
 
 describe('main', () => {
@@ -128,6 +137,7 @@ describe('main', () => {
     expect(control.panels[0][0]).toBe(document);
     expect(control.panels[0][1]).toBe(session);
     expect(control.panels[0][2]).toBe(stage);
+    expect(stars.syncStars).toHaveBeenCalledWith(document);
     expect(world.restoreWorld.mock.invocationCallOrder[0]).toBeLessThan(
       control.start.mock.invocationCallOrder[0],
     );

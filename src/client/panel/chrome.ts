@@ -3,11 +3,12 @@ import { button } from '../../ui/button/index.js';
 import { dialog, dialogActions, dialogTitle } from '../../ui/dialog/index.js';
 import { field } from '../../ui/field/index.js';
 import { menuSelect } from '../../ui/select/index.js';
-import { iconButton } from '../../ui/icon/index.js';
+import { icon, iconButton } from '../../ui/icon/index.js';
 import { dressChrome, paintTrace } from '../../ui/dress.js';
-import { paint } from '../../ui/style.js';
-import { color } from '../../ui/token.js';
+import { bindFocus, paint } from '../../ui/style.js';
+import { border, color, font } from '../../ui/token.js';
 import { switchField } from '../../ui/switch/index.js';
+import { REPO, REPO_STARS } from '../stars.js';
 
 function eyebrow(doc: Document, text: string): HTMLParagraphElement {
   const node = h(doc, 'p', { class: 'eyebrow' }, text);
@@ -37,6 +38,60 @@ function note(doc: Document, text: string): HTMLParagraphElement {
   const node = h(doc, 'p', {}, text);
   paint(node, { margin: '0 0 14px', opacity: '0.8' });
   return node;
+}
+
+/** Top-left link to the repo: GitHub mark, a star, and the live count. */
+function githubBadge(doc: Document): HTMLAnchorElement {
+  const badge = h(doc, 'a', {
+    id: 'github',
+    href: `https://github.com/${REPO}`,
+    target: '_blank',
+    rel: 'noopener noreferrer',
+    'aria-label': '在 GitHub 上给 Token 蛛点一个 Star',
+    title: '去 GitHub 点个 Star',
+  });
+  const stars = h(doc, 'span', { id: 'github-stars' });
+  const star = icon(doc, 'star');
+  stars.append(star, h(doc, 'span', { id: 'github-stars-count' }, REPO_STARS));
+  badge.append(icon(doc, 'github'), stars);
+
+  paint(badge, {
+    position: 'absolute',
+    top: '18px',
+    left: '22px',
+    zIndex: '3',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '5px 9px',
+    border: border.ink,
+    background: color.paper,
+    color: color.ink,
+    font: font.read,
+    letterSpacing: '0.02em',
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+  });
+  paint(stars, {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    paddingLeft: '8px',
+    borderLeft: border.ink,
+  });
+  const invert = (on: boolean): void => {
+    paint(badge, {
+      background: on ? color.ink : color.paper,
+      color: on ? color.paper : color.ink,
+    });
+    star.style.opacity = on ? '1' : '0.85';
+  };
+  invert(false);
+  badge.addEventListener('mouseenter', () => invert(true));
+  badge.addEventListener('mouseleave', () => invert(false));
+  bindFocus(badge);
+  return badge;
 }
 
 /** The page chrome: corner, pilot, settings, and the leave dialog. */
@@ -177,7 +232,7 @@ export function buildChrome(doc: Document): DocumentFragment {
   leave.append(leaveForm);
 
   paint(keys, { color: color.ink });
-  fragment.append(keys, corner, trace, tail, pilot, settings, leave);
+  fragment.append(keys, githubBadge(doc), corner, trace, tail, pilot, settings, leave);
   dressChrome({
     keys,
     corner,

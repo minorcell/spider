@@ -7,6 +7,16 @@ describe('icon', () => {
     expect(svg.getAttribute('viewBox')).toBe('0 0 16 16');
     expect(svg.getAttribute('aria-hidden')).toBe('true');
     expect(svg.querySelector('path')?.getAttribute('d')).toContain('M6.9');
+    expect(svg.querySelector('path')?.getAttribute('fill-rule')).toBe('evenodd');
+  });
+
+  it('draws the GitHub mark and a star', () => {
+    const mark = icon(document, 'github');
+    expect(mark.querySelector('path')?.getAttribute('d')).toContain('M8 0C3.58');
+    expect(mark.querySelector('path')?.getAttribute('fill-rule')).toBe('nonzero');
+
+    const star = icon(document, 'star');
+    expect(star.querySelector('path')?.getAttribute('d')).toContain('M8 1.6');
   });
 
   it('builds an icon button with or without an id', () => {

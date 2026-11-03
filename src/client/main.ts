@@ -3,6 +3,7 @@ import { buildChrome } from './panel/chrome.js';
 import { paintDocument, paintStage } from '../ui/dress.js';
 import { mountPanel } from './panel.js';
 import { Stage } from './stage.js';
+import { syncStars } from './stars.js';
 import { readBuffer } from './world/storage.js';
 import {
   flushWorld,
@@ -21,6 +22,7 @@ const parent = host.parentElement!;
 paintDocument(document);
 paintStage(parent, host);
 parent.append(buildChrome(document));
+syncStars(document);
 
 function hintedSeed(): number {
   const found = classify(readBuffer(), localDate(new Date()));

@@ -163,6 +163,41 @@ describe('mountPanel chrome', () => {
   });
 });
 
+describe('GitHub badge', () => {
+  it('links to the repository and shows the star count', () => {
+    installChrome();
+    const badge = document.querySelector<HTMLAnchorElement>('#github')!;
+    expect(badge.getAttribute('href')).toBe('https://github.com/minorcell/spider');
+    expect(badge.getAttribute('target')).toBe('_blank');
+    expect(badge.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(badge.getAttribute('aria-label')).toContain('Star');
+    expect(badge.querySelectorAll('svg')).toHaveLength(2);
+    expect(badge.querySelector('#github-stars-count')!.textContent).toBe('6');
+  });
+
+  it('inverts on hover and outlines on focus', () => {
+    installChrome();
+    const badge = document.querySelector<HTMLAnchorElement>('#github')!;
+    const star = badge.querySelectorAll('svg')[1] as SVGElement;
+    expect(badge.style.backgroundColor).toBe('rgb(243, 239, 230)');
+
+    badge.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(badge.style.backgroundColor).toBe('rgb(27, 23, 20)');
+    expect(badge.style.color).toBe('rgb(243, 239, 230)');
+    expect(star.style.opacity).toBe('1');
+
+    badge.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(badge.style.backgroundColor).toBe('rgb(243, 239, 230)');
+    expect(badge.style.color).toBe('rgb(27, 23, 20)');
+    expect(star.style.opacity).toBe('0.85');
+
+    badge.dispatchEvent(new Event('focus'));
+    expect(badge.style.outline).toContain('1px');
+    badge.dispatchEvent(new Event('blur'));
+    expect(badge.style.outline).toBe('');
+  });
+});
+
 describe('settings dialog', () => {
   it('rejects a missing settings field', () => {
     const onError = vi.fn((event: ErrorEvent) => event.preventDefault());

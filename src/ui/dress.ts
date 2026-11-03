@@ -71,7 +71,7 @@ export function paintObserve(layer: HTMLElement, readout: HTMLElement, pins: HTM
   paint(readout, {
     position: 'absolute',
     left: '22px',
-    top: '18px',
+    top: '62px',
     maxWidth: 'min(22rem, calc(100% - 44px))',
     color: color.ink,
     font: font.read,
