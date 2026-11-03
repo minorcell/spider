@@ -89,6 +89,7 @@ export function createWorld(
     terrain,
     entities,
     blocks,
+    marks: [],
     carrying: [],
     appleIn: APPLE_EVERY,
     sprouts: 0,
@@ -247,6 +248,7 @@ export function settle(
     terrain,
     entities: [entity],
     blocks: [...blocks],
+    marks: [],
     carrying: [],
     physics: PHYSICS,
   };

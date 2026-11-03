@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KINDS } from '../../../src/shared/kinds.js';
+import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '../../../src/shared/config.js';
 import { STUCK_LIMIT, type Goal } from '../../../src/shared/sim/goals.js';
 import { SimSession } from '../../../src/shared/sim/session.js';
 import { insideHome } from '../../../src/shared/sight.js';
@@ -130,6 +131,102 @@ describe('SimSession basics', () => {
     const outcome = await settle(session.drive(2, { throttle: 1 }), session);
     expect(outcome).toMatchObject({ ok: false, reason: 'blocked', halt: 'solid' });
     expect(session.spider.root.position.x).toBeLessThan(3);
+  });
+});
+
+describe('marks', () => {
+  it('marks the place under the body and lists it from the current pose', () => {
+    const session = new SimSession(5);
+    session.spider.root.position.set(3.12345, 0, -2.12345);
+    expect(session.mark('  水边  ', '  喝水  ')).toMatchObject({
+      ok: true,
+      action: 'mark',
+      name: '水边',
+      x: 3.123,
+      z: -2.123,
+      note: '喝水',
+    });
+    expect(session.world.marks).toEqual([{ name: '水边', x: 3.123, z: -2.123, note: '喝水' }]);
+
+    session.spider.root.position.set(0, 0, 0);
+    session.spider.yaw = 0;
+    const [near] = session.marks();
+    expect(near.name).toBe('水边');
+    expect(near.distance).toBeCloseTo(Math.hypot(3.123, 2.123), 3);
+    expect(near.bearing).toBeCloseTo(55.8, 1);
+
+    session.spider.root.position.set(3.123, 0, -2.123);
+    expect(session.marks()[0]).toMatchObject({ distance: 0, bearing: 0 });
+  });
+
+  it('lists marks nearest first and keeps an empty note off the record', () => {
+    const session = new SimSession(5);
+    session.spider.root.position.set(10, 0, 0);
+    session.mark('远');
+    session.spider.root.position.set(1, 0, 0);
+    session.mark('近', '   ');
+    session.spider.root.position.set(0, 0, 0);
+    expect(session.marks().map((mark) => mark.name)).toEqual(['近', '远']);
+    expect(session.world.marks.find((mark) => mark.name === '近')).not.toHaveProperty('note');
+  });
+
+  it('rejects a missing, long, duplicate, or over-limit name', () => {
+    const session = new SimSession(5);
+    expect(session.mark('   ')).toMatchObject({ ok: false, reason: 'need-name' });
+    expect(session.mark('x'.repeat(MARK_NAME_MAX + 1))).toMatchObject({
+      ok: false,
+      reason: 'name-too-long',
+    });
+    expect(session.mark('水边', 'x'.repeat(MARK_NOTE_MAX + 1))).toMatchObject({
+      ok: false,
+      reason: 'note-too-long',
+    });
+    expect(session.mark('水边')).toMatchObject({ ok: true });
+    expect(session.mark(' 水边 ')).toMatchObject({
+      ok: false,
+      reason: 'name-taken',
+      name: '水边',
+    });
+    for (let index = 1; index < MARK_LIMIT; index++) {
+      expect(session.mark(`地点-${index}`)).toMatchObject({ ok: true });
+    }
+    expect(session.mark('最后一个')).toMatchObject({ ok: false, reason: 'full' });
+    expect(session.world.marks).toHaveLength(MARK_LIMIT);
+  });
+
+  it('forgets a named place', () => {
+    const session = new SimSession(5);
+    session.mark('水边');
+    expect(session.forgetMark(' 水边 ')).toMatchObject({
+      ok: true,
+      action: 'forget',
+      name: '水边',
+    });
+    expect(session.world.marks).toEqual([]);
+    expect(session.forgetMark('水边')).toMatchObject({
+      ok: false,
+      reason: 'not-found',
+      name: '水边',
+    });
+    expect(session.forgetMark(' ')).toMatchObject({ ok: false, reason: 'need-name' });
+  });
+
+  it('walks back to a named place or reports that it is missing', async () => {
+    const session = new SimSession(5);
+    session.spider.root.position.set(0, 0, -3);
+    session.mark('门外');
+    session.spider.root.position.set(0, 0, 0);
+    await expect(settle(session.goToMark(' 门外 '), session)).resolves.toMatchObject({
+      ok: true,
+      reason: 'reached',
+      name: '门外',
+    });
+    await expect(session.goToMark('没有这个地方')).resolves.toEqual({
+      ok: false,
+      reason: 'not-found',
+      name: '没有这个地方',
+    });
+    await expect(session.goToMark(' ')).resolves.toEqual({ ok: false, reason: 'need-name' });
   });
 });
 

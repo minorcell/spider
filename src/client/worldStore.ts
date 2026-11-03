@@ -512,7 +512,21 @@ function changed(prev: SimBody, next: SimBody, appleSlack: number): boolean {
     return true;
   }
   if (prev.appleIn - next.appleIn >= appleSlack) return true;
+  if (!sameMarks(prev.marks, next.marks)) return true;
   return !sameList(prev.entities, next.entities) || !sameList(prev.carrying, next.carrying);
+}
+
+function sameMarks(a: SimBody['marks'], b: SimBody['marks']): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((mark, index) => {
+    const other = b[index];
+    return (
+      mark.name === other.name &&
+      quant(mark.x) === quant(other.x) &&
+      quant(mark.z) === quant(other.z) &&
+      (mark.note ?? '') === (other.note ?? '')
+    );
+  });
 }
 
 function sameList(a: SimBody['entities'], b: SimBody['entities']): boolean {
@@ -566,6 +580,7 @@ function strip(record: WorldRecord): SimBody {
     appleIn: record.appleIn,
     sprouts: record.sprouts,
     entities: record.entities,
+    marks: record.marks,
     carrying: record.carrying,
     spider: record.spider,
     pending: record.pending,

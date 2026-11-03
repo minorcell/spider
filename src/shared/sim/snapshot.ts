@@ -1,6 +1,6 @@
-import { CARRY_LIMIT, MOUNTS } from '../config.js';
+import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX, MOUNTS } from '../config.js';
 import { KINDS } from '../kinds.js';
-import type { EntityState, Footprint, SpiderState, WorldState } from '../state.js';
+import type { EntityState, Footprint, PlaceMark, SpiderState, WorldState } from '../state.js';
 import { blockedAt, BODY_RADIUS } from '../sight.js';
 import { APPLE_EVERY, nestBlocks, restingY } from '../world.js';
 import { insideLand, surfaceOf, Terrain } from '../terrain.js';
@@ -25,6 +25,7 @@ export interface SimBody {
   appleIn: number;
   sprouts: number;
   entities: EntityState[];
+  marks: PlaceMark[];
   carrying: EntityState[];
   spider: SpiderState;
   pending: { text: string; tool: string | null } | null;
@@ -60,6 +61,7 @@ export function captureBody(session: Restorable, pending: SimBody['pending']): S
     appleIn: world.appleIn ?? APPLE_EVERY,
     sprouts: world.sprouts ?? 0,
     entities: structuredClone(world.entities),
+    marks: structuredClone(world.marks),
     carrying: structuredClone(world.carrying),
     spider: session.spider.capture(),
     pending: cleanPending(pending),
@@ -82,6 +84,7 @@ export function applyBody(
       ? entity
       : { ...entity, y: restingY(terrain, entity.kind, entity.x, entity.z, entity.footprint) },
   );
+  world.marks = structuredClone(body.marks);
   world.carrying = structuredClone(body.carrying);
   world.appleIn = body.appleIn;
   world.sprouts = body.sprouts;
@@ -177,15 +180,57 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
   if (!spider) return null;
   const pending = readPending(raw.pending);
   if (pending === undefined) return null;
+  const marks = readMarks(raw.marks);
+  if (!marks) return null;
   return {
     seed: raw.seed >>> 0,
     appleIn: raw.appleIn as number,
     sprouts: raw.sprouts as number,
     entities: ground,
+    marks,
     carrying: held,
     spider,
     pending,
   };
+}
+
+/** No marks is a valid old body. A present list must stay inside the limits. */
+function readMarks(value: unknown): PlaceMark[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MARK_LIMIT) return null;
+  const marks: PlaceMark[] = [];
+  const names = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== 'object') return null;
+    const raw = item as Record<string, unknown>;
+    if (
+      typeof raw.name !== 'string' ||
+      raw.name.length === 0 ||
+      raw.name.length > MARK_NAME_MAX ||
+      raw.name.trim() !== raw.name ||
+      names.has(raw.name)
+    ) {
+      return null;
+    }
+    if (!placed(raw.x, 0, raw.z)) return null;
+    let note: string | undefined;
+    if (raw.note !== undefined) {
+      if (
+        typeof raw.note !== 'string' ||
+        raw.note.length === 0 ||
+        raw.note.length > MARK_NOTE_MAX ||
+        raw.note.trim() !== raw.note
+      ) {
+        return null;
+      }
+      note = raw.note;
+    }
+    const mark: PlaceMark = { name: raw.name, x: raw.x as number, z: raw.z as number };
+    if (note !== undefined) mark.note = note;
+    names.add(raw.name);
+    marks.push(mark);
+  }
+  return marks;
 }
 
 function readEntity(value: unknown): EntityState | null {

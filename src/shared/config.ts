@@ -28,6 +28,15 @@ export const DECK_Y = 0.78;
 /** How many things can sit on the spider's back at once. */
 export const CARRY_LIMIT = 7;
 
+/** How many places the spider can remember at once. */
+export const MARK_LIMIT = 16;
+
+/** Longest name a place can have. */
+export const MARK_NAME_MAX = 24;
+
+/** Longest note a place can have. */
+export const MARK_NOTE_MAX = 120;
+
 /** The island's physical rules. Everything that moves reads these numbers. */
 export const PHYSICS = {
   gravity: 9.8,

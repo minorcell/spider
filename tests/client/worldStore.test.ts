@@ -301,6 +301,52 @@ describe('flushWorld', () => {
     expect(reopened.world.entities).toEqual(session.world.entities);
   });
 
+  it('writes a place mark even when the body does not move', async () => {
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    await writesDone();
+
+    expect(session.mark('水边', '喝水')).toMatchObject({ ok: true });
+    flushWorld('poke');
+    await writesDone();
+    const first = store.value as WorldRecord;
+    expect(first.marks).toEqual(session.world.marks);
+
+    session.mark('坡顶');
+    flushWorld('poke');
+    await writesDone();
+    expect((store.value as WorldRecord).marks).toHaveLength(2);
+
+    delete session.world.marks[0].note;
+    flushWorld('poke');
+    await writesDone();
+    expect((store.value as WorldRecord).marks[0]).not.toHaveProperty('note');
+
+    session.world.marks[0].note = '改过';
+    flushWorld('poke');
+    await writesDone();
+    const noted = store.value as WorldRecord;
+    expect(noted.marks).toEqual(session.world.marks);
+
+    const seq = noted.seq;
+    flushWorld('poke');
+    await writesDone();
+    expect((store.value as WorldRecord).seq).toBe(seq);
+
+    session.world.marks[0].x += 1;
+    flushWorld('poke');
+    await writesDone();
+    expect((store.value as WorldRecord).marks[0].x).toBe(session.world.marks[0].x);
+
+    session.forgetMark('水边');
+    session.forgetMark('坡顶');
+    flushWorld('poke');
+    await writesDone();
+    expect((store.value as WorldRecord).marks).toEqual([]);
+  });
+
   it('does not replace the hide buffer with an older queued write', async () => {
     const store = memoryStore();
     const session = new SimSession(2);

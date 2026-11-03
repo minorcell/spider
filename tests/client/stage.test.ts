@@ -104,7 +104,15 @@ function entity(over: Partial<EntityState>): EntityState {
 }
 
 function makeWorld(over: Partial<WorldState> = {}): WorldState {
-  return { seed: 1, terrain: { height: flat }, entities: [], blocks: [], carrying: [], ...over };
+  return {
+    seed: 1,
+    terrain: { height: flat },
+    entities: [],
+    blocks: [],
+    marks: [],
+    carrying: [],
+    ...over,
+  };
 }
 
 function frame(extraMs = 16): void {

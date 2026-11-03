@@ -7,6 +7,7 @@ import {
   type EntityState,
   type NearEntity,
   type Observation,
+  type PlaceMark,
   type Sense,
   type SpiderState,
   type WorldState,
@@ -34,7 +35,7 @@ import {
   VIEW_DISTANCE,
 } from '../world.js';
 import { insideLand, nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '../terrain.js';
-import { CARRY_LIMIT } from '../config.js';
+import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '../config.js';
 import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal, type Goal } from './goals.js';
 import { planRoute } from '../route.js';
 import { applyBody, type SimBody } from './snapshot.js';
@@ -51,10 +52,20 @@ function detourNote(around: readonly string[], direct: boolean, arrived: boolean
   return arrived ? '绕开了陡坡，到了。' : '试了旁边的路，还是过不去。';
 }
 
+function round3(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
 export interface GoalOutcome {
   ok: boolean;
   reason?: string;
   [key: string]: unknown;
+}
+
+/** A place mark with the body's current distance and bearing. */
+export interface MarkView extends PlaceMark {
+  distance: number;
+  bearing: number;
 }
 
 interface ActiveGoal {
@@ -119,6 +130,70 @@ export class SimSession {
   /** Actionable things in reach, nearest first. Empty when there are none. */
   near(): NearEntity[] {
     return toNear(this.spider.capture(), this.world, REACH, REACH_Y);
+  }
+
+  /** Remember the place under the body. Names are unique after trimming. */
+  mark(name: string, note?: string): GoalOutcome {
+    const clean = name.trim();
+    if (clean.length === 0) return { ok: false, reason: 'need-name' };
+    if (clean.length > MARK_NAME_MAX) return { ok: false, reason: 'name-too-long' };
+    const line = note?.trim();
+    if (line && line.length > MARK_NOTE_MAX) return { ok: false, reason: 'note-too-long' };
+    if (this.world.marks.some((mark) => mark.name === clean)) {
+      return { ok: false, reason: 'name-taken', name: clean };
+    }
+    if (this.world.marks.length >= MARK_LIMIT) return { ok: false, reason: 'full' };
+    const { x, z } = this.spider.root.position;
+    const mark: PlaceMark = { name: clean, x: round3(x), z: round3(z) };
+    if (line) mark.note = line;
+    this.world.marks.push(mark);
+    return {
+      ok: true,
+      action: 'mark',
+      name: mark.name,
+      x: mark.x,
+      z: mark.z,
+      ...(line ? { note: line } : {}),
+    };
+  }
+
+  /** Every mark, nearest first, relative to where the body stands now. */
+  marks(): MarkView[] {
+    const { x, z } = this.spider.root.position;
+    const heading = toHeading(this.spider.yaw);
+    return this.world.marks
+      .map((mark) => {
+        const dx = mark.x - x;
+        const dz = mark.z - z;
+        return {
+          ...mark,
+          distance: round3(Math.hypot(dx, dz)),
+          bearing:
+            dx === 0 && dz === 0
+              ? 0
+              : Math.round(wrapDegrees((Math.atan2(dx, -dz) * 180) / Math.PI - heading) * 10) / 10,
+        };
+      })
+      .toSorted((a, b) => a.distance - b.distance);
+  }
+
+  /** Forget one named place. */
+  forgetMark(name: string): GoalOutcome {
+    const clean = name.trim();
+    if (clean.length === 0) return { ok: false, reason: 'need-name' };
+    const index = this.world.marks.findIndex((mark) => mark.name === clean);
+    if (index === -1) return { ok: false, reason: 'not-found', name: clean };
+    this.world.marks.splice(index, 1);
+    return { ok: true, action: 'forget', name: clean };
+  }
+
+  /** Walk to a named place, reusing the same routing as moveTo. */
+  async goToMark(name: string, fast = false): Promise<GoalOutcome> {
+    const clean = name.trim();
+    if (clean.length === 0) return { ok: false, reason: 'need-name' };
+    const mark = this.world.marks.find((item) => item.name === clean);
+    if (!mark) return { ok: false, reason: 'not-found', name: clean };
+    return { ...(await this.moveTo(mark.x, mark.z, fast)), name: clean };
   }
 
   /** One visible frame. The page calls this from its render loop. */

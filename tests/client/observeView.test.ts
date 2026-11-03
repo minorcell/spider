@@ -32,7 +32,15 @@ function entity(over: Partial<EntityState>): EntityState {
 }
 
 function world(over: Partial<WorldState> = {}): WorldState {
-  return { seed: 1, terrain: { height: flat }, entities: [], blocks: [], carrying: [], ...over };
+  return {
+    seed: 1,
+    terrain: { height: flat },
+    entities: [],
+    blocks: [],
+    marks: [],
+    carrying: [],
+    ...over,
+  };
 }
 
 let parent: HTMLElement;

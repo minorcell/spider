@@ -40,6 +40,16 @@ export interface SpiderState {
 
 export type Footprint = { kind: 'circle'; r: number } | { kind: 'box'; hx: number; hz: number };
 
+/** A place the spider has named and can walk back to. Not a physical body. */
+export interface PlaceMark {
+  /** Unique, trimmed name in the spider's own words. */
+  name: string;
+  x: number;
+  z: number;
+  /** Optional line the spider left with the place. */
+  note?: string;
+}
+
 export interface EntityState {
   id: string;
   kind: string;
@@ -82,6 +92,8 @@ export interface WorldState {
   };
   entities: EntityState[];
   blocks: Block[];
+  /** Places the spider has named. They do not collide, block sight, or count as props. */
+  marks: PlaceMark[];
   /** What is on the spider's back, oldest first. Empty when it carries nothing. */
   carrying: EntityState[];
   /**

@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { localDate } from '../../../src/shared/dates.js';
+import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '../../../src/shared/config.js';
 import { SimSession } from '../../../src/shared/sim/session.js';
 import { Terrain } from '../../../src/shared/terrain.js';
 import { APPLE_EVERY } from '../../../src/shared/world.js';
@@ -91,6 +92,58 @@ describe('snapshot', () => {
     first.spider.yaw = 0;
     first.spider.update(0.05, { throttle: 1, turn: 0, lift: 0, boost: 1 });
     expect(first.spider.root.position.z).toBeLessThan(0);
+  });
+
+  it('rounds named places through a body and restores them', () => {
+    const record = good();
+    record.marks = [{ name: '水边', x: 2, z: -3, note: '喝水' }];
+    const parsed = classify(JSON.stringify(record), today);
+    expect(parsed.status).toBe('ok');
+    if (parsed.status !== 'ok') return;
+    expect(parsed.record.marks).toEqual(record.marks);
+
+    const target = session();
+    applyBody(target, parsed.record);
+    expect(target.world.marks).toEqual(record.marks);
+
+    const frozen = captureBody(target, null);
+    target.world.marks[0].x = 9;
+    expect(frozen.marks[0].x).toBe(2);
+  });
+
+  it('accepts an old body without marks and rejects broken marks', () => {
+    const legacy = { ...good() } as Record<string, unknown>;
+    delete legacy.marks;
+    const parsed = classify(legacy, today);
+    expect(parsed.status).toBe('ok');
+    if (parsed.status === 'ok') expect(parsed.record.marks).toEqual([]);
+
+    const valid = { name: '水边', x: 2, z: -3 };
+    const status = (marks: unknown): string => classify({ ...good(), marks }, today).status;
+    expect(status(undefined)).toBe('ok');
+    expect(status([valid])).toBe('ok');
+    expect(status([{ ...valid, note: '喝水' }])).toBe('ok');
+    expect(status('no')).toBe('malformed');
+    expect(status([null])).toBe('malformed');
+    expect(status(['no'])).toBe('malformed');
+    expect(status([valid, valid])).toBe('malformed');
+    expect(status([{ ...valid, name: '' }])).toBe('malformed');
+    expect(status([{ ...valid, name: ' 水边' }])).toBe('malformed');
+    expect(status([{ ...valid, name: 'x'.repeat(MARK_NAME_MAX + 1) }])).toBe('malformed');
+    expect(status([{ ...valid, x: Number.NaN }])).toBe('malformed');
+    expect(status([{ ...valid, z: '2' }])).toBe('malformed');
+    expect(status([{ ...valid, note: 4 }])).toBe('malformed');
+    expect(status([{ ...valid, note: '' }])).toBe('malformed');
+    expect(status([{ ...valid, note: ' 喝水' }])).toBe('malformed');
+    expect(status([{ ...valid, note: 'x'.repeat(MARK_NOTE_MAX + 1) }])).toBe('malformed');
+    expect(
+      status(
+        Array.from({ length: MARK_LIMIT + 1 }, (_, index) => ({
+          ...valid,
+          name: `地点-${index}`,
+        })),
+      ),
+    ).toBe('malformed');
   });
 
   it('keeps prop velocities and rejects broken ones', () => {

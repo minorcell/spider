@@ -22,6 +22,7 @@ function world(over: Partial<WorldState> = {}): WorldState {
     terrain: { height: () => 0 },
     entities: [],
     blocks: [],
+    marks: [],
     carrying: [],
     physics: PHYSICS,
     ...over,

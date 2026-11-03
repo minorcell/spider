@@ -2,7 +2,13 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import type { GoalOutcome, SimSession } from '../../shared/sim/session.js';
 import type { NearEntity, Observation, Sense } from '../../shared/state.js';
-import { CARRY_LIMIT, GAIT } from '../../shared/config.js';
+import {
+  CARRY_LIMIT,
+  GAIT,
+  MARK_LIMIT,
+  MARK_NAME_MAX,
+  MARK_NOTE_MAX,
+} from '../../shared/config.js';
 import { GRASS_VIEW, REACH, VIEW_DISTANCE } from '../../shared/world.js';
 import type { MemoryApi } from '../journal/diary.js';
 
@@ -113,6 +119,28 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       }),
       execute: async ({ x, z: zPos, fast }) =>
         finish(await session.moveTo(x, zPos, fast ?? false), true),
+    }),
+    mark: tool({
+      description:
+        '记住、查看、忘掉或回到一个地方。add 把现在站的地方按 name 记下来，note 可以留一句；list 按距离列出所有标记；remove 按 name 忘掉；go 按 name 走回去，会自己绕开固体。' +
+        `最多 ${MARK_LIMIT} 个。name 用用户的语言，短、能认出来，不要用坐标当名字；名字最多 ${MARK_NAME_MAX} 个字，note 最多 ${MARK_NOTE_MAX} 个字，同名会被拒绝。add、list、remove 不改变你站的地方。`,
+      inputSchema: call({
+        command: z
+          .enum(['add', 'list', 'remove', 'go'])
+          .describe('add 记下这里，list 看看记过哪些，remove 忘掉一个，go 回一个。'),
+        name: z.string().optional().describe('地点名。add、remove、go 要填。'),
+        note: z.string().optional().describe('add 时可以留一句，方便以后认出来。'),
+        fast: z.boolean().optional().describe('go 时路程大约超过 2 个单位就设。'),
+      }),
+      execute: async ({ command, name, note, fast }) => {
+        if (command === 'list') return { ok: true, marks: session.marks() };
+        if (!name) return { ok: false, reason: 'need-name' };
+        if (command === 'add') return session.mark(name, note);
+        if (command === 'remove') return session.forgetMark(name);
+        const outcome = await session.goToMark(name, fast ?? false);
+        if (outcome.reason === 'not-found') return outcome;
+        return { ...finish(outcome, true), name };
+      },
     }),
     approach: tool({
       description:

@@ -3,6 +3,7 @@ import { spiderTools } from '../../../src/client/agent/tools.js';
 import type { GoalOutcome, SimSession } from '../../../src/shared/sim/session.js';
 import type { Observation } from '../../../src/shared/state.js';
 import { GRASS_VIEW, REACH, VIEW_DISTANCE } from '../../../src/shared/world.js';
+import { MARK_LIMIT } from '../../../src/shared/config.js';
 
 const observation: Observation = {
   time: 0,
@@ -54,6 +55,13 @@ beforeEach(() => {
     turn: vi.fn(async () => outcome()),
     turnTo: vi.fn(async () => outcome()),
     moveTo: vi.fn(async () => outcome()),
+    mark: vi.fn(() => outcome({ action: 'mark', name: '水边', x: 1, z: 2 })),
+    marks: vi.fn(() => [
+      { name: '水边', x: 1, z: 2, distance: 2.2, bearing: 30 },
+      { name: '坡顶', x: -3, z: 4, note: '能看见巢', distance: 5, bearing: -20 },
+    ]),
+    forgetMark: vi.fn(() => outcome({ action: 'forget', name: '水边' })),
+    goToMark: vi.fn(async () => outcome({ reason: 'reached', name: '水边' })),
     approach: vi.fn(async () => outcome()),
     eat: vi.fn(async () => outcome()),
     pickUp: vi.fn(async () => outcome()),
@@ -83,6 +91,7 @@ describe('spiderTools', () => {
       'drink',
       'drop',
       'eat',
+      'mark',
       'move_to',
       'observe',
       'pick_up',
@@ -188,6 +197,67 @@ describe('spiderTools', () => {
       expect(session.near).not.toHaveBeenCalled();
       expect(result).not.toHaveProperty('near');
     }
+  });
+
+  it('marks, lists, forgets, and returns to named places', async () => {
+    const tools = spiderTools(session as unknown as SimSession);
+    await expect(
+      execute(tools.mark, { command: 'add', name: '水边', note: '喝水' }),
+    ).resolves.toMatchObject({ ok: true, action: 'mark', name: '水边' });
+    expect(session.mark).toHaveBeenCalledWith('水边', '喝水');
+
+    await expect(execute(tools.mark, { command: 'list' })).resolves.toMatchObject({
+      ok: true,
+      marks: [
+        { name: '水边', x: 1, z: 2, distance: 2.2, bearing: 30 },
+        { name: '坡顶', x: -3, z: 4, note: '能看见巢', distance: 5, bearing: -20 },
+      ],
+    });
+    expect(session.marks).toHaveBeenCalledOnce();
+
+    await expect(execute(tools.mark, { command: 'remove', name: '水边' })).resolves.toMatchObject({
+      ok: true,
+      action: 'forget',
+      name: '水边',
+    });
+    expect(session.forgetMark).toHaveBeenCalledWith('水边');
+
+    const result = (await execute(tools.mark, {
+      command: 'go',
+      name: '水边',
+      fast: true,
+    })) as Record<string, unknown>;
+    expect(session.goToMark).toHaveBeenCalledWith('水边', true);
+    expect(result).toMatchObject({ ok: true, name: '水边' });
+    expect(result).toHaveProperty('self');
+    expect(result).toHaveProperty('near');
+    expect(result).not.toHaveProperty('observation');
+  });
+
+  it('needs a name for add, remove, and go', async () => {
+    const tools = spiderTools(session as unknown as SimSession);
+    for (const command of ['add', 'remove', 'go'] as const) {
+      await expect(execute(tools.mark, { command })).resolves.toMatchObject({
+        ok: false,
+        reason: 'need-name',
+      });
+    }
+    expect(session.mark).not.toHaveBeenCalled();
+    expect(session.forgetMark).not.toHaveBeenCalled();
+    expect(session.goToMark).not.toHaveBeenCalled();
+  });
+
+  it('does not attach the body when a place is missing', async () => {
+    const tools = spiderTools(session as unknown as SimSession);
+    session.goToMark.mockResolvedValueOnce(
+      outcome({ ok: false, reason: 'not-found', name: '水边' }),
+    );
+    await expect(execute(tools.mark, { command: 'go', name: '水边' })).resolves.toEqual({
+      ok: false,
+      reason: 'not-found',
+      name: '水边',
+    });
+    expect(session.near).not.toHaveBeenCalled();
   });
 
   it('passes movement arguments through', async () => {
@@ -310,5 +380,10 @@ describe('spiderTools', () => {
     expect(tools.observe.description).toContain(String(VIEW_DISTANCE));
     expect(tools.observe.description).toContain(String(GRASS_VIEW));
     expect(tools.observe.description).toContain(String(REACH));
+  });
+
+  it('advertises the place limit in the mark description', () => {
+    const tools = spiderTools(session as unknown as SimSession);
+    expect(tools.mark.description).toContain(String(MARK_LIMIT));
   });
 });
