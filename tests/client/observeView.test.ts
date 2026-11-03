@@ -207,7 +207,7 @@ describe('ObserveOverlay', () => {
     const ring = (overlay.object.children[0] as Line).geometry.getAttribute(
       'position',
     ) as BufferAttribute;
-    expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeLessThan(16);
+    expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeLessThan(5);
     expect(Math.hypot(ring.getX(36), ring.getZ(36))).toBeCloseTo(16);
   });
 

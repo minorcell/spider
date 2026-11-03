@@ -212,6 +212,19 @@ describe('toObservation', () => {
     expect(seen.entities).toEqual([]);
   });
 
+  it('hides a thing standing on a plateau behind its bank', () => {
+    const bank = (_x: number, z: number): number => (z < -4 ? 3 : 0);
+    const seen = toObservation(
+      spider(),
+      world({ entities: [apple({ x: 0, y: 3, z: -6 })], terrain: { height: bank } }),
+      4,
+      16,
+      1.6,
+    );
+    expect(seen.hiddenByGround).toBe(1);
+    expect(seen.entities).toEqual([]);
+  });
+
   it('does not let the target itself hide it', () => {
     const seen = toObservation(
       spider(),

@@ -67,10 +67,11 @@ export const EYE_HEIGHT = 0.85;
 export const SIGHT_TOP = 0.35;
 
 /**
- * How far above the line a ridge has to stand before it hides a target. The
- * spider is about a body high, so a low bump is not a wall.
+ * How far above the line a ridge has to stand before it hides a target. This
+ * only papers over the terrain mesh's own roughness: a real bank hides what is
+ * behind it, even when the spider could rear up over a small bump.
  */
-export const GROUND_CLEARANCE = 0.8;
+export const GROUND_CLEARANCE = 0.2;
 
 /**
  * A rise in the ground hides the far point. Samples the horizontal span and
@@ -134,7 +135,10 @@ export function sightOutline(
       const px = x + dx * r;
       const pz = z + dz * r;
       const ground = height(px, pz);
-      const slope = (ground + SIGHT_TOP - eye) / r;
+      // The outline is the ground itself, not the top of something standing on
+      // it. Aiming above the ground made the area creep over the far side of a
+      // ridge that the eye cannot actually see past.
+      const slope = (ground - eye) / r;
       if (slope < horizon) break;
       if (blocks.length > 0 && occluded(x, z, px, pz, blocks, '', eye)) break;
       horizon = Math.max(horizon, (ground - eye - GROUND_CLEARANCE) / r);
