@@ -1530,6 +1530,18 @@ describe('usage dialog', () => {
         { kind: 'summary', sessionId: today, turnId: 'b', date: today, ts: Date.now() + 1 },
       ),
     );
+    await usageLedger.recordUsageCall(
+      usageLedger.usageCallFromStep(
+        {
+          callId: 'c-bare',
+          stepNumber: 0,
+          usage: reported,
+          toolCalls: [{}],
+          toolResults: [],
+        },
+        { kind: 'agent', sessionId: today, turnId: 'c', date: today, ts: Date.now() + 2 },
+      ),
+    );
     mount();
     clickButton('#menu-usage');
     await flush();
@@ -1538,12 +1550,20 @@ describe('usage dialog', () => {
       details.dispatchEvent(new Event('toggle'));
     }
     const page = document.querySelector('#usage')!.textContent ?? '';
+    const detail = document.querySelector<HTMLElement>('.request-detail')!;
+    expect(detail.style.gridTemplateColumns).toContain('repeat(3');
+    expect(detail.style.paddingLeft).toBe('103px');
+    expect(page).toContain('会话 / 回合');
+    expect(page).toContain('记录 id');
+    expect(page).toContain('首字响应');
     expect(page).toContain('失败');
     expect(page).toContain('other-model');
     expect(page).toContain('acme');
     expect(page).toContain('2.5s');
     expect(page).toContain('mystery');
     expect(page).toContain('长度限制');
+    expect(page).toContain('未命名工具');
+    expect(page).toContain('无 id');
     expect(document.querySelectorAll('.model-dot.blue').length).toBeGreaterThan(0);
     document.querySelector<HTMLButtonElement>('#usage-export')!.click();
     vi.spyOn(usageLedger, 'readUsage').mockRejectedValue(new Error('down'));

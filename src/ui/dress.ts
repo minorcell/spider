@@ -496,28 +496,6 @@ function paintUsage(root: HTMLElement): void {
     for (const figure of request.querySelectorAll<HTMLElement>('.request-tokens, .request-time')) {
       paint(figure, { textAlign: 'right', font: font.mono });
     }
-    const detail = request.querySelector<HTMLElement>('.request-detail');
-    if (detail) {
-      paint(detail, {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '14px',
-        padding: '0 15px 15px 103px',
-        color: color.muted,
-        fontSize: '11px',
-      });
-      for (const heading of detail.querySelectorAll<HTMLElement>('strong')) {
-        paint(heading, {
-          display: 'block',
-          marginBottom: '4px',
-          color: color.ink,
-          fontWeight: '400',
-        });
-      }
-      const tools = detail.querySelector<HTMLElement>('.tool-list');
-      if (tools)
-        paint(tools, { gridColumn: '1/-1', display: 'flex', flexWrap: 'wrap', gap: '5px' });
-    }
   });
   const empty = root.querySelector<HTMLElement>('.usage-empty');
   if (empty)
@@ -550,8 +528,5 @@ function layoutUsage(root: HTMLElement): void {
   }
   for (const time of root.querySelectorAll<HTMLElement>('.request-time')) {
     time.style.display = phoneNarrow ? 'none' : '';
-  }
-  for (const detail of root.querySelectorAll<HTMLElement>('.request-detail')) {
-    detail.style.paddingLeft = phoneNarrow ? '15px' : '103px';
   }
 }

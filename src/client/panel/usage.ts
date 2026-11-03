@@ -5,6 +5,7 @@ import { card } from '../../ui/card/index.js';
 import { donutChart, stackedBarChart } from '../../ui/chart/index.js';
 import { disclosure } from '../../ui/disclosure/index.js';
 import { h } from '../../ui/dom/index.js';
+import { facts } from '../../ui/facts/index.js';
 import { kpi, kpiGrid } from '../../ui/kpi/index.js';
 import { notice } from '../../ui/notice/index.js';
 import { pill } from '../../ui/pill/index.js';
@@ -407,29 +408,36 @@ function requestDetail(doc: Document, call: UsageCall, finish: string): HTMLElem
       : call.tools.map((tool) =>
           pill(
             doc,
-            `${tool.name} · ${formatDuration(tool.durationMs)} · ${tool.ok ? '成功' : '失败'}`,
+            `${tool.name || '未命名工具'} · ${tool.ok ? '成功' : '失败'} · ${formatDuration(tool.durationMs)} · 入 ${tool.inputBytes} B · 出 ${tool.outputBytes} B · ${tool.id || '无 id'}`,
           ),
         );
-  return h(
+  return facts(
     doc,
-    'div',
-    { class: 'request-detail' },
-    h(
-      doc,
-      'div',
-      {},
-      h(doc, 'strong', {}, '输出'),
-      `文本 ${formatTokens(call.output.text)} · 推理 ${formatTokens(call.output.reasoning)}`,
-    ),
-    h(
-      doc,
-      'div',
-      {},
-      h(doc, 'strong', {}, '缓存'),
-      `读 ${formatTokens(call.input.cacheRead)} · 写 ${formatTokens(call.input.cacheWrite)}`,
-    ),
-    h(doc, 'div', {}, h(doc, 'strong', {}, '结束原因'), pill(doc, finish)),
-    h(doc, 'div', { class: 'tool-list' }, ...tools),
+    { className: 'request-detail', inset: true },
+    [
+      {
+        label: '类型',
+        value: `${call.kind === 'summary' ? '整理对话' : '任务'} · 第 ${call.step + 1} 步 · 合并 ${call.count ?? 1} 次`,
+      },
+      { label: '模型', value: `${call.modelId || '未知模型'} · ${call.provider || '兼容接口'}` },
+      { label: '时间', value: `${call.date} ${formatTime(call.ts)}` },
+      {
+        label: '输入',
+        value: `总 ${call.input.total} · 新增 ${call.input.noCache} · 缓存读 ${call.input.cacheRead} · 缓存写 ${call.input.cacheWrite}`,
+      },
+      {
+        label: '输出',
+        value: `总 ${call.output.total} · 文本 ${call.output.text} · 推理 ${call.output.reasoning}`,
+      },
+      { label: '合计 token', value: String(call.total) },
+      { label: '首字响应', value: formatDuration(call.timing.ttftMs) },
+      { label: '总响应', value: formatDuration(call.timing.responseMs) },
+      { label: '单步耗时', value: formatDuration(call.timing.stepMs) },
+      { label: '结束原因', value: pill(doc, finish) },
+      { label: '会话 / 回合', value: `${call.sessionId} / ${call.turnId}` },
+      { label: '记录 id', value: call.id },
+    ],
+    ...tools,
   );
 }
 
@@ -526,4 +534,10 @@ function formatDuration(ms: number | undefined): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = Math.round(ms / 100) / 10;
   return `${seconds.toFixed(1)}s`;
+}
+
+function formatTime(ts: number): string {
+  const at = new Date(ts);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
 }
