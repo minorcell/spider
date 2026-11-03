@@ -524,6 +524,71 @@ describe('camera input', () => {
     expect(spin).toEqual(heading);
   });
 
+  it('eases from the chase view into the overlook', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    let cameraY = 0;
+    threeControl.onRender = (camera) => {
+      cameraY = (camera as unknown as { position: { y: number } }).position.y;
+    };
+    stage.bind(vi.fn(), () => makeWorld());
+    stage.start();
+    frame();
+    const chaseY = cameraY;
+
+    stage.setOverlook(true);
+    frame();
+    // 第一帧只走一段，不会直接瞬移到 34 米高。
+    expect(cameraY).toBeGreaterThan(chaseY);
+    expect(cameraY).toBeLessThan(34);
+
+    let tick = 16;
+    for (let i = 0; i < 80; i++) {
+      tick += 16;
+      frame(tick);
+    }
+    expect(cameraY).toBeCloseTo(34, 1);
+  });
+
+  it('follows the ground and clears ridges in the overlook', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const canvas = renderer().domElement;
+    let cameraY = 0;
+    threeControl.onRender = (camera) => {
+      cameraY = (camera as unknown as { position: { y: number } }).position.y;
+    };
+    const terrain = { height: (x: number) => (x < -1 ? 5 : 0) };
+    stage.bind(vi.fn(), () => makeWorld({ terrain }));
+    stage.setOverlook(true);
+    stage.start();
+    frame();
+    const level = cameraY;
+
+    canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 400, clientY: 300 }));
+    canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 500, clientY: 300 }));
+    let tick = 16;
+    for (let i = 0; i < 80; i++) {
+      tick += 16;
+      frame(tick);
+    }
+    // 焦点移到 5 米高的坡上，镜头也抬 5 米。
+    expect(cameraY).toBeGreaterThan(level);
+    expect(cameraY).toBeCloseTo(level + 5, 1);
+  });
+
+  it('raises the overlook camera over a ridge instead of into it', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    let cameraY = 0;
+    threeControl.onRender = (camera) => {
+      cameraY = (camera as unknown as { position: { y: number } }).position.y;
+    };
+    const terrain = { height: (_x: number, z: number) => (z > 3 ? 20 : 0) };
+    stage.bind(vi.fn(), () => makeWorld({ terrain }));
+    stage.setOverlook(true);
+    stage.start();
+    frame();
+    expect(cameraY).toBeGreaterThan(34);
+  });
+
   it('pans and raises the camera in the overlook', () => {
     const stage = new Stage(makeHost(), new RealSpider());
     const canvas = renderer().domElement;

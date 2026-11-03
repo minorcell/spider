@@ -89,6 +89,7 @@ export class Stage {
   /** Screen point just above the body, for the speech bubble. */
   #onAnchor: ((point: { x: number; y: number } | null) => void) | null = null;
   readonly #camPos = new Vector3();
+  readonly #lookPos = new Vector3();
   #camReady = false;
   #last = performance.now();
 
@@ -366,13 +367,24 @@ export class Stage {
   // Orbit angles are an offset in the character frame, then applied with the
   // same quaternion the body moves with. They are not a second heading.
   #placeCamera(dt: number): void {
-    let sky = 0;
-    let back = 0;
     if (this.#overlook) {
-      sky = this.#distance;
-      back = sky * 0.18;
-      desired.set(this.#focus.x, sky, this.#focus.z + back);
-      look.set(this.#focus.x, 0, this.#focus.z);
+      const world = this.#world?.();
+      const ground = world?.terrain.height(this.#focus.x, this.#focus.z) ?? 0;
+      const sky = this.#distance;
+      const back = sky * 0.18;
+      desired.set(this.#focus.x, ground + sky, this.#focus.z + back);
+      look.set(this.#focus.x, ground, this.#focus.z);
+      // 三维地面有起伏：山脊挡在焦点和机位之间时，把机位抬到山脊上方，
+      // 而不是让俯视镜头穿进山体里。
+      if (world) {
+        for (let k = 1; k <= 8; k++) {
+          const t = k / 8;
+          const gx = look.x + (desired.x - look.x) * t;
+          const gz = look.z + (desired.z - look.z) * t;
+          const ridge = world.terrain.height(gx, gz) + 1.2;
+          desired.y = Math.max(desired.y, look.y + (ridge - look.y) / t);
+        }
+      }
     } else {
       const c = Math.cos(this.#pitch);
       local.set(
@@ -399,16 +411,17 @@ export class Stage {
 
     if (!this.#camReady) {
       this.#camPos.copy(desired);
+      this.#lookPos.copy(look);
       this.#camReady = true;
     } else {
-      this.#camPos.lerp(desired, 1 - Math.exp(-VIEW.ease * Math.max(dt, 0.001)));
+      // Position and look target ease together. Entering the overlook then
+      // turns and pulls back in one motion instead of snapping the heading.
+      const blend = 1 - Math.exp(-VIEW.ease * Math.max(dt, 0.001));
+      this.#camPos.lerp(desired, blend);
+      this.#lookPos.lerp(look, blend);
     }
     this.#camera.position.copy(this.#camPos);
-    if (this.#overlook) {
-      // 焦点跟着镜头一起走，俯视角度在平移和缩放时都保持不变。
-      look.set(this.#camPos.x, this.#camPos.y - sky, this.#camPos.z - back);
-    }
-    this.#camera.lookAt(look);
+    this.#camera.lookAt(this.#lookPos);
   }
 
   #resize(): void {
