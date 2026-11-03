@@ -116,6 +116,19 @@ describe('SimSession basics', () => {
     session.spider.root.position.set(grass.x, 0, grass.z);
     expect(session.observe(16).view).toBe(4.5);
   });
+
+  it('stops at the round shore instead of the square map edge', async () => {
+    const session = new SimSession(4);
+    session.world.terrain = {
+      height: () => 0,
+      inside: (x, z, margin = 0) => Math.hypot(x, z) < 3 - margin,
+    };
+    session.spider.root.position.set(2, 0, 0);
+    session.spider.yaw = -Math.PI / 2;
+    const outcome = await settle(session.drive(2, { throttle: 1 }), session);
+    expect(outcome).toMatchObject({ ok: false, reason: 'blocked', halt: 'solid' });
+    expect(session.spider.root.position.x).toBeLessThan(3);
+  });
 });
 
 describe('goals', () => {
@@ -444,6 +457,18 @@ describe('eat', () => {
     });
   });
 
+  it('refuses something hidden behind a ridge', async () => {
+    const session = new SimSession(7);
+    const apple = session.addEntity('apple', 0, -1);
+    session.world.terrain = {
+      height: (_x, z) => (z < -0.4 && z > -0.6 ? 2 : 0),
+    };
+    await expect(session.eat(apple.id)).resolves.toMatchObject({
+      ok: false,
+      reason: 'blocked',
+    });
+  });
+
   it('eats something through its stages and removes it', async () => {
     const session = new SimSession(7);
     const apple = session.addEntity('apple', 0, -0.8);
@@ -623,6 +648,13 @@ describe('carrying', () => {
     const session = new SimSession(8);
     session.world.carrying.push(fakeEntity({ id: 'apple-back' }));
     session.world.blocks.push(block('fill', -10, 10, -10, 10));
+    expect(session.drop()).toMatchObject({ ok: false, reason: 'no-room' });
+  });
+
+  it('refuses to drop past the island edge', () => {
+    const session = new SimSession(8);
+    session.world.carrying.push(fakeEntity({ id: 'apple-back' }));
+    session.world.terrain = { height: () => 0, inside: () => false };
     expect(session.drop()).toMatchObject({ ok: false, reason: 'no-room' });
   });
 

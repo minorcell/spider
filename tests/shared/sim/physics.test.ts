@@ -87,6 +87,32 @@ describe('stepPhysics', () => {
     expect(flat.entities[0]).toMatchObject({ x: 2, z: 3, y: 0.08, vx: 0, vz: 0 });
   });
 
+  it('stops a loose body at the round island edge', () => {
+    const land = (x: number, z: number, margin = 0): boolean => Math.hypot(x, z) < 6 - margin;
+    const edge = world({
+      terrain: { height: () => 0, inside: land },
+      entities: [apple({ x: 5.5, vx: 2 })],
+    });
+    stepPhysics(edge, body, 1 / 2);
+    expect(edge.entities[0].x).toBe(5.5);
+    expect(edge.entities[0].vx).toBe(0);
+
+    const shoved = world({
+      terrain: { height: () => 0, inside: land },
+      entities: [apple({ x: 5.55 })],
+    });
+    stepPhysics(shoved, { x: 5.15, z: 0, speed: 10 }, 1 / 60);
+    expect(shoved.entities[0].x).toBe(5.55);
+
+    const pair = world({
+      terrain: { height: () => 0, inside: land },
+      entities: [apple({ id: 'a', x: 5.6 }), apple({ id: 'b', x: 5.2 })],
+    });
+    stepPhysics(pair, body, 1 / 60);
+    expect(pair.entities[0].x).toBe(5.6);
+    expect(pair.entities[0].vx).toBe(0);
+  });
+
   it('rolls an apple downhill and pins it to the ground', () => {
     const slope = world({
       terrain: { height: (x: number) => x * 0.2 },

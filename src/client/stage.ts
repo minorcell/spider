@@ -10,7 +10,7 @@ import {
 } from 'three';
 import { PALETTE } from '../shared/config.js';
 import { kindOf } from '../shared/kinds.js';
-import { TERRAIN } from '../shared/terrain.js';
+import { WORLD_RADIUS } from '../shared/terrain.js';
 import type { EntityState, WorldState } from '../shared/state.js';
 import type { Spider } from '../shared/sim/Spider.js';
 import { paintCanvas } from '../ui/dress.js';
@@ -349,8 +349,8 @@ export class Stage {
       // 像拖地图一样：内容跟着指针走，镜头就朝反方向平移。
       // 横竖都按同一个方向约定，斜着拖才不会一边跟手一边反着跑。
       const span = this.#distance * 0.0015;
-      this.#focus.x = MathUtils.clamp(this.#focus.x - dx * span, -TERRAIN.half, TERRAIN.half);
-      this.#focus.z = MathUtils.clamp(this.#focus.z - dy * span, -TERRAIN.half, TERRAIN.half);
+      this.#focus.x = MathUtils.clamp(this.#focus.x - dx * span, -WORLD_RADIUS, WORLD_RADIUS);
+      this.#focus.z = MathUtils.clamp(this.#focus.z - dy * span, -WORLD_RADIUS, WORLD_RADIUS);
       return;
     }
     this.#yaw -= dx * VIEW.dragYaw;

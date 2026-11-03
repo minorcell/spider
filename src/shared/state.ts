@@ -1,6 +1,6 @@
 import { propertiesOf } from './kinds.js';
 import { aheadAt, senseBody, waysAt, type Ahead, type NearbySolid } from './sense.js';
-import { grassHere, insideHome, occluded } from './sight.js';
+import { grassHere, groundOccluded, insideHome, occluded } from './sight.js';
 
 /** Serializable simulation state, world state, and the observation format. */
 
@@ -60,7 +60,11 @@ export interface Block {
 
 export interface WorldState {
   seed: number;
-  terrain: { height(x: number, z: number): number };
+  terrain: {
+    height(x: number, z: number): number;
+    /** True while the point is still on the island. Absent on hand-built fixtures. */
+    inside?(x: number, z: number, margin?: number): boolean;
+  };
   entities: EntityState[];
   blocks: Block[];
   /** What is on the spider's back, oldest first. Empty when it carries nothing. */
@@ -127,8 +131,12 @@ export interface Observation {
   view: number;
   /** Left out because they sit past view. */
   beyond: number;
-  /** Within view, but a solid stands between you and them. */
+  /** Within view, but a wall or the ground stands between you and them. */
   hidden: number;
+  /** The part of `hidden` caused by a wall. */
+  hiddenByWall: number;
+  /** The part of `hidden` caused by a rise in the ground. */
+  hiddenByGround: number;
   self: {
     x: number;
     /** Your height. */
@@ -243,8 +251,11 @@ export function toObservation(
   const seen: SeenEntity[] = [];
   let beyond = 0;
   let hidden = 0;
+  let hiddenByWall = 0;
+  let hiddenByGround = 0;
   const px = state.position.x;
   const pz = state.position.z;
+  const height = (x: number, z: number): number => world.terrain.height(x, z);
   const ground = world.terrain.height(px, pz);
   const eye = ground + 0.85;
   for (const entity of world.entities) {
@@ -255,9 +266,12 @@ export function toObservation(
       beyond += 1;
       continue;
     }
-    const behind = occluded(px, pz, entity.x, entity.z, world.blocks, entity.id, eye);
-    if (behind) {
+    const wall = occluded(px, pz, entity.x, entity.z, world.blocks, entity.id, eye);
+    const rise = !wall && groundOccluded(px, pz, eye, entity.x, entity.y + 0.2, entity.z, height);
+    if (wall || rise) {
       hidden += 1;
+      if (wall) hiddenByWall += 1;
+      else hiddenByGround += 1;
       continue;
     }
     const vertical = Math.abs(entity.y - state.position.y);
@@ -288,6 +302,8 @@ export function toObservation(
     view: round3(view),
     beyond,
     hidden,
+    hiddenByWall,
+    hiddenByGround,
     self: {
       x: round3(px),
       y: round3(state.position.y),
@@ -325,6 +341,7 @@ export function toNear(
   const heading = toHeading(state.yaw);
   const px = state.position.x;
   const pz = state.position.z;
+  const height = (x: number, z: number): number => world.terrain.height(x, z);
   const eye = world.terrain.height(px, pz) + 0.85;
   const near: NearEntity[] = [];
   for (const entity of world.entities) {
@@ -335,6 +352,7 @@ export function toNear(
     const vertical = Math.abs(entity.y - state.position.y);
     if (distance > reach || vertical > reachY) continue;
     if (occluded(px, pz, entity.x, entity.z, world.blocks, entity.id, eye)) continue;
+    if (groundOccluded(px, pz, eye, entity.x, entity.y + 0.2, entity.z, height)) continue;
     near.push({
       id: entity.id,
       kind: entity.kind,

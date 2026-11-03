@@ -18,6 +18,19 @@ export const TERRAIN = {
 
 const GRID_VERTS = (TERRAIN.segments + 1) ** 2;
 
+/** The smallest coast any seed can make. A round bound inside it is always land. */
+export const WORLD_RADIUS = TERRAIN.island * 0.86;
+
+/** A world that can say whether a point is still on the island. */
+export interface Land {
+  inside?: (x: number, z: number, margin?: number) => boolean;
+}
+
+/** True when the point is on land. A hand-built world without a shore is open. */
+export function insideLand(land: Land, x: number, z: number, margin = 0): boolean {
+  return land.inside ? land.inside(x, z, margin) : true;
+}
+
 /** Noise at every ground vertex. The page asks the world worker for this. */
 export function bakeTerrainGrid(seed: number): Float32Array {
   const noise = createNoise(seed);
@@ -40,11 +53,14 @@ export class Terrain {
   readonly seed: number;
   /** Analytic height at each ground vertex. Lookups interpolate this grid. */
   readonly #grid: Float32Array;
+  /** The same low-frequency noise that carves the coast. */
+  readonly #noise: (x: number, y: number) => number;
 
   constructor(seed: number, grid?: Float32Array) {
     this.seed = seed >>> 0;
     if (grid && grid.length !== GRID_VERTS) throw new Error('bad terrain grid');
     this.#grid = grid ?? bakeTerrainGrid(this.seed);
+    this.#noise = createNoise(this.seed);
   }
 
   /**
@@ -71,6 +87,17 @@ export class Terrain {
     // Same split as PlaneGeometry: a-b-d when fx + fz <= 1, otherwise b-c-d.
     if (fx + fz <= 1) return h00 * (1 - fx - fz) + h01 * fz + h10 * fx;
     return h01 * (1 - fx) + h11 * (fx + fz - 1) + h10 * (1 - fz);
+  }
+
+  /**
+   * True when the point is inside the actual coast. `margin` keeps a body's
+   * radius clear of the water. This is the round world bound every mover uses.
+   */
+  inside(x: number, z: number, margin = 0): boolean {
+    const radius = Math.hypot(x, z);
+    const coast =
+      TERRAIN.island * (0.86 + 0.11 * (this.#noise(x * 0.016 + 11.3, z * 0.016 - 7.7) * 0.5 + 0.5));
+    return radius < coast - margin;
   }
 }
 

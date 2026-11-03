@@ -113,6 +113,8 @@ describe('toObservation', () => {
     const seen = toObservation(spider(), world({ entities: [apple()] }), 4, 16, 1.6);
     expect(seen.beyond).toBe(0);
     expect(seen.hidden).toBe(0);
+    expect(seen.hiddenByWall).toBe(0);
+    expect(seen.hiddenByGround).toBe(0);
     expect(seen.entities).toHaveLength(1);
     expect(seen.entities[0]).toMatchObject({
       id: 'apple-1',
@@ -158,6 +160,23 @@ describe('toObservation', () => {
       1.6,
     );
     expect(seen.hidden).toBe(1);
+    expect(seen.hiddenByWall).toBe(1);
+    expect(seen.hiddenByGround).toBe(0);
+    expect(seen.entities).toEqual([]);
+  });
+
+  it('counts things behind a hill', () => {
+    const ridge = (x: number): number => (x > 0.5 && x < 1.5 ? 2 : 0);
+    const seen = toObservation(
+      spider(),
+      world({ entities: [apple()], terrain: { height: ridge } }),
+      4,
+      16,
+      1.6,
+    );
+    expect(seen.hidden).toBe(1);
+    expect(seen.hiddenByWall).toBe(0);
+    expect(seen.hiddenByGround).toBe(1);
     expect(seen.entities).toEqual([]);
   });
 
@@ -258,6 +277,17 @@ describe('toObservation', () => {
         bearing: 135,
       },
     ]);
+  });
+
+  it('leaves near things behind a ridge off the list', () => {
+    const ridge = (_x: number, z: number): number => (z < -0.4 && z > -0.6 ? 2 : 0);
+    const near = toNear(
+      spider(),
+      world({ entities: [apple({ id: 'apple-ridge', x: 0, z: -1 })], terrain: { height: ridge } }),
+      1.2,
+      1.6,
+    );
+    expect(near).toEqual([]);
   });
 
   it('gives an unknown kind no properties', () => {

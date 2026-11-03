@@ -22,6 +22,7 @@ describe('planRoute', () => {
   it('refuses a goal outside the limit', () => {
     expect(planRoute(0, 0, 25, 0, [], flat, LIMIT)).toBeNull();
     expect(planRoute(0, 0, 0, -25, [], flat, LIMIT)).toBeNull();
+    expect(planRoute(0, 0, 15, 15, [], flat, LIMIT)).toBeNull();
   });
 
   it('refuses a goal inside a solid', () => {

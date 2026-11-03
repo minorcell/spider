@@ -57,6 +57,33 @@ export function occluded(
   return false;
 }
 
+/**
+ * A rise in the ground hides the far point. Samples the horizontal span and
+ * compares each ground height with the eye-to-target ray.
+ */
+export function groundOccluded(
+  x0: number,
+  z0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  z1: number,
+  height: (x: number, z: number) => number,
+  clearance = 0.12,
+): boolean {
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  const length = Math.hypot(dx, dz);
+  if (length < 1e-6) return false;
+  const steps = Math.max(2, Math.ceil(length / 0.5));
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const ground = height(x0 + dx * t, z0 + dz * t);
+    if (ground > y0 + (y1 - y0) * t + clearance) return true;
+  }
+  return false;
+}
+
 export function grassHere(x: number, z: number, entities: readonly EntityState[]): boolean {
   return entities.some(
     (entity) =>

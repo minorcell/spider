@@ -13,7 +13,14 @@ import {
 } from '../state.js';
 import { kindOf, propertiesOf, slicesOf } from '../kinds.js';
 import { IDLE_CONTROLS, type Controls } from '../types.js';
-import { blockedAt, grassHere, insideHome, occluded } from '../sight.js';
+import {
+  blockedAt,
+  BODY_RADIUS,
+  grassHere,
+  groundOccluded,
+  insideHome,
+  occluded,
+} from '../sight.js';
 import {
   createWorld,
   grow,
@@ -24,7 +31,7 @@ import {
   restingY,
   VIEW_DISTANCE,
 } from '../world.js';
-import { Terrain, TERRAIN } from '../terrain.js';
+import { insideLand, Terrain, WORLD_RADIUS } from '../terrain.js';
 import { CARRY_LIMIT } from '../config.js';
 import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal, type Goal } from './goals.js';
 import { planRoute } from '../route.js';
@@ -64,8 +71,11 @@ export class SimSession {
 
   constructor(seed?: number, terrain?: Terrain) {
     this.world = terrain ? createWorld(terrain.seed, terrain) : createWorld(seed);
-    this.spider.bindGround((x, z) => this.world.terrain.height(x, z), TERRAIN.half - 1);
-    this.spider.bindBlocked((x, z) => blockedAt(x, z, this.world.blocks));
+    this.spider.bindGround((x, z) => this.world.terrain.height(x, z));
+    this.spider.bindBlocked(
+      (x, z) =>
+        blockedAt(x, z, this.world.blocks) || !insideLand(this.world.terrain, x, z, BODY_RADIUS),
+    );
   }
 
   #active: ActiveGoal | null = null;
@@ -182,7 +192,7 @@ export class SimSession {
    * around here; the caller does not steer the detour.
    */
   async moveTo(x: number, z: number, fast = false): Promise<GoalOutcome> {
-    const limit = TERRAIN.half - 1;
+    const limit = WORLD_RADIUS;
     const blocks = this.world.blocks;
     const height = (px: number, pz: number) => this.world.terrain.height(px, pz);
     let direct = true;
@@ -408,7 +418,7 @@ export class SimSession {
     const sx = this.spider.root.position.x;
     const sz = this.spider.root.position.z;
     const blocks = this.world.blocks;
-    const limit = TERRAIN.half - 1;
+    const limit = WORLD_RADIUS;
     const height = (px: number, pz: number) => this.world.terrain.height(px, pz);
     const spots: { x: number; z: number; rank: number }[] = [];
     const dx = entity.x - sx;
@@ -419,13 +429,15 @@ export class SimSession {
       const travel = Math.max(0, dist - standoff);
       const x = sx + (dx / dist) * travel;
       const z = sz + (dz / dist) * travel;
-      if (!blockedAt(x, z, blocks)) spots.push({ x, z, rank: 0 });
+      if (!blockedAt(x, z, blocks) && insideLand(this.world.terrain, x, z, BODY_RADIUS)) {
+        spots.push({ x, z, rank: 0 });
+      }
     }
     for (let i = 0; i < 12; i++) {
       const angle = (i / 12) * Math.PI * 2;
       const x = entity.x + Math.cos(angle) * standoff;
       const z = entity.z + Math.sin(angle) * standoff;
-      if (blockedAt(x, z, blocks)) continue;
+      if (blockedAt(x, z, blocks) || !insideLand(this.world.terrain, x, z, BODY_RADIUS)) continue;
       spots.push({ x, z, rank: Math.hypot(x - sx, z - sz) });
     }
     spots.sort((a, b) => a.rank - b.rank);
@@ -453,6 +465,13 @@ export class SimSession {
     }
     const eye = this.world.terrain.height(x, z) + 0.85;
     if (occluded(x, z, entity.x, entity.z, this.world.blocks, entity.id, eye)) {
+      return { ok: false, reason: 'blocked', id: entity.id };
+    }
+    if (
+      groundOccluded(x, z, eye, entity.x, entity.y + 0.2, entity.z, (hx, hz) =>
+        this.world.terrain.height(hx, hz),
+      )
+    ) {
       return { ok: false, reason: 'blocked', id: entity.id };
     }
     return { ok: true };
@@ -485,6 +504,7 @@ export class SimSession {
 
   #roomAt(x: number, z: number): boolean {
     if (blockedAt(x, z, this.world.blocks, 0.2)) return false;
+    if (!insideLand(this.world.terrain, x, z, BODY_RADIUS)) return false;
     return this.world.entities.every((item) => Math.hypot(item.x - x, item.z - z) > 0.4);
   }
 

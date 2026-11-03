@@ -105,9 +105,7 @@ export function planRoute(
 }
 
 function standable(point: PlanPoint, blocks: readonly Block[], limit: number): boolean {
-  return (
-    Math.abs(point.x) <= limit && Math.abs(point.z) <= limit && !blockedAt(point.x, point.z, blocks)
-  );
+  return Math.hypot(point.x, point.z) <= limit && !blockedAt(point.x, point.z, blocks);
 }
 
 function span(a: PlanPoint, b: PlanPoint): number {
@@ -129,9 +127,9 @@ function segmentClear(
     const t = i / steps;
     const x = a.x + (b.x - a.x) * t;
     const z = a.z + (b.z - a.z) * t;
-    // Both ends of every segment are standable, so the line cannot leave the limit.
+    // Both ends of every segment are standable, so the line cannot leave the round limit.
     /* v8 ignore next 2 */
-    if (Math.abs(x) > limit || Math.abs(z) > limit) return false;
+    if (Math.hypot(x, z) > limit) return false;
     if (blockedAt(x, z, blocks)) return false;
     const ground = height(x, z);
     if (ground - previous > GAIT.maxSlope * (length / steps)) return false;

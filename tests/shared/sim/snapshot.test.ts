@@ -128,6 +128,12 @@ describe('snapshot', () => {
       first.spider.update(0.05, { throttle: 1, turn: 0, lift: 0, boost: 1 });
     }
     expect(first.spider.halt).toBe('solid');
+
+    // The same predicate also asks the restored shore whether the step is on land.
+    first.spider.root.position.set(0, first.spider.root.position.y, 0);
+    first.spider.yaw = 0;
+    first.spider.update(0.05, { throttle: 1, turn: 0, lift: 0, boost: 1 });
+    expect(first.spider.root.position.z).toBeLessThan(0);
   });
 
   it('keeps prop velocities and rejects broken ones', () => {

@@ -1,7 +1,14 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { bakeTerrainGrid, surfaceAt, Terrain, TERRAIN } from '../../src/shared/terrain.js';
+import {
+  bakeTerrainGrid,
+  insideLand,
+  surfaceAt,
+  Terrain,
+  TERRAIN,
+  WORLD_RADIUS,
+} from '../../src/shared/terrain.js';
 
 describe('Terrain', () => {
   it('keeps the unsigned seed', () => {
@@ -57,6 +64,18 @@ describe('Terrain', () => {
     expect(terrain.height(-100, 0)).toBe(0);
     expect(terrain.height(0, -100)).toBe(0);
     expect(terrain.height(0, 100)).toBe(0);
+  });
+
+  it('keeps the round world bound on land and rejects the flat apron', () => {
+    const terrain = new Terrain(5);
+    expect(WORLD_RADIUS).toBeLessThan(TERRAIN.island);
+    expect(terrain.inside(0, 0)).toBe(true);
+    expect(terrain.inside(WORLD_RADIUS - 0.5, 0)).toBe(true);
+    expect(terrain.inside(TERRAIN.island + 1, 0)).toBe(false);
+    expect(terrain.inside(-100, 0)).toBe(false);
+    expect(insideLand(terrain, 0, 0)).toBe(true);
+    expect(insideLand({ height: () => 0 }, 0, 0)).toBe(true);
+    expect(insideLand({ height: () => 0, inside: () => false }, 0, 0)).toBe(false);
   });
 });
 

@@ -6,6 +6,7 @@ import {
   blockedAt,
   BODY_RADIUS,
   grassHere,
+  groundOccluded,
   HOME,
   insideHome,
   occluded,
@@ -81,6 +82,22 @@ describe('occluded', () => {
 
   it('ignores a touch only at the far end', () => {
     expect(occluded(-5, 0, -1.01, 0, [front], 'other', 1)).toBe(false);
+  });
+});
+
+describe('groundOccluded', () => {
+  it('sees over flat ground and along a slope', () => {
+    expect(groundOccluded(0, 0, 1, 10, 1, 0, () => 0)).toBe(false);
+    expect(groundOccluded(0, 0, 1, 10, 3, 0, (x) => x * 0.2)).toBe(false);
+  });
+
+  it('is hidden behind a ridge between the two points', () => {
+    const ridge = (x: number): number => (x > 4 && x < 6 ? 3 : 0);
+    expect(groundOccluded(0, 0, 1, 10, 1, 0, ridge)).toBe(true);
+  });
+
+  it('handles a very short span without sampling the same point', () => {
+    expect(groundOccluded(0, 0, 1, 0, 1, 0, () => 100)).toBe(false);
   });
 });
 

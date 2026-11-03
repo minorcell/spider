@@ -2,6 +2,7 @@ import { Quaternion, Vector3 } from 'three';
 import { PHYSICS } from '../config.js';
 import { kindOf } from '../kinds.js';
 import { BODY_RADIUS, blockedAt } from '../sight.js';
+import { insideLand } from '../terrain.js';
 import type { EntityState, WorldState } from '../state.js';
 
 // 松散的东西共用这一套：顺坡加速、被身体顶开、彼此挤开，碰到实体就停。
@@ -101,7 +102,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       }
       const nx = entity.x + vx * dt;
       const nz = entity.z + vz * dt;
-      if (blockedAt(nx, nz, world.blocks, radius)) {
+      if (blockedAt(nx, nz, world.blocks, radius) || !insideLand(world.terrain, nx, nz, radius)) {
         vx = 0;
         vz = 0;
       } else {
@@ -121,7 +122,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       const nz = free ? dz / distance : 0;
       const px = body.x + nx * contact;
       const pz = body.z + nz * contact;
-      if (!blockedAt(px, pz, world.blocks, radius)) {
+      if (!blockedAt(px, pz, world.blocks, radius) && insideLand(world.terrain, px, pz, radius)) {
         entity.x = px;
         entity.z = pz;
         const push = Math.max(1, body.speed * 0.8);
@@ -164,6 +165,12 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
 
   // Sit on the ground. Sleep only when the slope will not wake the body.
   for (const mover of movers) {
+    if (!insideLand(world.terrain, mover.entity.x, mover.entity.z, mover.radius)) {
+      mover.entity.x = mover.x0;
+      mover.entity.z = mover.z0;
+      mover.vx = 0;
+      mover.vz = 0;
+    }
     mover.entity.y = world.terrain.height(mover.entity.x, mover.entity.z) + CLEARANCE;
     if (mover.rolls) {
       roll(mover.entity, mover.radius, mover.entity.x - mover.x0, mover.entity.z - mover.z0);

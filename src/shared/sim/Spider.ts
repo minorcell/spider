@@ -70,7 +70,7 @@ export class Spider {
   #seeded = false;
   #ground: (x: number, z: number) => number = () => 0;
   #blocked: (x: number, z: number) => boolean = () => false;
-  #limit = TERRAIN.half - 1;
+  #limit = TERRAIN.island;
   /** Stays on while the body is still turning or walking, so feet are not glued mid-settle. */
   #stepping = false;
   /** How long the body has been fully still, in seconds. */
@@ -89,7 +89,7 @@ export class Spider {
   }
 
   /** The ground the feet plant on. Reseeds the stance for the new surface. */
-  bindGround(ground: (x: number, z: number) => number, limit = TERRAIN.half - 1): void {
+  bindGround(ground: (x: number, z: number) => number, limit = TERRAIN.island): void {
     this.#ground = ground;
     this.#limit = limit;
     this.fall = 0;
@@ -238,8 +238,9 @@ export class Spider {
     if (run < 1e-6) return;
     const x = this.root.position.x;
     const z = this.root.position.z;
-    const nextX = MathUtils.clamp(x + stepX, -this.#limit, this.#limit);
-    const nextZ = MathUtils.clamp(z + stepZ, -this.#limit, this.#limit);
+    const next = clampToRadius(x + stepX, z + stepZ, this.#limit);
+    const nextX = next.x;
+    const nextZ = next.z;
     const rise = this.#ground(nextX, nextZ) - this.#ground(x, z);
     if (rise > GAIT.maxSlope * run) {
       this.speed = 0;
@@ -454,6 +455,14 @@ export class Spider {
     leg.claw.position.copy(leg.foot);
     leg.claw.quaternion.copy(leg.bones[3].quaternion);
   }
+}
+
+/** Keep a step inside the round island instead of the old square corners. */
+function clampToRadius(x: number, z: number, limit: number): { x: number; z: number } {
+  const radius = Math.hypot(x, z);
+  if (radius <= limit) return { x, z };
+  const scale = limit / radius;
+  return { x: x * scale, z: z * scale };
 }
 
 /** Two-bone IK: the knee sits at len1 along the reach, lifted toward the pole. */
