@@ -29,8 +29,9 @@ const axisZ = new Vector3();
 const basisM = new Matrix4();
 
 /**
- * The two shells in #buildBody. Clearance samples their lower halves so the
- * belly stays above the ground it actually covers, including the slope tilt.
+ * Clearance shells. The head shell covers the face, eyes, fangs, and palps,
+ * which sit ahead of the belly. Samples run over the whole shell, including
+ * the top, so a slope cannot leave the upper body in the ground.
  */
 const SHELLS: readonly {
   c: readonly [number, number, number];
@@ -38,7 +39,10 @@ const SHELLS: readonly {
 }[] = [
   { c: [0, 0.78, -0.12], r: [0.55, 0.18, 0.46] },
   { c: [0, 0.84, 1.08], r: [0.46, 0.32, 0.62] },
+  { c: [0, 0.76, -0.48], r: [0.24, 0.18, 0.26] },
 ];
+const SHELL_PHI = [-1.35, -0.9, -0.45, 0, 0.45, 0.9, 1.35];
+const SHELL_THETA = 12;
 const shellEuler = new Euler(0, 0, 0, 'XYZ');
 const shellPoint = new Vector3();
 
@@ -300,11 +304,11 @@ export class Spider {
     const sin = Math.sin(this.yaw);
     let lift = 0;
     for (const shell of SHELLS) {
-      for (const phi of [-1.2, -0.55, 0]) {
+      for (const phi of SHELL_PHI) {
         const cp = Math.cos(phi);
         const sy = Math.sin(phi);
-        for (let i = 0; i < 8; i++) {
-          const theta = (i / 8) * Math.PI * 2;
+        for (let i = 0; i < SHELL_THETA; i++) {
+          const theta = (i / SHELL_THETA) * Math.PI * 2;
           shellPoint.set(
             shell.c[0] + shell.r[0] * cp * Math.cos(theta),
             shell.c[1] + shell.r[1] * sy,
@@ -387,10 +391,11 @@ export class Spider {
     }
   }
 
-  /** After a few still seconds the deck rises and settles. The feet stay down. */
+  /** After a few still seconds the deck rises and settles. It never sinks below the cleared pose. */
   #breathe(): void {
     const blend = Math.min(1, Math.max(0, (this.#stillFor - 4) / 1.5));
-    this.chassis.position.y = Math.sin(this.time * 0.8) * 0.035 * blend;
+    const wave = (1 - Math.cos(this.time * 0.8)) * 0.5;
+    this.chassis.position.y = wave * 0.035 * blend;
   }
 
   #plant(leg: Leg): void {

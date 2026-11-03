@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { Matrix4, Vector3 } from 'three';
 import { GAIT } from '../../../src/shared/config.js';
 import { Spider } from '../../../src/shared/sim/Spider.js';
+import { Terrain } from '../../../src/shared/terrain.js';
 
 const IDLE = { throttle: 0, turn: 0, lift: 0, boost: 0 };
 
@@ -125,6 +126,18 @@ describe('Spider', () => {
     expect(spider.heightSet).toBeCloseTo(GAIT.heightMax);
     for (let i = 0; i < 80; i++) spider.update(0.1, { ...IDLE, lift: -1 });
     expect(spider.heightSet).toBeCloseTo(GAIT.heightMin);
+  });
+
+  it('keeps the head above a real hill', () => {
+    const terrain = new Terrain(7);
+    const ground = (x: number, z: number) => terrain.height(x, z);
+    const spider = new Spider();
+    spider.yaw = 1.2;
+    spider.root.position.set(0, 0, 8);
+    spider.bindGround(ground);
+    for (let i = 0; i < 200; i++) spider.update(1 / 30);
+    expect(shellClearance(spider, ground)).toBeGreaterThan(-0.02);
+    expect(spider.chassis.position.y).toBeGreaterThanOrEqual(0);
   });
 
   it('keeps the shell above a steep face', () => {
