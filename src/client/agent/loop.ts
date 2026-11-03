@@ -7,6 +7,7 @@ import { toMessages, type ChatSession } from '../journal/session.js';
 import { byteSize, usageCallFromStep, type UsageCall, type UsageTool } from '../journal/usage.js';
 import { localDate } from '../../shared/dates.js';
 import type { PilotSettings } from '../settings.js';
+import { withInlineCalls } from './inline.js';
 import { spiderTools } from './tools.js';
 
 const SYSTEM = `你是一个蜘蛛。你就在这片地方里。用户的话是你要去做的事，不是剧本。
@@ -23,7 +24,9 @@ const SYSTEM = `你是一个蜘蛛。你就在这片地方里。用户的话是�
 
 某次行动返回 ok: false 时，看 reason 和已经做到的值，换一种做法。不要用相同的参数再试一次失败的行动。换一个 id 是另一件东西，可以写在同一次回复里。
 
-一次回复不要同时写一段话和一个行动。要做事的那一次，正文留空，只写行动调用。旁边那句话只放在 description 里，不要再写另一段。只写文字、不再调用行动的那一次回复会结束这一轮。事情做成了，或者已经确定做不成，才这样停，然后用用户的语言回一句短话。还有东西要放、要搬、要吃或要走，就把这些行动一起写在这一次回复里，正文不要写字。`;
+一次回复不要同时写一段话和一个行动。要做事的那一次，正文留空，只写行动调用。旁边那句话只放在 description 里，不要再写另一段。只写文字、不再调用行动的那一次回复会结束这一轮。事情做成了，或者已经确定做不成，才这样停，然后用用户的语言回一句短话。还有东西要放、要搬、要吃或要走，就把这些行动一起写在这一次回复里，正文不要写字。
+
+行动只能通过工具调用。不要把“move_to {"x":1}”这样的内容写进正文，正文里的文字不会被执行。`;
 
 function systemFor(today: string, summary: string, index: string, withMemory: boolean): string {
   const memory = withMemory
@@ -87,8 +90,11 @@ export async function runAgent({
   const turnId = uniqueId();
   const calls: UsageCall[] = [];
   const pendingTools = new Map<string, UsageTool>();
+  const tools = spiderTools(session, memory);
   const result = streamText({
-    model: provider(settings.model),
+    // A model that writes its calls as text still gets them executed, and the
+    // tool loop continues as if it had used the tool-call channel.
+    model: withInlineCalls(provider(settings.model), Object.keys(tools)),
     system: systemFor(
       today,
       chat?.summary ?? '',
@@ -99,7 +105,7 @@ export async function runAgent({
       chat ?? { date: today, summary: '', turns: [], updatedAt: 0, digestedAt: 0 },
       goal,
     ),
-    tools: spiderTools(session, memory),
+    tools,
     stopWhen: isLoopFinished(),
     abortSignal: signal,
     // One body. A second call started early would cancel the goal still running.
@@ -124,7 +130,7 @@ export async function runAgent({
       });
     },
     onStepEnd(step) {
-      const tools = step.toolCalls.map((call) => {
+      const stepTools = step.toolCalls.map((call) => {
         const recorded = pendingTools.get(call.toolCallId);
         if (recorded) return recorded;
         const matched = step.toolResults.find((item) => item.toolCallId === call.toolCallId);
@@ -144,7 +150,7 @@ export async function runAgent({
           turnId,
           date: today,
           ts: Date.now(),
-          tools,
+          tools: stepTools,
         }),
       );
     },
