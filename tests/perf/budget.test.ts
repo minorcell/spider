@@ -19,6 +19,10 @@ import {
   type WorldRecord,
 } from '../../src/shared/sim/snapshot.js';
 import { SimSession } from '../../src/shared/sim/session.js';
+import { EYE_HEIGHT, sightOutline } from '../../src/shared/sight.js';
+import { toObservation } from '../../src/shared/state.js';
+import { surfaceOf, Terrain } from '../../src/shared/terrain.js';
+import { createWorld, REACH, REACH_Y, VIEW_DISTANCE } from '../../src/shared/world.js';
 
 /**
  * The budgets are deliberately loose: these run on shared CI machines. They
@@ -84,8 +88,47 @@ describe('frame and boot budgets', () => {
   });
 });
 
-describe('persistence budgets', () => {
-  it('captures a body in under 10 ms', () => {
+describe('observe budgets', () => {
+  const seed = 12345;
+  const terrain = new Terrain(seed);
+  const world = createWorld(seed, terrain);
+  const height = (x: number, z: number): number => terrain.height(x, z);
+  const eye = surfaceOf(terrain, 0, 0) + EYE_HEIGHT;
+  const state = {
+    time: 0,
+    position: { x: 0, y: terrain.height(0, 0), z: 0 },
+    yaw: 0,
+    speed: 0,
+    height: 0,
+    chassisPitch: 0,
+    chassisRoll: 0,
+    headYaw: 0,
+    feet: [],
+  };
+
+  it('traces a full sight outline in under 15 ms', () => {
+    expect(
+      bestOf(5, () => void sightOutline(0, 0, eye, VIEW_DISTANCE, height, world.blocks)),
+    ).toBeLessThan(15);
+  });
+
+  it('observes the whole island in under 15 ms', () => {
+    expect(
+      bestOf(5, () => void toObservation(state, world, REACH, VIEW_DISTANCE, REACH_Y)),
+    ).toBeLessThan(15);
+  });
+
+  it('refreshes the sight area in under 25 ms', () => {
+    expect(
+      bestOf(5, () => {
+        toObservation(state, world, REACH, VIEW_DISTANCE, REACH_Y);
+        sightOutline(0, 0, eye, VIEW_DISTANCE, height, world.blocks);
+      }),
+    ).toBeLessThan(25);
+  });
+});
+
+describe('persistence budgets', () => {  it('captures a body in under 10 ms', () => {
     const idle = new SimSession(7);
     expect(bestOf(5, () => void captureBody(idle, { text: '去巢边', tool: 'walk' }))).toBeLessThan(
       10,

@@ -83,6 +83,7 @@ describe('occluded', () => {
 
   it('ignores a touch only at the far end', () => {
     expect(occluded(-5, 0, -1.01, 0, [front], 'other', 1)).toBe(false);
+    expect(occluded(-5, 0, -0.99, 0, [front], 'other', 1)).toBe(false);
   });
 });
 
@@ -134,6 +135,12 @@ describe('sightOutline', () => {
     const points = sightOutline(0, 0, 0.85, 8, () => 0, [screen], 16);
     expect(points[0].z).toBeGreaterThan(-2.5);
     expect(points[8].z).toBeCloseTo(8);
+  });
+
+  it('looks over a wall shorter than the eye', () => {
+    const low = block('low', -1, 1, -4, -2, 0.5);
+    const points = sightOutline(0, 0, 0.85, 8, () => 0, [low], 16);
+    expect(points[0].z).toBeCloseTo(-8);
   });
 
   it('is a single point when the look does not reach', () => {

@@ -133,11 +133,14 @@ export class ObserveOverlay {
     const ground = (px: number, pz: number) => walk(px, pz) + 0.14;
 
     // The rings depend on where the body stands, how high it has reared, and
-    // how far it sees, not on the camera. Re-laying them every frame sampled
-    // the terrain 600 times.
+    // how far it sees, not on the camera. They only need to keep up with the
+    // observation; re-tracing 72 bearings every frame stutters the view.
     const ring = this.#ringAt;
     const lift = observation.self.height;
-    if (ring.x !== x || ring.z !== z || ring.view !== observation.view || ring.lift !== lift) {
+    if (
+      fresh &&
+      (ring.x !== x || ring.z !== z || ring.view !== observation.view || ring.lift !== lift)
+    ) {
       ring.x = x;
       ring.z = z;
       ring.view = observation.view;

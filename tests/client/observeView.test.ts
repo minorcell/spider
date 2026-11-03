@@ -187,6 +187,26 @@ describe('ObserveOverlay', () => {
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
+  it('relays the sight ring with the observation, not every frame', () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const overlay = new ObserveOverlay(parent);
+    const spider = fakeSpider(0, 0);
+    const plain = world({ terrain: { height: () => 0 } });
+    overlay.sync(true, camera(), spider, plain, view);
+    const ring = (overlay.object.children[0] as Line).geometry.getAttribute(
+      'position',
+    ) as BufferAttribute;
+    const first = ring.getX(0);
+
+    spider.root.position.x = 3;
+    overlay.sync(true, camera(), spider, plain, view);
+    expect(ring.getX(0)).toBe(first);
+
+    clock.mockReturnValue(1_000);
+    overlay.sync(true, camera(), spider, plain, view);
+    expect(ring.getX(0)).toBeCloseTo(3);
+  });
+
   it('relays rings after reset even when the body has not moved', () => {
     const overlay = new ObserveOverlay(parent);
     const spider = fakeSpider(0, 0);
