@@ -767,6 +767,10 @@ describe('diary panel', () => {
     await flush();
     const box = document.querySelector<HTMLInputElement>('[name="autoMemory"]')!;
     expect(box.checked).toBe(true);
+    expect(
+      box.closest('label')!.querySelector<HTMLElement>('.ui-switch-track span')!.style
+        .backgroundColor,
+    ).toBe('rgb(27, 23, 20)');
     box.checked = false;
     box.dispatchEvent(new Event('change', { bubbles: true }));
     expect(readPilot().autoMemory).toBe(false);

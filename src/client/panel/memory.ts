@@ -1,4 +1,5 @@
 import type { MenuSelect } from '../../ui/select/index.js';
+import { reflectSwitch } from '../../ui/switch/index.js';
 import type { Journal } from '../journal/api.js';
 import { readPilot, writePilot } from '../settings.js';
 
@@ -57,6 +58,7 @@ export function bindMemory(opts: {
       summaryInput.value = '';
     }
     autoMemoryInput.checked = readPilot().autoMemory;
+    reflectSwitch(autoMemoryInput);
     showPage();
   };
 

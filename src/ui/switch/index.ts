@@ -2,12 +2,20 @@ import { h } from '../dom/index.js';
 import { bindFocus, paint } from '../style.js';
 import { border, color } from '../token.js';
 
+const thumbs = new WeakMap<HTMLInputElement, HTMLElement>();
+
 function placeThumb(input: HTMLInputElement, thumb: HTMLElement): void {
   paint(thumb, {
     left: input.checked ? 'auto' : '2px',
     right: input.checked ? '2px' : 'auto',
     background: input.checked ? color.ink : 'transparent',
   });
+}
+
+/** Move the thumb after `checked` is set by code, which fires no change event. */
+export function reflectSwitch(input: HTMLInputElement): void {
+  const thumb = thumbs.get(input);
+  if (thumb) placeThumb(input, thumb);
 }
 
 /**
@@ -57,6 +65,7 @@ export function enhanceSwitch(label: HTMLLabelElement): HTMLLabelElement {
   });
   track.append(thumb);
   input.after(track);
+  thumbs.set(input, thumb);
   placeThumb(input, thumb);
   input.addEventListener('change', () => placeThumb(input, thumb));
   bindFocus(input);

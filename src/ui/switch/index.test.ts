@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enhanceSwitch, switchField } from './index.js';
+import { enhanceSwitch, reflectSwitch, switchField } from './index.js';
 
 describe('switch', () => {
   it('enhances a checkbox once and moves the thumb when it changes', () => {
@@ -13,6 +13,12 @@ describe('switch', () => {
     const thumb = label.querySelector('.ui-switch-track span') as HTMLElement;
     expect(input.getAttribute('role')).toBe('switch');
     expect(label.querySelectorAll('.ui-switch-track')).toHaveLength(1);
+    expect(thumb.style.backgroundColor).toBe('transparent');
+    input.checked = true;
+    reflectSwitch(input);
+    expect(thumb.style.backgroundColor).toBe('rgb(27, 23, 20)');
+    input.checked = false;
+    input.dispatchEvent(new Event('change'));
     expect(thumb.style.backgroundColor).toBe('transparent');
     input.checked = true;
     input.dispatchEvent(new Event('change'));
@@ -29,6 +35,7 @@ describe('switch', () => {
     expect(() => enhanceSwitch(document.createElement('label'))).toThrow(
       'A switch needs a checkbox',
     );
+    reflectSwitch(document.createElement('input'));
   });
 
   it('builds a named switch that can start on or off', () => {
