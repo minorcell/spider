@@ -84,7 +84,11 @@ describe('pilot settings', () => {
   it('ignores fields of the wrong type', () => {
     localStorage.setItem(
       'spider.pilot',
-      JSON.stringify({ baseURL: 1, model: null, apiKey: { key: 'x' } }),
+      JSON.stringify({
+        id: 'pilot',
+        updatedAt: 1,
+        value: { baseURL: 1, model: null, apiKey: { key: 'x' } },
+      }),
     );
     expect(readPilot()).toEqual(EMPTY);
   });
