@@ -110,11 +110,13 @@ describe('SimSession basics', () => {
     expect(session.observe(1000).view).toBe(16);
   });
 
-  it('shortens the view inside grass', () => {
+  it('shortens the view inside grass, until the body is raised over it', () => {
     const session = new SimSession(3);
     const grass = session.world.entities.find((entity) => entity.kind === 'grass')!;
     session.spider.root.position.set(grass.x, 0, grass.z);
     expect(session.observe(16).view).toBe(4.5);
+    session.spider.heightSet = 1.6;
+    expect(session.observe(16).view).toBe(16);
   });
 
   it('stops at the round shore instead of the square map edge', async () => {

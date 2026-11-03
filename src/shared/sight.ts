@@ -153,12 +153,25 @@ export function sightOutline(
   return points;
 }
 
-export function grassHere(x: number, z: number, entities: readonly EntityState[]): boolean {
+/** How high grass stands above its patch. Eyes above this see over it. */
+export const GRASS_HEIGHT = 1.35;
+
+/**
+ * True when the body stands inside a grass patch and its eyes are still below
+ * the blades. Reared high enough, the spider is over the grass, not in it.
+ */
+export function grassHere(
+  x: number,
+  z: number,
+  entities: readonly EntityState[],
+  eye = Number.NEGATIVE_INFINITY,
+): boolean {
   return entities.some(
     (entity) =>
       entity.kind === 'grass' &&
       entity.footprint?.kind === 'circle' &&
-      Math.hypot(entity.x - x, entity.z - z) <= entity.footprint.r,
+      Math.hypot(entity.x - x, entity.z - z) <= entity.footprint.r &&
+      eye < entity.y + GRASS_HEIGHT,
   );
 }
 

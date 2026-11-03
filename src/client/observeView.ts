@@ -118,7 +118,8 @@ export class ObserveOverlay {
     const z = spider.root.position.z;
     const height = (px: number, pz: number) => world.terrain.height(px, pz);
     const walk = (px: number, pz: number) => surfaceOf(world.terrain, px, pz);
-    const distance = grassHere(x, z, world.entities)
+    const eye = walk(x, z) + EYE_HEIGHT + spider.heightSet;
+    const distance = grassHere(x, z, world.entities, eye)
       ? Math.min(VIEW_DISTANCE, GRASS_VIEW)
       : VIEW_DISTANCE;
     const now = performance.now();

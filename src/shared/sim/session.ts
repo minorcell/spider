@@ -105,7 +105,9 @@ export class SimSession {
   observe(distance = VIEW_DISTANCE): Observation {
     const asked = Math.min(VIEW_DISTANCE, Math.max(0, distance));
     const { x, z } = this.spider.root.position;
-    const view = grassHere(x, z, this.world.entities) ? Math.min(asked, GRASS_VIEW) : asked;
+    const ground = surfaceOf(this.world.terrain, x, z);
+    const eye = ground + EYE_HEIGHT + this.spider.heightSet;
+    const view = grassHere(x, z, this.world.entities, eye) ? Math.min(asked, GRASS_VIEW) : asked;
     return toObservation(this.spider.capture(), this.world, REACH, view, REACH_Y);
   }
 

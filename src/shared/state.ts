@@ -240,17 +240,19 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
   const px = state.position.x;
   const pz = state.position.z;
   const height = (x: number, z: number) => surfaceOf(world.terrain, x, z);
+  const ground = surfaceOf(world.terrain, px, pz);
+  const eye = ground + EYE_HEIGHT + state.height;
   const wet = world.terrain.height(px, pz) < TERRAIN.water;
   const water = nearestWater(world.terrain, px, pz, WATER_SENSE);
   const sense: Sense = {
     x: round3(px),
     y: round3(state.position.y),
     z: round3(pz),
-    ground: round3(surfaceOf(world.terrain, px, pz)),
+    ground: round3(ground),
     heading: Math.round(heading * 10) / 10,
     height: round3(state.height),
     speed: round3(state.speed),
-    cover: grassHere(px, pz, world.entities) ? 'grass' : null,
+    cover: grassHere(px, pz, world.entities, eye) ? 'grass' : null,
     home: insideHome(px, pz),
     wet,
     water: water
@@ -348,7 +350,7 @@ export function toObservation(
       heading: Math.round(heading * 10) / 10,
       height: round3(state.height),
       speed: round3(state.speed),
-      cover: grassHere(px, pz, world.entities) ? 'grass' : null,
+      cover: grassHere(px, pz, world.entities, eye) ? 'grass' : null,
       home: insideHome(px, pz),
       wet,
       water: water

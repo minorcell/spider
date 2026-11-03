@@ -47,7 +47,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       description:
         '停下看看。这是往远处看的唯一行动。返回你在哪里，以及你看得见的东西：位置、stage，还有 properties。' +
         `不填距离就看 ${VIEW_DISTANCE}，最远也是这么远，没有一次看完这片地方的办法。` +
-        `走进草丛后距离会缩到 ${GRASS_VIEW}。observation.view 是这一次实际看见的距离。` +
+        `走进草丛后距离会缩到 ${GRASS_VIEW}；把身子抬到草尖以上就能看远。observation.view 是这一次实际看见的距离。` +
         'observation.beyond 是超出视线的数目，observation.hidden 是被墙体或山丘挡住的数目；hiddenByWall 和 hiddenByGround 分别是墙体、山丘造成的部分。' +
         `inReach 表示水平距离在 ${REACH} 以内，而且没有被挡住。` +
         'observation.self.wet 为真表示你正站在水里；self.water 是最近的水，给出 x、z、distance 和相对你的 bearing，附近没有水时是 null。' +

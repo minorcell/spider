@@ -22,6 +22,7 @@ function fakeSpider(x: number, z: number, height = 0): Spider {
   return {
     root: { position: new Vector3(x, 0, z) },
     yaw: 0,
+    heightSet: height,
     capture: () => state,
   } as unknown as Spider;
 }
@@ -131,6 +132,21 @@ describe('ObserveOverlay', () => {
     expect(readout.textContent).toContain('在草里');
     expect(readout.textContent).toContain('背上 apple-back');
     expect(readout.textContent).toContain('面前 8 米是空的');
+  });
+
+  it('sees over the grass when the body is raised above it', () => {
+    const overlay = new ObserveOverlay(parent);
+    const grass = entity({
+      id: 'grass-1',
+      kind: 'grass',
+      x: 5,
+      z: 0,
+      footprint: { kind: 'circle', r: 2 },
+    });
+    overlay.sync(true, camera(), fakeSpider(5, 0, 1.6), world({ entities: [grass] }), view);
+    const readout = parent.querySelector('#observe-readout')!;
+    expect(readout.textContent).not.toContain('在草里');
+    expect(readout.textContent).toContain('在空地上');
   });
 
   it('reports open ground and a steep rise', () => {

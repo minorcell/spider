@@ -161,8 +161,13 @@ describe('grassHere', () => {
     footprint,
   });
 
-  it('is true inside a grass circle', () => {
+  it('is true inside a grass circle while the eyes are below the blades', () => {
     expect(grassHere(1, 0, [at('grass', { kind: 'circle', r: 2 })])).toBe(true);
+    expect(grassHere(1, 0, [at('grass', { kind: 'circle', r: 2 })], 1)).toBe(true);
+  });
+
+  it('is false once the eyes are above the grass', () => {
+    expect(grassHere(1, 0, [at('grass', { kind: 'circle', r: 2 })], 2)).toBe(false);
   });
 
   it('is false outside it, or for other kinds', () => {

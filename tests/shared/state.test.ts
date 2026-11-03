@@ -102,6 +102,20 @@ describe('toSense', () => {
     ]);
   });
 
+  it('drops grass cover once the eyes are above the blades', () => {
+    const grass: EntityState = {
+      id: 'grass-1',
+      kind: 'grass',
+      x: 0,
+      y: 0,
+      z: 0,
+      stage: 0,
+      footprint: { kind: 'circle', r: 2 },
+    };
+    const sense = toSense(spider({ height: 1 }), world({ entities: [grass] }));
+    expect(sense.cover).toBeNull();
+  });
+
   it('can attach walkable ways', () => {
     const sense = toSense(spider(), world(), true);
     expect(sense.ways?.length).toBeGreaterThan(0);
