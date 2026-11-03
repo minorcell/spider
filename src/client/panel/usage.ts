@@ -1,9 +1,15 @@
 import { localDate, shiftDate } from '../../shared/dates.js';
 import { dressUsage } from '../../ui/dress.js';
 import { button } from '../../ui/button/index.js';
+import { card } from '../../ui/card/index.js';
 import { donutChart, stackedBarChart } from '../../ui/chart/index.js';
+import { disclosure } from '../../ui/disclosure/index.js';
 import { h } from '../../ui/dom/index.js';
+import { kpi, kpiGrid } from '../../ui/kpi/index.js';
+import { notice } from '../../ui/notice/index.js';
+import { pill } from '../../ui/pill/index.js';
 import { menuSelect, type MenuSelect } from '../../ui/select/index.js';
+import { table, type TableCell } from '../../ui/table/index.js';
 import type { Journal } from '../journal/api.js';
 import { formatTokens } from '../journal/tokens.js';
 import {
@@ -121,13 +127,10 @@ function buildPage(doc: Document, snapshot: UsageSnapshot, range: UsageRange): H
   const root = h(doc, 'div', {});
   root.append(
     buildTop(doc, range),
-    h(
-      doc,
-      'p',
-      { class: 'notice' },
-      h(doc, 'b', {}, '统计口径'),
-      '输入、输出、缓存和推理 token 来自模型返回；旧记录只有每日汇总，缺失的明细按总量推算。',
-    ),
+    notice(doc, {
+      label: '统计口径',
+      text: '输入、输出、缓存和推理 token 来自模型返回；旧记录只有每日汇总，缺失的明细按总量推算。',
+    }),
     buildKpis(doc, snapshot.kpis, range),
     buildGrid(doc, snapshot, today, range),
     buildModels(doc, snapshot.models),
@@ -182,42 +185,25 @@ function buildKpis(doc: Document, kpis: UsageKpis, range: UsageRange): HTMLEleme
     kpis.toolNames === 0 && kpis.toolCalls > 0
       ? `${kpis.toolCalls} 次 · 历史记录无工具明细`
       : `${kpis.toolNames} 个工具 · 成功率 ${Math.round(kpis.toolOkRate)}%`;
-  return h(
+  return kpiGrid(
     doc,
-    'section',
-    { class: 'kpis', 'aria-label': '用量概览' },
-    kpi(doc, '模型请求', String(kpis.calls), delta),
-    kpi(doc, '工具调用', String(kpis.toolCalls), toolFoot),
-    kpi(
-      doc,
-      '缓存命中',
-      [
+    { label: '用量概览' },
+    kpi(doc, { label: '模型请求', value: String(kpis.calls), foot: delta }),
+    kpi(doc, { label: '工具调用', value: String(kpis.toolCalls), foot: toolFoot }),
+    kpi(doc, {
+      label: '缓存命中',
+      value: [
         doc.createTextNode(String(Math.round(kpis.cacheHitRate))),
         h(doc, 'span', { class: 'kpi-unit' }, '%'),
       ],
-      `读 ${formatTokens(kpis.cacheRead)} · 写 ${formatTokens(kpis.cacheWrite)} tokens`,
-    ),
-    kpi(
-      doc,
-      '输入 / 输出',
-      ratioNodes(doc, kpis.input, kpis.output),
-      `输入 ${formatTokens(kpis.input)} · 输出 ${formatTokens(kpis.output)}`,
-    ),
+      foot: `读 ${formatTokens(kpis.cacheRead)} · 写 ${formatTokens(kpis.cacheWrite)} tokens`,
+    }),
+    kpi(doc, {
+      label: '输入 / 输出',
+      value: ratioNodes(doc, kpis.input, kpis.output),
+      foot: `输入 ${formatTokens(kpis.input)} · 输出 ${formatTokens(kpis.output)}`,
+    }),
   );
-}
-
-function kpi(doc: Document, label: string, value: string | Node[], foot: string): HTMLElement {
-  const article = h(
-    doc,
-    'article',
-    { class: 'kpi' },
-    h(doc, 'span', { class: 'kpi-label' }, label),
-  );
-  const amount = h(doc, 'div', { class: 'kpi-value' });
-  if (typeof value === 'string') amount.textContent = value;
-  else amount.append(...value);
-  article.append(amount, h(doc, 'span', { class: 'kpi-foot' }, foot));
-  return article;
 }
 
 function ratioNodes(doc: Document, input: number, output: number): Node[] {
@@ -280,72 +266,56 @@ function buildDonut(doc: Document, snapshot: UsageSnapshot): HTMLElement {
 }
 
 function buildModels(doc: Document, models: UsageModelRow[]): HTMLElement {
-  const body =
-    models.length === 0
-      ? h(doc, 'tr', {}, h(doc, 'td', { colspan: '5' }, '还没有按模型的记录。'))
-      : models.map((row, index) => {
-          const avg = row.timedCalls === 0 ? undefined : row.responseMs / row.timedCalls;
-          return h(
-            doc,
-            'tr',
-            {},
-            h(
-              doc,
-              'td',
-              {},
-              h(
-                doc,
-                'span',
-                { class: 'model-name' },
-                h(doc, 'i', { class: index === 0 ? 'model-dot' : 'model-dot blue' }),
-                row.modelId,
-              ),
-              h(doc, 'span', { class: 'sub' }, row.provider === '' ? '兼容接口' : row.provider),
-            ),
-            h(doc, 'td', { class: 'num' }, String(row.calls)),
-            h(doc, 'td', { class: 'num' }, formatTokens(row.total)),
-            h(doc, 'td', { class: 'num' }, formatRatio(row.input, row.output)),
-            h(doc, 'td', { class: 'num' }, formatDuration(avg)),
-          );
-        });
+  const rows = models.map((row, index): TableCell[] => {
+    const avg = row.timedCalls === 0 ? undefined : row.responseMs / row.timedCalls;
+    const name = doc.createDocumentFragment();
+    name.append(
+      h(
+        doc,
+        'span',
+        { class: 'model-name' },
+        h(doc, 'i', { class: index === 0 ? 'model-dot' : 'model-dot blue' }),
+        row.modelId,
+      ),
+      h(doc, 'span', { class: 'sub' }, row.provider === '' ? '兼容接口' : row.provider),
+    );
+    return [
+      name,
+      String(row.calls),
+      formatTokens(row.total),
+      formatRatio(row.input, row.output),
+      formatDuration(avg),
+    ];
+  });
   return tableCard(
     doc,
     '按模型',
     '模型返回的 token 为精确值',
     ['模型', '请求', '总 token', '输入 / 输出', '平均响应'],
-    body,
+    rows,
+    '还没有按模型的记录。',
   );
 }
 
 function buildTools(doc: Document, tools: UsageToolRow[]): HTMLElement {
-  const body =
-    tools.length === 0
-      ? h(doc, 'tr', {}, h(doc, 'td', { colspan: '5' }, '还没有工具调用。'))
-      : tools.map((row) => {
-          const rate = (row.ok / row.calls) * 100;
-          const avg = row.durationMs / row.calls;
-          return h(
-            doc,
-            'tr',
-            {},
-            h(doc, 'td', { class: 'tool-name' }, row.name),
-            h(doc, 'td', { class: 'num' }, String(row.calls)),
-            h(doc, 'td', { class: `num${rate === 100 ? ' ok' : ''}` }, `${Math.round(rate)}%`),
-            h(doc, 'td', { class: 'num' }, formatDuration(avg)),
-            h(
-              doc,
-              'td',
-              { class: 'num' },
-              `${formatTokens(row.inputBytes)} / ${formatTokens(row.outputBytes)} B`,
-            ),
-          );
-        });
+  const rows = tools.map((row): TableCell[] => {
+    const rate = (row.ok / row.calls) * 100;
+    const avg = row.durationMs / row.calls;
+    return [
+      h(doc, 'span', { class: 'tool-name' }, row.name),
+      String(row.calls),
+      `${Math.round(rate)}%`,
+      formatDuration(avg),
+      `${formatTokens(row.inputBytes)} / ${formatTokens(row.outputBytes)} B`,
+    ];
+  });
   return tableCard(
     doc,
     '按工具',
     '从开始到结束的时间',
     ['工具', '调用', '成功率', '平均耗时', '输入 / 输出'],
-    body,
+    rows,
+    '还没有工具调用。',
   );
 }
 
@@ -354,21 +324,17 @@ function tableCard(
   title: string,
   hint: string,
   headers: string[],
-  body: HTMLElement | HTMLElement[],
+  rows: TableCell[][],
+  empty: string,
 ): HTMLElement {
-  const head = h(
+  return card(
     doc,
-    'tr',
-    {},
-    ...headers.map((label, index) => h(doc, 'th', { class: index === 0 ? '' : 'num' }, label)),
-  );
-  const rows = Array.isArray(body) ? body : [body];
-  return h(
-    doc,
-    'section',
-    { class: 'card section' },
-    h(doc, 'div', { class: 'card-head' }, h(doc, 'h2', {}, title), h(doc, 'small', {}, hint)),
-    h(doc, 'table', { class: 'table' }, h(doc, 'thead', {}, head), h(doc, 'tbody', {}, ...rows)),
+    { title, hint, spaced: true },
+    table(doc, {
+      columns: headers.map((label, index) => ({ label, numeric: index > 0 })),
+      rows,
+      empty,
+    }),
   );
 }
 
@@ -381,21 +347,13 @@ function buildRequests(doc: Document, requests: UsageCall[], total: number): HTM
     total > requests.length
       ? `仅显示最近 ${requests.length} 次，共 ${total} 次`
       : '点击展开每次请求和工具';
-  return h(
-    doc,
-    'section',
-    { class: 'card section' },
-    h(doc, 'div', { class: 'card-head' }, h(doc, 'h2', {}, '请求明细'), h(doc, 'small', {}, hint)),
-    list,
-  );
+  return card(doc, { title: '请求明细', hint, spaced: true }, list);
 }
 
 function requestRow(doc: Document, call: UsageCall): HTMLElement {
   const kind = call.kind === 'summary' ? '整理对话' : '任务';
   const finish = finishLabel(call.finishReason);
   const sub = call.tools.length > 0 ? '调用了工具' : finish;
-  const details = h(doc, 'details', { class: 'request' });
-  const chevron = h(doc, 'span', { class: 'chevron' }, '›');
   const summary = h(doc, 'summary');
   const times =
     call.count != null && call.count > 1 ? `汇总 ${call.count} 次` : `第 ${call.step + 1} 次`;
@@ -427,36 +385,28 @@ function requestRow(doc: Document, call: UsageCall): HTMLElement {
         call.timing.ttftMs == null ? '—' : `首字响应 ${formatDuration(call.timing.ttftMs)}`,
       ),
     ),
-    chevron,
   );
-  details.append(summary);
-  let filled = false;
-  details.addEventListener('toggle', () => {
-    if (!details.open || filled) return;
-    filled = true;
-    details.append(requestDetail(doc, call, finish));
+  return disclosure(doc, {
+    className: 'request',
+    summary,
+    render: () => requestDetail(doc, call, finish),
   });
-  return details;
 }
 
 function requestDetail(doc: Document, call: UsageCall, finish: string): HTMLElement {
   const tools =
     call.tools.length === 0
       ? [
-          h(
+          pill(
             doc,
-            'span',
-            { class: 'pill' },
             call.toolCalls != null && call.toolCalls > 0
               ? `历史 ${call.toolCalls} 次工具调用，无明细`
               : '没有工具调用',
           ),
         ]
       : call.tools.map((tool) =>
-          h(
+          pill(
             doc,
-            'span',
-            { class: 'pill' },
             `${tool.name} · ${formatDuration(tool.durationMs)} · ${tool.ok ? '成功' : '失败'}`,
           ),
         );
@@ -478,7 +428,7 @@ function requestDetail(doc: Document, call: UsageCall, finish: string): HTMLElem
       h(doc, 'strong', {}, '缓存'),
       `读 ${formatTokens(call.input.cacheRead)} · 写 ${formatTokens(call.input.cacheWrite)}`,
     ),
-    h(doc, 'div', {}, h(doc, 'strong', {}, '结束原因'), h(doc, 'span', { class: 'pill' }, finish)),
+    h(doc, 'div', {}, h(doc, 'strong', {}, '结束原因'), pill(doc, finish)),
     h(doc, 'div', { class: 'tool-list' }, ...tools),
   );
 }

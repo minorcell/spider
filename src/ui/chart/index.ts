@@ -1,3 +1,4 @@
+import { card } from '../card/index.js';
 import { h } from '../dom/index.js';
 import { paint } from '../style.js';
 import { border, color, ring as RING } from '../token.js';
@@ -33,23 +34,6 @@ function swatch(doc: Document, background: string, bordered: boolean): HTMLEleme
     verticalAlign: 'middle',
   });
   return node;
-}
-
-function card(doc: Document, title: string, hint: string, ...body: Node[]): HTMLElement {
-  const head = h(
-    doc,
-    'div',
-    { class: 'card-head' },
-    h(doc, 'h2', {}, title),
-    h(doc, 'small', {}, hint),
-  );
-  paint(head, {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    gap: '12px',
-  });
-  return h(doc, 'article', { class: 'card' }, head, ...body);
 }
 
 /** Daily stacked bars. Input sits above output. Heights are percentages, not raw tokens. */
@@ -91,7 +75,7 @@ export function stackedBarChart(
     h(doc, 'span', { class: 'out' }, swatch(doc, color.output, false), '输出'),
   );
   paint(legend, { color: color.muted });
-  return card(doc, options.title, options.hint, plot, legend);
+  return card(doc, { title: options.title, hint: options.hint }, plot, legend);
 }
 
 function ring(parts: DonutPart[]): string {
@@ -145,5 +129,5 @@ export function donutChart(
     center,
     h(doc, 'div', { class: 'breakdown' }, ...rows),
   );
-  return card(doc, options.title, options.hint, wrap);
+  return card(doc, { title: options.title, hint: options.hint }, wrap);
 }

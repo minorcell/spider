@@ -121,13 +121,6 @@ describe('dress', () => {
     const summary = request.querySelector('summary')!;
     summary.dispatchEvent(new MouseEvent('mouseenter'));
     summary.dispatchEvent(new MouseEvent('mouseleave'));
-    request.setAttribute('open', '');
-    request.dispatchEvent(new Event('toggle'));
-    expect(request.querySelector<HTMLElement>('.chevron')!.style.transform).toBe('rotate(90deg)');
-    request.removeAttribute('open');
-    request.dispatchEvent(new Event('toggle'));
-    expect(request.querySelector<HTMLElement>('.chevron')!.style.transform).toBe('');
-    expect(full.querySelector('.kpis')!.getAttribute('style')).toContain('repeat(2');
     const sparse = document.createElement('div');
     sparse.innerHTML = `
       <p class="notice"></p>
