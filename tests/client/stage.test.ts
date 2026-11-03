@@ -471,6 +471,59 @@ describe('camera input', () => {
     expect(renderer().render).toHaveBeenCalled();
   });
 
+  it('drags the overlook like a map and holds the view angle', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const canvas = renderer().domElement;
+    const at = { x: 0, y: 0, z: 0 };
+    const spin = [0, 0, 0, 0];
+    threeControl.onRender = (camera) => {
+      const placed = camera as unknown as {
+        position: { x: number; y: number; z: number };
+        quaternion: { x: number; y: number; z: number; w: number };
+      };
+      at.x = placed.position.x;
+      at.y = placed.position.y;
+      at.z = placed.position.z;
+      spin[0] = placed.quaternion.x;
+      spin[1] = placed.quaternion.y;
+      spin[2] = placed.quaternion.z;
+      spin[3] = placed.quaternion.w;
+    };
+
+    stage.setOverlook(true);
+    stage.start();
+    frame();
+
+    let tick = 16;
+    const settle = (): void => {
+      for (let i = 0; i < 120; i++) {
+        tick += 16;
+        frame(tick);
+      }
+    };
+    const start = { ...at };
+    const heading = [...spin];
+
+    canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 400, clientY: 300 }));
+    // 往右拖：地图向右走，镜头向左让出位置。
+    canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 500, clientY: 300 }));
+    frame();
+    settle();
+    expect(at.x).toBeLessThan(start.x);
+    expect(at.z).toBeCloseTo(start.z);
+    // 视角不跟着摆。
+    expect(spin).toEqual(heading);
+
+    const panned = { ...at };
+    // 往下拖：地图向下走，镜头往回退。
+    canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 500, clientY: 400 }));
+    frame();
+    settle();
+    expect(at.z).toBeLessThan(panned.z);
+    expect(at.x).toBeCloseTo(panned.x);
+    expect(spin).toEqual(heading);
+  });
+
   it('pans and raises the camera in the overlook', () => {
     const stage = new Stage(makeHost(), new RealSpider());
     const canvas = renderer().domElement;

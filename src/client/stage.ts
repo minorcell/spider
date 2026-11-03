@@ -345,9 +345,11 @@ export class Stage {
     this.#pointerX = event.clientX;
     this.#pointerY = event.clientY;
     if (this.#overlook) {
+      // 像拖地图一样：内容跟着指针走，镜头就朝反方向平移。
+      // 横竖都按同一个方向约定，斜着拖才不会一边跟手一边反着跑。
       const span = this.#distance * 0.0015;
       this.#focus.x = MathUtils.clamp(this.#focus.x - dx * span, -TERRAIN.half, TERRAIN.half);
-      this.#focus.z = MathUtils.clamp(this.#focus.z + dy * span, -TERRAIN.half, TERRAIN.half);
+      this.#focus.z = MathUtils.clamp(this.#focus.z - dy * span, -TERRAIN.half, TERRAIN.half);
       return;
     }
     this.#yaw -= dx * VIEW.dragYaw;
@@ -364,9 +366,12 @@ export class Stage {
   // Orbit angles are an offset in the character frame, then applied with the
   // same quaternion the body moves with. They are not a second heading.
   #placeCamera(dt: number): void {
+    let sky = 0;
+    let back = 0;
     if (this.#overlook) {
-      const height = this.#distance;
-      desired.set(this.#focus.x, height, this.#focus.z + height * 0.18);
+      sky = this.#distance;
+      back = sky * 0.18;
+      desired.set(this.#focus.x, sky, this.#focus.z + back);
       look.set(this.#focus.x, 0, this.#focus.z);
     } else {
       const c = Math.cos(this.#pitch);
@@ -399,6 +404,10 @@ export class Stage {
       this.#camPos.lerp(desired, 1 - Math.exp(-VIEW.ease * Math.max(dt, 0.001)));
     }
     this.#camera.position.copy(this.#camPos);
+    if (this.#overlook) {
+      // 焦点跟着镜头一起走，俯视角度在平移和缩放时都保持不变。
+      look.set(this.#camPos.x, this.#camPos.y - sky, this.#camPos.z - back);
+    }
     this.#camera.lookAt(look);
   }
 
