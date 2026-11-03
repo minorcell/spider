@@ -496,7 +496,7 @@ describe('camera input', () => {
 
     let tick = 16;
     const settle = (): void => {
-      for (let i = 0; i < 120; i++) {
+      for (let i = 0; i < 80; i++) {
         tick += 16;
         frame(tick);
       }
