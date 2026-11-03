@@ -293,10 +293,12 @@ export class ObserveOverlay {
           ? '在草里'
           : '在空地上';
     const water = observation.self.water;
+    const shore = observation.self.shore;
     const pool = observation.self.wet
-      ? '脚下是水'
+      ? `脚下是水 ${meters(observation.self.waterDepth)} 米，${observation.self.swimming ? '正浮着' : '在涉水'}` +
+        `${shore ? `，最近的岸在 ${shore.bearing}° 方向 ${meters(shore.distance)} 米` : ''}`
       : water
-        ? `水在 ${water.bearing}° 方向 ${meters(water.distance)} 米`
+        ? `水在 ${water.bearing}° 方向 ${meters(water.distance)} 米，深 ${meters(water.depth)} 米，至少 ${meters(water.span)} 米宽`
         : '附近没有水';
     return [
       `${where}　地面 ${meters(observation.self.ground)} 米　离地 ${meters(observation.self.height)} 米`,

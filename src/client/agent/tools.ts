@@ -58,7 +58,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         `走进草丛后距离会缩到 ${GRASS_VIEW}；把身子抬到草尖以上就能看远。observation.view 是这一次实际看见的距离。` +
         'observation.beyond 是超出视线的数目，observation.hidden 是被墙体或山丘挡住的数目；hiddenByWall 和 hiddenByGround 分别是墙体、山丘造成的部分。' +
         `inReach 表示水平距离在 ${REACH} 以内，而且没有被挡住。` +
-        'observation.self.wet 为真表示你正站在水里；self.water 是最近的水，给出 x、z、distance 和相对你的 bearing，附近没有水时是 null。' +
+        'observation.self.wet 为真表示你正处在水里；self.waterDepth 是脚下的水深，self.swimming 为真表示水够深、你已经浮起来而不是踩到底。水里移动更慢。self.water 是最近的水，给出 x、z、distance、相对你的 bearing、那里的 depth，以及这段水在你周围最远延伸到多远的 span；附近没有水时是 null。self.shore 只在你在水里时出现，给出最近的干岸 x、z、distance 和 bearing。' +
         `observation.self.carrying 是你背上的东西，先背上的在前，空着是 []，最多 ${CARRY_LIMIT} 件。observation.self.home 为真表示你在巢里。observation.self.cover 为 grass 表示你站在草丛里。` +
         'observation.self.ahead 是你面前这一段：open 是沿着朝向还能走多远；by 为 wall 时 id 和 kind 是挡住的固体，slope 是陡坡，clear 是这段是空的。' +
         'observation.self.ways 是已经写好的短句，告诉你相对朝向转多少度之后能走多远，正数是顺时针。任何固体都用同一套说法。',
@@ -173,7 +173,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
     }),
     drink: tool({
       description:
-        '喝一口够得着的水。水在低洼处的池塘里。self.water 给出最近的水在哪，走到水边再用。附近没有水时 ok 是 false、reason 是 no-water。喝完只改变这一次行动，不会改变你站的地方。',
+        '喝一口够得着的水。水在低洼处的池塘和河道里。self.water 给出最近的水在哪，走到水边再用。附近没有水时 ok 是 false、reason 是 no-water。喝完只改变这一次行动，不会改变你站的地方。',
       inputSchema: call({}),
       execute: async () => finish(session.drink(), false),
     }),

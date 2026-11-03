@@ -26,6 +26,10 @@ export interface PhysicsSpec {
   loose: boolean;
   /** A round loose body spins as it travels. The angle is arc length / radius. */
   rolls: boolean;
+  /** Mass for weight. Defaults to the volume when omitted. */
+  mass?: number;
+  /** Full displaced volume. Defaults to the sphere of `radius`. */
+  volume?: number;
 }
 
 export interface KindSpec {
@@ -44,7 +48,9 @@ export const KINDS: Record<string, KindSpec> = {
     properties: ['edible', 'carryable'],
     eat: { duration: 3, stages: 2, removes: true },
     rest: 0,
-    physics: { solid: true, radius: 0.36, loose: true, rolls: true },
+    // Density 0.8: buoyancy cancels most of its weight, so roughly the top
+    // fifth of the apple stays above the water line.
+    physics: { solid: true, radius: 0.36, loose: true, rolls: true, mass: 0.16, volume: 0.2 },
   },
   grass: {
     properties: ['cover'],

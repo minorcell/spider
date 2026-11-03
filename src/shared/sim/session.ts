@@ -36,6 +36,7 @@ import {
 } from '../world.js';
 import { insideLand, nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '../terrain.js';
 import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '../config.js';
+import { waterAt } from '../water.js';
 import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal, type Goal } from './goals.js';
 import { planRoute } from '../route.js';
 import { applyBody, type SimBody } from './snapshot.js';
@@ -84,7 +85,8 @@ export class SimSession {
 
   constructor(seed?: number, terrain?: Terrain) {
     this.world = terrain ? createWorld(terrain.seed, terrain) : createWorld(seed);
-    this.spider.bindGround((x, z) => surfaceOf(this.world.terrain, x, z));
+    this.spider.bindGround((x, z) => this.world.terrain.height(x, z));
+    this.spider.bindWater((x, z) => waterAt(this.world.terrain, x, z));
     this.spider.bindBlocked(
       (x, z) =>
         blockedAt(x, z, this.world.blocks) || !insideLand(this.world.terrain, x, z, BODY_RADIUS),
@@ -273,7 +275,7 @@ export class SimSession {
   async moveTo(x: number, z: number, fast = false): Promise<GoalOutcome> {
     const limit = WORLD_RADIUS;
     const blocks = this.world.blocks;
-    const height = (px: number, pz: number) => this.world.terrain.height(px, pz);
+    const height = (px: number, pz: number) => surfaceOf(this.world.terrain, px, pz);
     let direct = true;
     const around: string[] = [];
     let last: GoalOutcome = { ok: false, reason: 'no-path', detour: null };
@@ -512,7 +514,7 @@ export class SimSession {
     const sz = this.spider.root.position.z;
     const blocks = this.world.blocks;
     const limit = WORLD_RADIUS;
-    const height = (px: number, pz: number) => this.world.terrain.height(px, pz);
+    const height = (px: number, pz: number) => surfaceOf(this.world.terrain, px, pz);
     const spots: { x: number; z: number; rank: number }[] = [];
     const dx = entity.x - sx;
     const dz = entity.z - sz;

@@ -3,6 +3,7 @@ import { BONES, GAIT, MOUNTS } from '../config.js';
 import { TERRAIN } from '../terrain.js';
 import type { SpiderState } from '../state.js';
 import { IDLE_CONTROLS, type Controls } from '../types.js';
+import { floatHeight, WATER, waterPace, type Water } from '../water.js';
 import { Leg } from './Leg.js';
 import { ballGeo, ballShell, inkSolidMat, spiderMat } from './parts.js';
 import { buildSpiderBody } from './spiderBody.js';
@@ -12,6 +13,7 @@ import { buildSpiderBody } from './spiderBody.js';
 // ellipsoids; the ellipsoids stay the walkable body.
 
 const UP = new Vector3(0, 1, 0);
+const NO_WATER: Water = Object.freeze({ surface: Number.NEGATIVE_INFINITY, depth: 0 });
 
 // Scratch vectors: posing must not allocate per frame.
 const worldFwd = new Vector3();
@@ -70,6 +72,10 @@ export class Spider {
   #seeded = false;
   #ground: (x: number, z: number) => number = () => 0;
   #blocked: (x: number, z: number) => boolean = () => false;
+  #water: (x: number, z: number) => Water = () => NO_WATER;
+  #waterNow: Water = NO_WATER;
+  /** True while the water is deep enough that the feet leave the bottom. */
+  #swimming = false;
   #limit = TERRAIN.island;
   /** Stays on while the body is still turning or walking, so feet are not glued mid-settle. */
   #stepping = false;
@@ -103,6 +109,22 @@ export class Spider {
     this.#blocked = blocked;
   }
 
+  /** The water column the body floats or wades through. */
+  bindWater(water: (x: number, z: number) => Water): void {
+    this.#water = water;
+    this.#refreshWater();
+  }
+
+  /** True while buoyancy, not the ground, is holding the body up. */
+  get swimming(): boolean {
+    return this.#swimming;
+  }
+
+  /** Water depth under the body right now. Zero on dry ground. */
+  get waterDepth(): number {
+    return this.#waterNow.depth;
+  }
+
   update(dt: number, input: Controls = IDLE_CONTROLS): void {
     const throttle = input.throttle || 0;
     const turn = input.turn || 0;
@@ -111,6 +133,7 @@ export class Spider {
 
     this.root.rotation.y = this.yaw;
     this.#readAxes();
+    this.#refreshWater();
     if (!this.#seeded) this.#seedFeet();
 
     if (dt <= 0) {
@@ -123,6 +146,7 @@ export class Spider {
     const beforeX = this.root.position.x;
     const beforeZ = this.root.position.z;
     this.#drive(dt, throttle, boost);
+    this.#refreshWater();
     const moved = Math.hypot(this.root.position.x - beforeX, this.root.position.z - beforeZ);
     if (Math.abs(throttle) > 0.05 && this.halt !== 'clear' && moved < 1e-4) this.stuckFor += dt;
     else this.stuckFor = 0;
@@ -214,8 +238,18 @@ export class Spider {
     worldRight.crossVectors(worldFwd, UP).normalize();
   }
 
+  /** Read the water column once where the body is, for steering and support. */
+  #refreshWater(): void {
+    const water = this.#water(this.root.position.x, this.root.position.z);
+    this.#waterNow = water;
+    this.#swimming =
+      water.depth > 0 &&
+      floatHeight(water) > this.#ground(this.root.position.x, this.root.position.z);
+  }
+
   #steer(dt: number, turn: number, boost: number): void {
-    const yawTarget = turn * (boost ? GAIT.yawBoost : GAIT.yaw);
+    const pace = this.#waterNow.depth > 0 ? WATER.turnPace : 1;
+    const yawTarget = turn * (boost ? GAIT.yawBoost : GAIT.yaw) * pace;
     this.yawRate += MathUtils.clamp(
       yawTarget - this.yawRate,
       -GAIT.yawAccel * dt,
@@ -229,8 +263,10 @@ export class Spider {
 
   #drive(dt: number, throttle: number, boost: number): void {
     this.halt = 'clear';
-    const cruise = boost ? GAIT.cruiseBoost : GAIT.cruise;
-    this.speed += (throttle * cruise - this.speed) * (1 - Math.exp(-GAIT.speedEase * dt));
+    const water = this.#waterNow;
+    const cruise = (boost ? GAIT.cruiseBoost : GAIT.cruise) * waterPace(water.depth);
+    const ease = GAIT.speedEase + (water.depth > 0 ? WATER.spiderDrag : 0);
+    this.speed += (throttle * cruise - this.speed) * (1 - Math.exp(-ease * dt));
     this.#readAxes();
     const stepX = worldFwd.x * this.speed * dt;
     const stepZ = worldFwd.z * this.speed * dt;
@@ -241,7 +277,7 @@ export class Spider {
     const next = clampToRadius(x + stepX, z + stepZ, this.#limit);
     const nextX = next.x;
     const nextZ = next.z;
-    const rise = this.#ground(nextX, nextZ) - this.#ground(x, z);
+    const rise = this.#travel(nextX, nextZ) - this.#travel(x, z);
     if (rise > GAIT.maxSlope * run) {
       this.speed = 0;
       this.halt = 'steep';
@@ -267,7 +303,7 @@ export class Spider {
     }
   }
 
-  /** Ease onto the commanded deck height. A real drop falls. */
+  /** Ease onto the commanded deck height. A real drop falls into the water. */
   #vertical(dt: number): void {
     const support = this.#support();
     const gap = this.root.position.y - support;
@@ -277,11 +313,23 @@ export class Spider {
       return;
     }
     this.fall = 0;
-    this.root.position.y += (support - this.root.position.y) * Math.min(1, GAIT.liftEase * dt);
+    // Buoyancy is softer than the leg lift on land, so entering water settles
+    // instead of snapping onto a hard plane.
+    const ease = this.#swimming ? WATER.buoyancyEase : GAIT.liftEase;
+    this.root.position.y += (support - this.root.position.y) * Math.min(1, ease * dt);
   }
 
+  /** The ground, or the buoyant water line when the hollow is deep enough. */
   #support(): number {
-    return this.#shellGroundAt() + this.heightSet;
+    const float = this.#waterNow.depth > 0 ? floatHeight(this.#waterNow) : Number.NEGATIVE_INFINITY;
+    return Math.max(this.#shellGroundAt(), float) + this.heightSet;
+  }
+
+  /** The surface a step follows. Water is crossed at its line, not the seabed. */
+  #travel(x: number, z: number): number {
+    const water = this.#water(x, z);
+    const ground = this.#ground(x, z);
+    return water.depth > 0 ? Math.max(ground, floatHeight(water)) : ground;
   }
 
   /** Highest ground under the shell. One pose reuses the samples. */
@@ -332,6 +380,8 @@ export class Spider {
 
   /** Tip the shell with the ground, on top of the gait's pitch and roll. */
   #applySlope(): void {
+    // A floating body follows the water plane, not the unseen seabed.
+    if (this.#swimming) return;
     const x = this.root.position.x;
     const z = this.root.position.z;
     const ahead = this.#ground(x + worldFwd.x * 0.8, z + worldFwd.z * 0.8) - this.#ground(x, z);
@@ -422,6 +472,13 @@ export class Spider {
     out.copy(this.root.position);
     out.addScaledVector(worldFwd, leg.spec.fore + stride);
     out.addScaledVector(worldRight, leg.spec.side * leg.spec.lateral);
+    const water = this.#water(out.x, out.z);
+    if (water.depth > 0 && floatHeight(water) > this.#ground(out.x, out.z)) {
+      // Paddling feet trail just under the surface instead of reaching for a
+      // seabed far below.
+      out.y = water.surface - WATER.footDraft;
+      return;
+    }
     const airborne = this.root.position.y - this.#support() > GAIT.drop;
     out.y = (airborne ? this.root.position.y : this.#ground(out.x, out.z)) + GAIT.footY;
   }

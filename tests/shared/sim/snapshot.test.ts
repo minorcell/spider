@@ -152,7 +152,7 @@ describe('snapshot', () => {
     const withMotion = {
       ...base,
       entities: base.entities.map((entity) =>
-        entity === apple ? { ...entity, vx: 1.5, vz: -0.5 } : entity,
+        entity === apple ? { ...entity, vx: 1.5, vy: -0.25, vz: -0.5 } : entity,
       ),
     };
     const ok = classify(withMotion, today);
@@ -160,6 +160,7 @@ describe('snapshot', () => {
     if (ok.status === 'ok') {
       expect(ok.record.entities.find((entity) => entity.id === apple.id)).toMatchObject({
         vx: 1.5,
+        vy: -0.25,
         vz: -0.5,
       });
     }
@@ -170,6 +171,13 @@ describe('snapshot', () => {
       ),
     };
     expect(classify(badVx, today).status).toBe('malformed');
+    const badVy = {
+      ...withMotion,
+      entities: withMotion.entities.map((entity) =>
+        entity.id === apple.id ? { ...entity, vy: Infinity } : entity,
+      ),
+    };
+    expect(classify(badVy, today).status).toBe('malformed');
     const badVz = {
       ...withMotion,
       entities: withMotion.entities.map((entity) =>

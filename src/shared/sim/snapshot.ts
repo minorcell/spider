@@ -3,7 +3,8 @@ import { KINDS } from '../kinds.js';
 import type { EntityState, Footprint, PlaceMark, SpiderState, WorldState } from '../state.js';
 import { blockedAt, BODY_RADIUS } from '../sight.js';
 import { APPLE_EVERY, nestBlocks, restingY } from '../world.js';
-import { insideLand, surfaceOf, Terrain } from '../terrain.js';
+import { insideLand, Terrain } from '../terrain.js';
+import { waterAt } from '../water.js';
 import type { Spider } from './Spider.js';
 
 export const FORMAT = 3;
@@ -88,7 +89,8 @@ export function applyBody(
   world.carrying = structuredClone(body.carrying);
   world.appleIn = body.appleIn;
   world.sprouts = body.sprouts;
-  session.spider.bindGround((x, z) => surfaceOf(world.terrain, x, z));
+  session.spider.bindGround((x, z) => world.terrain.height(x, z));
+  session.spider.bindWater((x, z) => waterAt(world.terrain, x, z));
   session.spider.bindBlocked(
     (x, z) => blockedAt(x, z, world.blocks) || !insideLand(world.terrain, x, z, BODY_RADIUS),
   );
@@ -248,8 +250,9 @@ function readEntity(value: unknown): EntityState | null {
   }
   if (!footprintOk(raw.footprint)) return null;
   const vx = optionalNumber(raw.vx);
+  const vy = optionalNumber(raw.vy);
   const vz = optionalNumber(raw.vz);
-  if (vx === null || vz === null) return null;
+  if (vx === null || vy === null || vz === null) return null;
   const entity: EntityState = {
     id: raw.id,
     kind: raw.kind,
@@ -260,6 +263,7 @@ function readEntity(value: unknown): EntityState | null {
   };
   if (raw.footprint) entity.footprint = raw.footprint as Footprint;
   if (vx !== undefined) entity.vx = vx;
+  if (vy !== undefined) entity.vy = vy;
   if (vz !== undefined) entity.vz = vz;
   const spin = readSpin(raw);
   if (spin === null) return null;

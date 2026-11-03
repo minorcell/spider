@@ -88,14 +88,59 @@ describe('stepPhysics', () => {
     expect(flat.entities[0]).toMatchObject({ x: 2, z: 3, y: 0.08, vx: 0, vz: 0 });
   });
 
-  it('floats a loose body on the pond surface', () => {
+  it('floats a loose body with most of it underwater', () => {
     const pond = world({
       terrain: { height: () => -2, surface: () => -0.8, inside: () => true },
       entities: [apple({ x: 2, z: 3 })],
     });
-    stepPhysics(pond, body, 1 / 60);
-    expect(pond.entities[0]).toMatchObject({ x: 2, z: 3, vx: 0, vz: 0 });
-    expect(pond.entities[0].y).toBeCloseTo(-0.72);
+    for (let i = 0; i < 600; i++) stepPhysics(pond, body, 1 / 60);
+    const floated = pond.entities[0];
+    expect(floated).toMatchObject({ x: 2, z: 3, vx: 0, vz: 0 });
+    expect(floated.y).toBeCloseTo(-1.3, 1);
+    // The apple's center sits just below the water line, not well above it.
+    expect(floated.y + 0.36).toBeLessThan(-0.8);
+  });
+
+  it('floats bodies by their own mass and volume, not by kind', () => {
+    KINDS.light = {
+      properties: [],
+      rest: 0,
+      physics: { solid: true, radius: 0.36, loose: true, rolls: false, mass: 0.1, volume: 0.2 },
+    };
+    KINDS.heavy = {
+      properties: [],
+      rest: 0,
+      physics: { solid: true, radius: 0.36, loose: true, rolls: false, mass: 0.18, volume: 0.2 },
+    };
+    try {
+      const pond = world({
+        terrain: { height: () => -3, surface: () => -0.8, inside: () => true },
+        entities: [item('light', { x: 1 }), item('heavy', { x: 3 })],
+      });
+      for (let i = 0; i < 900; i++) stepPhysics(pond, body, 1 / 60);
+      const light = pond.entities[0];
+      const heavy = pond.entities[1];
+      expect(light.y).toBeGreaterThan(heavy.y);
+      expect(light.y).toBeGreaterThan(-1.3);
+      expect(heavy.y).toBeLessThan(-1.35);
+    } finally {
+      delete KINDS.light;
+      delete KINDS.heavy;
+    }
+  });
+
+  it('slows a floating body with water drag', () => {
+    const dry = world({ entities: [apple({ x: 2, z: 3, vx: 2 })] });
+    const wet = world({
+      terrain: { height: () => -2, surface: () => -0.8, inside: () => true },
+      entities: [apple({ x: 2, z: 3, vx: 2, y: -0.8 })],
+    });
+    for (let i = 0; i < 30; i++) {
+      stepPhysics(dry, body, 1 / 60);
+      stepPhysics(wet, body, 1 / 60);
+    }
+    expect(wet.entities[0].vx!).toBeLessThan(dry.entities[0].vx!);
+    expect(wet.entities[0].x).toBeLessThan(dry.entities[0].x);
   });
 
   it('stops a loose body at the round island edge', () => {

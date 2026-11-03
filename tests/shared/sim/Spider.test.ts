@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { Matrix4, Vector3 } from 'three';
 import { GAIT } from '../../../src/shared/config.js';
 import { Spider } from '../../../src/shared/sim/Spider.js';
-import { Terrain } from '../../../src/shared/terrain.js';
+import { Terrain, TERRAIN } from '../../../src/shared/terrain.js';
+import { floatHeight, WATER, waterAt } from '../../../src/shared/water.js';
 
 const IDLE = { throttle: 0, turn: 0, lift: 0, boost: 0 };
 
@@ -195,6 +196,44 @@ describe('Spider', () => {
     spider.yaw = Math.PI / 2;
     spider.update(0.2, { ...IDLE, throttle: -1 });
     expect(spider.root.position.x).toBe(1);
+  });
+
+  it('floats over deep water instead of standing on the bottom', () => {
+    const terrain = { height: () => -2 };
+    const spider = new Spider();
+    spider.bindGround((x, z) => terrain.height(x, z));
+    spider.bindWater((x, z) => waterAt(terrain, x, z));
+    for (let i = 0; i < 200; i++) spider.update(1 / 30);
+    const water = waterAt(terrain, 0, 0);
+    expect(spider.swimming).toBe(true);
+    expect(spider.waterDepth).toBeCloseTo(TERRAIN.water - terrain.height(0, 0));
+    expect(spider.root.position.y).toBeCloseTo(floatHeight(water), 1);
+    expect(spider.capture().feet.every((foot) => foot.y > -1)).toBe(true);
+  });
+
+  it('wades shallow water on the bottom', () => {
+    const terrain = { height: () => TERRAIN.water - 0.2 };
+    const spider = new Spider();
+    spider.bindGround((x, z) => terrain.height(x, z));
+    spider.bindWater((x, z) => waterAt(terrain, x, z));
+    for (let i = 0; i < 120; i++) spider.update(1 / 30);
+    expect(spider.swimming).toBe(false);
+    expect(spider.root.position.y).toBeCloseTo(TERRAIN.water - 0.2, 1);
+  });
+
+  it('moves and turns slower in deep water', () => {
+    const dry = new Spider();
+    dry.bindGround(() => 0);
+    const wet = new Spider();
+    wet.bindGround(() => -2);
+    wet.bindWater((x, z) => waterAt({ height: () => -2 }, x, z));
+    for (let i = 0; i < 120; i++) {
+      dry.update(1 / 30, { ...IDLE, throttle: 1, turn: 1 });
+      wet.update(1 / 30, { ...IDLE, throttle: 1, turn: 1 });
+    }
+    expect(wet.speed).toBeLessThan(dry.speed * 0.6);
+    expect(wet.speed).toBeCloseTo(GAIT.cruise * WATER.swimPace, 1);
+    expect(Math.abs(wet.yaw)).toBeLessThan(Math.abs(dry.yaw));
   });
 
   it('falls instead of easing down a real drop', () => {

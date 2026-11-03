@@ -2,11 +2,15 @@ import { Quaternion, Vector3 } from 'three';
 import { PHYSICS } from '../config.js';
 import { kindOf } from '../kinds.js';
 import { BODY_RADIUS, blockedAt } from '../sight.js';
-import { insideLand, surfaceOf } from '../terrain.js';
+import { insideLand } from '../terrain.js';
+import { sphereVolume, submergedFraction, WATER, waterAt } from '../water.js';
 import type { EntityState, WorldState } from '../state.js';
 
 // 松散的东西共用这一套：顺坡加速、被身体顶开、彼此挤开，碰到实体就停。
 // 谁会动，写在这种东西自己的 physics.loose 上，不在这里点名。
+//
+// 竖直方向不按物体种类写死：每个 mover 都有质量、体积和碰撞球。水给出
+// 排开体积的浮力，重力给出重量，两者相加得到加速度；水阻力按浸没比例缩放。
 
 export interface Body {
   readonly x: number;
@@ -16,12 +20,16 @@ export interface Body {
 
 const EPS = 0.6;
 const CLEARANCE = 0.08;
+const MAX_FALL = 12;
 
 interface Mover {
   entity: EntityState;
   radius: number;
   rolls: boolean;
+  mass: number;
+  volume: number;
   vx: number;
+  vy: number;
   vz: number;
   slope: number;
   x0: number;
@@ -32,11 +40,22 @@ const spinQ = new Quaternion();
 const spinDelta = new Quaternion();
 const spinAxis = new Vector3();
 
-/** Contact radius of a loose body. Fixed kinds stay out of the solver. */
-function looseOf(entity: EntityState): { radius: number; rolls: boolean } | null {
+/** Contact radius, mass, and volume of a loose body. Fixed kinds stay out. */
+function looseOf(entity: EntityState): {
+  radius: number;
+  rolls: boolean;
+  mass: number;
+  volume: number;
+} | null {
   const physics = kindOf(entity.kind)?.physics;
   if (!physics?.loose) return null;
-  return { radius: physics.radius, rolls: physics.rolls };
+  const volume = physics.volume ?? sphereVolume(physics.radius);
+  return {
+    radius: physics.radius,
+    rolls: physics.rolls,
+    mass: physics.mass ?? volume,
+    volume,
+  };
 }
 
 /** Turn a round body by the arc length of this step, around the axis across its travel. */
@@ -65,7 +84,10 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       entity,
       radius: loose.radius,
       rolls: loose.rolls,
+      mass: Math.max(1e-9, loose.mass),
+      volume: Math.max(0, loose.volume),
       vx: entity.vx ?? 0,
+      vy: entity.vy ?? 0,
       vz: entity.vz ?? 0,
       slope: 0,
       x0: entity.x,
@@ -75,24 +97,34 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
   if (movers.length === 0) return;
 
   for (const mover of movers) {
-    const { entity, radius } = mover;
-    let { vx, vz } = mover;
+    const { entity, radius, mass, volume } = mover;
+    let { vx, vy, vz } = mover;
+    const ground = world.terrain.height(entity.x, entity.z);
+    const water = waterAt(world.terrain, entity.x, entity.z);
+    const fraction = submergedFraction(entity.y, water.surface, radius);
+    // How much of the body's weight the water carries: >1 means it is pushed up.
+    const buoyancy = (fraction * WATER.density * volume) / mass;
+    const grounded = entity.y <= ground + CLEARANCE + 1e-4;
+    const floating = fraction > 0 && !grounded;
     const gx =
-      (surfaceOf(world.terrain, entity.x + EPS, entity.z) -
-        surfaceOf(world.terrain, entity.x - EPS, entity.z)) /
+      (world.terrain.height(entity.x + EPS, entity.z) -
+        world.terrain.height(entity.x - EPS, entity.z)) /
       (2 * EPS);
     const gz =
-      (surfaceOf(world.terrain, entity.x, entity.z + EPS) -
-        surfaceOf(world.terrain, entity.x, entity.z - EPS)) /
+      (world.terrain.height(entity.x, entity.z + EPS) -
+        world.terrain.height(entity.x, entity.z - EPS)) /
       (2 * EPS);
     const slope = Math.hypot(gx, gz);
-    mover.slope = slope;
+    mover.slope = floating ? 0 : slope;
+    // A body held by the water no longer follows the slope. A body still on the
+    // bottom keeps only the part of gravity that buoyancy has not cancelled.
+    const downhill = grounded ? rules.gravity * Math.max(0, 1 - buoyancy) : 0;
     // A steep face keeps accelerating a slow body. Zeroing that first shove
     // used to cancel the slope, so a gentle hill never got a body moving.
-    if (slope > rules.sleepSlope || Math.hypot(vx, vz) >= rules.sleepSpeed) {
-      vx -= gx * rules.gravity * dt;
-      vz -= gz * rules.gravity * dt;
-      const drag = Math.exp(-rules.damping * dt);
+    if ((!floating && slope > rules.sleepSlope) || Math.hypot(vx, vz) >= rules.sleepSpeed) {
+      vx -= gx * downhill * dt;
+      vz -= gz * downhill * dt;
+      const drag = Math.exp(-(rules.damping + WATER.drag * fraction) * dt);
       vx *= drag;
       vz *= drag;
       const speed = Math.hypot(vx, vz);
@@ -131,6 +163,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       }
     }
     mover.vx = vx;
+    mover.vy = vy;
     mover.vz = vz;
     entity.vx = vx;
     entity.vz = vz;
@@ -163,21 +196,39 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
     }
   }
 
-  // Sit on the ground. Sleep only when the slope will not wake the body.
+  // Gravity and buoyancy own the vertical axis. Sleep only when the slope will
+  // not wake the body.
   for (const mover of movers) {
     if (!insideLand(world.terrain, mover.entity.x, mover.entity.z, mover.radius)) {
       mover.entity.x = mover.x0;
       mover.entity.z = mover.z0;
       mover.vx = 0;
+      mover.vy = 0;
       mover.vz = 0;
     }
-    mover.entity.y = surfaceOf(world.terrain, mover.entity.x, mover.entity.z) + CLEARANCE;
+    const entity = mover.entity;
+    const ground = world.terrain.height(entity.x, entity.z);
+    const water = waterAt(world.terrain, entity.x, entity.z);
+    const fraction = submergedFraction(entity.y, water.surface, mover.radius);
+    const buoyancy = (fraction * WATER.density * mover.volume) / mover.mass;
+    let vy = mover.vy + rules.gravity * (buoyancy - 1) * dt;
+    vy *= Math.exp(-WATER.drag * fraction * dt);
+    vy = Math.max(-MAX_FALL, Math.min(MAX_FALL, vy));
+    let y = entity.y + vy * dt;
+    const floor = ground + CLEARANCE;
+    if (y <= floor) {
+      y = floor;
+      if (vy < 0) vy = 0;
+    }
+    entity.y = y;
+    entity.vy = vy;
     if (mover.rolls) {
-      roll(mover.entity, mover.radius, mover.entity.x - mover.x0, mover.entity.z - mover.z0);
+      roll(entity, mover.radius, entity.x - mover.x0, entity.z - mover.z0);
     }
     if (mover.slope <= rules.sleepSlope && Math.hypot(mover.vx, mover.vz) < rules.sleepSpeed) {
-      mover.entity.vx = 0;
-      mover.entity.vz = 0;
+      entity.vx = 0;
+      entity.vz = 0;
     }
+    mover.vy = vy;
   }
 }

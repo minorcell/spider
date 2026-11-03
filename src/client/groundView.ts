@@ -1,13 +1,15 @@
 import {
   BufferAttribute,
   BufferGeometry,
+  Color,
+  DoubleSide,
   Float32BufferAttribute,
   Group,
   LineBasicMaterial,
   LineSegments,
   Mesh,
-  MeshBasicMaterial,
   PlaneGeometry,
+  ShaderMaterial,
 } from 'three';
 import { PALETTE } from '../shared/config.js';
 import { groundAttributes, islandBuffers, type IslandBuffers } from '../shared/island.js';
@@ -20,6 +22,49 @@ const contourMajor = new LineBasicMaterial({
   transparent: true,
   opacity: 0.34,
 });
+
+const waterTime = { value: 0 };
+const waterUniforms = {
+  uTime: waterTime,
+  uShallow: { value: new Color(PALETTE.water) },
+  uDeep: { value: new Color(PALETTE.water).multiplyScalar(0.78) },
+  uOpacity: { value: 0.74 },
+};
+
+const waterMaterial = new ShaderMaterial({
+  uniforms: waterUniforms,
+  transparent: true,
+  depthWrite: false,
+  side: DoubleSide,
+  vertexShader: /* glsl */ `
+    varying vec3 vWorld;
+    void main() {
+      vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform float uTime;
+    uniform vec3 uShallow;
+    uniform vec3 uDeep;
+    uniform float uOpacity;
+    varying vec3 vWorld;
+
+    void main() {
+      vec2 p = vWorld.xz;
+      float cross = sin(p.x * 1.35 + uTime * 1.15) * sin(p.y * 1.7 - uTime * 0.85);
+      float drift = sin((p.x + p.y) * 1.9 + uTime * 1.7);
+      float ripple = cross * 0.55 + drift * 0.45;
+      vec3 color = mix(uDeep, uShallow, clamp(0.58 + ripple * 0.28, 0.0, 1.0));
+      gl_FragColor = vec4(color, clamp(uOpacity + ripple * 0.06, 0.0, 1.0));
+    }
+  `,
+});
+
+/** Advance the moving highlights on every water sheet. */
+export function tickWater(seconds: number): void {
+  waterTime.value = seconds;
+}
 
 /** Paper island. Ink follows the slope in curves, plus the contour lines. */
 export function buildIsland(height: (x: number, z: number) => number): Group {
@@ -51,17 +96,11 @@ export function islandGroup(buffers: IslandBuffers): Group {
 
   // One flat sheet at the water line. Every hollow below it shows the sheet;
   // the ground above it hides the sheet, so the shoreline is the real contour.
-  const water = new Mesh(
-    new PlaneGeometry(TERRAIN.half * 2, TERRAIN.half * 2),
-    new MeshBasicMaterial({
-      color: PALETTE.water,
-      transparent: true,
-      opacity: 0.92,
-      depthWrite: true,
-    }),
-  );
+  // A soft moving highlight keeps the sheet reading as liquid rather than glass.
+  const water = new Mesh(new PlaneGeometry(TERRAIN.half * 2, TERRAIN.half * 2), waterMaterial);
+  water.name = 'water';
   water.rotation.x = -Math.PI / 2;
-  water.position.y = TERRAIN.water;
+  water.position.y = TERRAIN.water + 0.01;
   group.add(water);
   return group;
 }

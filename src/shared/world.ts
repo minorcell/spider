@@ -30,7 +30,10 @@ const SPROUT_CLEAR = 2.2;
 
 const SPROUT_TRIES = 40;
 
-const quantize = (value: number): number => Math.round(value * 10) / 10;
+const quantize = (value: number): number => {
+  const rounded = Math.round(value * 10) / 10;
+  return rounded === 0 ? 0 : rounded;
+};
 
 /** A hair above the ground triangle, so the contact edge does not z-fight into the fill. */
 const CLEARANCE = 0.03;
@@ -237,7 +240,9 @@ export function settle(
     id: 'settle',
     kind,
     x: start.x,
-    y: 0,
+    // Start in contact with the ground, not in the air above it; otherwise a
+    // zero horizontal velocity can look like rest before gravity gets a step.
+    y: terrain.height(start.x, start.z),
     z: start.z,
     stage: 0,
     vx: 0,
@@ -265,7 +270,9 @@ export function settle(
   if (lower) {
     entity.x = lower.x;
     entity.z = lower.z;
+    entity.y = terrain.height(lower.x, lower.z);
     entity.vx = 0;
+    entity.vy = 0;
     entity.vz = 0;
     run();
   }

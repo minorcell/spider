@@ -14,7 +14,7 @@ import { WORLD_RADIUS } from '../shared/terrain.js';
 import type { EntityState, WorldState } from '../shared/state.js';
 import type { Spider } from '../shared/sim/Spider.js';
 import { paintCanvas } from '../ui/dress.js';
-import { buildIsland } from './groundView.js';
+import { buildIsland, tickWater } from './groundView.js';
 import { ObserveOverlay } from './observeView.js';
 import { buildProp, drapeGrass } from './props.js';
 import { createSound } from './sound.js';
@@ -446,6 +446,7 @@ export class Stage {
     const dt = Math.min(0.05, (now - this.#last) / 1000);
     this.#last = now;
     this.#step?.(dt);
+    tickWater(now * 0.001);
     this.#syncWorld();
     this.#feedback();
 

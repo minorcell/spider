@@ -124,21 +124,62 @@ describe('toSense', () => {
 });
 
 describe('water sense', () => {
-  it('feels the nearest pond within reach', () => {
+  it('feels the nearest pond within reach, with its depth and span', () => {
     const sense = toSense(spider(), world({ terrain: { height: (x) => (x > 1 ? -2 : 0) } }));
     expect(sense.wet).toBe(false);
-    expect(sense.water).toMatchObject({ x: 1.25, z: 0, distance: 1.25, bearing: 90 });
+    expect(sense.water).toMatchObject({
+      x: 1.25,
+      z: 0,
+      distance: 1.25,
+      bearing: 90,
+      depth: 1.2,
+      span: 8,
+    });
+    expect(sense.shore).toBeNull();
   });
 
-  it('reports standing on the water surface', () => {
+  it('feels the nearest shore while in water', () => {
+    const pond = (x: number): number => (Math.abs(x) < 2 ? -2 : 0);
+    const sense = toSense(spider(), world({ terrain: { height: pond } }));
+    expect(sense.wet).toBe(true);
+    expect(sense.shore).toMatchObject({ x: 2, z: 0, distance: 2, bearing: 90 });
+  });
+
+  it('reports the water column while floating', () => {
     const sense = toSense(spider(), world({ terrain: { height: () => -2, surface: () => -0.8 } }));
     expect(sense.wet).toBe(true);
     expect(sense.ground).toBe(-0.8);
-    expect(sense.water).toEqual({ x: 0, z: 0, distance: 0, bearing: 0 });
+    expect(sense.waterDepth).toBeCloseTo(1.2);
+    expect(sense.swimming).toBe(true);
+    expect(sense.water).toMatchObject({
+      x: 0,
+      z: 0,
+      distance: 0,
+      bearing: 0,
+      depth: 1.2,
+      span: 8,
+    });
+    expect(sense.shore).toBeNull();
+  });
+
+  it('reports shallow water as wading', () => {
+    const sense = toSense(
+      spider(),
+      world({ terrain: { height: () => -0.9, surface: () => -0.8 } }),
+    );
+    expect(sense.wet).toBe(true);
+    expect(sense.waterDepth).toBeCloseTo(0.1);
+    expect(sense.swimming).toBe(false);
   });
 
   it('reports no water on dry ground', () => {
     expect(toSense(spider(), world()).water).toBeNull();
+  });
+
+  it('reports the nearest shore in a full observation', () => {
+    const pond = (x: number): number => (Math.abs(x) < 2 ? -2 : 0);
+    const seen = toObservation(spider(), world({ terrain: { height: pond } }), 4, 16, 1.6);
+    expect(seen.self.shore).toMatchObject({ distance: 2, bearing: 90 });
   });
 });
 

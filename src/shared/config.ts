@@ -47,6 +47,18 @@ export const PHYSICS = {
   maxSpeed: 5,
 } as const;
 
+/**
+ * The spider body as a buoyant rigid body. `center` and `radius` describe the
+ * sphere the water solver uses; `mass / volume` is its density relative to
+ * water. Legs add drag but barely change displacement.
+ */
+export const SPIDER_BODY = {
+  mass: 1.2,
+  volume: 2,
+  center: 0.78,
+  radius: 0.55,
+} as const;
+
 export interface MountSpec {
   readonly x: number;
   readonly y: number;

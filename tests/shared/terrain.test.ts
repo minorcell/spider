@@ -95,6 +95,58 @@ describe('Terrain', () => {
     expect(low).not.toBeNull();
     expect(terrain.surface(low!.x, low!.z)).toBe(TERRAIN.water);
   });
+
+  it('carves a connected river rather than isolated pits', () => {
+    for (const seed of [1, 2, 9]) {
+      const terrain = new Terrain(seed);
+      const cell = 1;
+      const n = Math.floor((TERRAIN.half * 2) / cell) + 1;
+      const wet = new Uint8Array(n * n);
+      for (let j = 0; j < n; j++) {
+        for (let i = 0; i < n; i++) {
+          const x = -TERRAIN.half + i * cell;
+          const z = -TERRAIN.half + j * cell;
+          wet[j * n + i] = terrain.height(x, z) < TERRAIN.water ? 1 : 0;
+        }
+      }
+      const seen = new Uint8Array(n * n);
+      let widest = 0;
+      for (let start = 0; start < wet.length; start++) {
+        if (!wet[start] || seen[start]) continue;
+        const queue = [start];
+        seen[start] = 1;
+        let minX = n;
+        let maxX = 0;
+        let minZ = n;
+        let maxZ = 0;
+        for (let q = 0; q < queue.length; q++) {
+          const at = queue[q]!;
+          const x = at % n;
+          const z = (at / n) | 0;
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+          minZ = Math.min(minZ, z);
+          maxZ = Math.max(maxZ, z);
+          for (const [dx, dz] of [
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+          ] as const) {
+            const nx = x + dx;
+            const nz = z + dz;
+            if (nx < 0 || nz < 0 || nx >= n || nz >= n) continue;
+            const next = nz * n + nx;
+            if (!wet[next] || seen[next]) continue;
+            seen[next] = 1;
+            queue.push(next);
+          }
+        }
+        widest = Math.max(widest, maxX - minX, maxZ - minZ);
+      }
+      expect(widest).toBeGreaterThan(25);
+    }
+  });
 });
 
 describe('surfaceOf', () => {

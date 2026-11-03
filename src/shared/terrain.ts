@@ -16,6 +16,10 @@ export const TERRAIN = {
   segments: 104,
   /** Still water fills every hollow below this height. */
   water: -0.8,
+  /** The main river meanders around this distance from the nest. */
+  river: 14,
+  /** Half-width of the river channel before the banks rise. */
+  riverWidth: 3.2,
 } as const;
 
 const GRID_VERTS = (TERRAIN.segments + 1) ** 2;
@@ -33,13 +37,17 @@ export function insideLand(land: Land, x: number, z: number, margin = 0): boolea
   return land.inside ? land.inside(x, z, margin) : true;
 }
 
-/** A world that can lift a body onto its water surface. */
+/** A world that can say where its ground and water line are. */
 export interface Ground {
   height(x: number, z: number): number;
   surface?(x: number, z: number): number;
 }
 
-/** What a foot stands on: the ground, or the still water over a hollow. */
+/**
+ * The surface a route follows: the solid ground, or the still water line over
+ * a hollow. This is not a floor; the body solver decides whether a support is
+ * ground or buoyancy.
+ */
 export function surfaceOf(ground: Ground, x: number, z: number): number {
   return ground.surface ? ground.surface(x, z) : ground.height(x, z);
 }
@@ -127,8 +135,9 @@ export class Terrain {
   }
 
   /**
-   * What a foot stands on. Hollows below the water line are a flat pond, so a
-   * body walks on the water instead of sinking to the bottom.
+   * The travel surface used by route and sight probes: the ground, or the flat
+   * water line over a hollow. A body crossing this point still floats or wades
+   * according to the water depth under it.
    */
   surface(x: number, z: number): number {
     return Math.max(this.height(x, z), TERRAIN.water);
@@ -182,7 +191,41 @@ function sample(
   const axis = (x * Math.cos(angle) + z * Math.sin(angle)) / TERRAIN.island;
   const h = base * 7 + (ridge - 0.5) * 3.4 + axis * 2.4;
   // 不把低处压成 0：留出真正的谷地，巢穴外面才不是一圈等高的环。
-  return h * mask * pad;
+  return carveRiver(x, z, angle, h * mask * pad);
+}
+
+/**
+ * Cut one continuous, meandering channel through the lowlands. The channel
+ * keeps a bed below the water line, so hollows fill and connect instead of
+ * reading as a scattered set of round pits.
+ *
+ * The curve lives in coordinates rotated with the seed. It stays off the nest
+ * disk, and its width/depth breathe slowly along the flow so the banks do not
+ * look like a canal.
+ */
+function carveRiver(x: number, z: number, angle: number, height: number): number {
+  const bearing = angle + 1.37;
+  const cos = Math.cos(bearing);
+  const sin = Math.sin(bearing);
+  const along = x * cos + z * sin;
+  const across = -x * sin + z * cos;
+  const phase = angle * 1.9;
+  const center =
+    TERRAIN.river +
+    Math.sin(along * 0.105 + phase) * 2.7 +
+    Math.sin(along * 0.23 - phase * 0.7) * 1.15;
+  const width =
+    TERRAIN.riverWidth +
+    Math.sin(along * 0.16 + phase * 1.3) * 0.55 +
+    Math.sin(along * 0.31 - phase) * 0.25;
+  const edge = 1 - Math.abs(across - center) / width;
+  if (edge <= 0) return height;
+  // Smooth the bank into the old terrain instead of leaving a sharp trench.
+  const profile = edge * edge * (3 - 2 * edge);
+  const bed =
+    TERRAIN.water -
+    (0.95 + Math.sin(along * 0.19 + phase * 0.6) * 0.25 + Math.sin(along * 0.047) * 0.3);
+  return height > bed ? height + (bed - height) * profile : height;
 }
 
 /**

@@ -2,12 +2,26 @@ import { propertiesOf } from './kinds.js';
 import { aheadAt, senseBody, waysAt, type Ahead, type NearbySolid } from './sense.js';
 import { EYE_HEIGHT, grassHere, groundOccluded, insideHome, occluded, SIGHT_TOP } from './sight.js';
 
-import { nearestWater, surfaceOf, TERRAIN } from './terrain.js';
+import { surfaceOf, TERRAIN } from './terrain.js';
+import { floatsAt, nearestShore, readWater } from './water.js';
 
-/** How far a body can feel the nearest water. */
-export const WATER_SENSE = 6;
+/** How far a body can feel the nearest water and its shoreline. */
+export const WATER_SENSE = 8;
 
 export interface WaterSpot {
+  x: number;
+  z: number;
+  distance: number;
+  /** Degrees off the heading, clockwise positive. */
+  bearing: number;
+  /** Depth at the reported point. */
+  depth: number;
+  /** Farthest connected water from that point, capped at the sense range. */
+  span: number;
+}
+
+/** Dry ground within sensing range. Present only while the body is wet. */
+export interface ShoreSpot {
   x: number;
   z: number;
   distance: number;
@@ -61,8 +75,9 @@ export interface EntityState {
   stage: number;
   /** Collision or cover size. Not reported in a look. */
   footprint?: Footprint;
-  /** Horizontal velocity for props that physics moves. */
+  /** Velocity for props that physics moves. */
   vx?: number;
+  vy?: number;
   vz?: number;
   /** Orientation of a body that rolls. Identity when omitted. */
   qx?: number;
@@ -180,10 +195,16 @@ export interface Observation {
     cover: 'grass' | null;
     /** True while you are inside the nest. */
     home: boolean;
-    /** True while you stand on a pond. */
+    /** True while any water sits under the body. */
     wet: boolean;
+    /** How deep the water is under the body. Zero on dry ground. */
+    waterDepth: number;
+    /** True when the water is deep enough to float instead of wade. */
+    swimming: boolean;
     /** Nearest water within a few meters of the body. */
     water: WaterSpot | null;
+    /** Nearest dry ground, when the body is in water. */
+    shore: ShoreSpot | null;
     /** What is on your back, oldest first. Empty when you carry nothing. */
     carrying: Carried[];
     /** What your heading runs into within the next stretch. */
@@ -209,7 +230,10 @@ export type Sense = Pick<
   | 'cover'
   | 'home'
   | 'wet'
+  | 'waterDepth'
+  | 'swimming'
   | 'water'
+  | 'shore'
   | 'carrying'
   | 'ahead'
 > & {
@@ -254,8 +278,10 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
   const height = (x: number, z: number) => surfaceOf(world.terrain, x, z);
   const ground = surfaceOf(world.terrain, px, pz);
   const eye = ground + EYE_HEIGHT + state.height;
-  const wet = world.terrain.height(px, pz) < TERRAIN.water;
-  const water = nearestWater(world.terrain, px, pz, WATER_SENSE);
+  const waterDepth = Math.max(0, TERRAIN.water - world.terrain.height(px, pz));
+  const swimming = floatsAt(world.terrain, px, pz);
+  const water = readWater(world.terrain, px, pz, WATER_SENSE);
+  const shore = waterDepth > 0 ? nearestShore(world.terrain, px, pz, WATER_SENSE) : null;
   const sense: Sense = {
     x: round3(px),
     y: round3(state.position.y),
@@ -266,13 +292,25 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
     speed: round3(state.speed),
     cover: grassHere(px, pz, world.entities, eye) ? 'grass' : null,
     home: insideHome(px, pz),
-    wet,
+    wet: waterDepth > 0,
+    waterDepth: round3(waterDepth),
+    swimming,
     water: water
       ? {
           x: round3(water.x),
           z: round3(water.z),
           distance: round3(water.distance),
           bearing: bearingFrom(water.x - px, water.z - pz, heading),
+          depth: round3(water.depth),
+          span: round3(water.span),
+        }
+      : null,
+    shore: shore
+      ? {
+          x: round3(shore.x),
+          z: round3(shore.z),
+          distance: round3(shore.distance),
+          bearing: bearingFrom(shore.x - px, shore.z - pz, heading),
         }
       : null,
     carrying: world.carrying.map((item) => ({
@@ -304,8 +342,10 @@ export function toObservation(
   const pz = state.position.z;
   const height = (x: number, z: number): number => world.terrain.height(x, z);
   const ground = surfaceOf(world.terrain, px, pz);
-  const wet = world.terrain.height(px, pz) < TERRAIN.water;
-  const water = nearestWater(world.terrain, px, pz, WATER_SENSE);
+  const waterDepth = Math.max(0, TERRAIN.water - world.terrain.height(px, pz));
+  const swimming = floatsAt(world.terrain, px, pz);
+  const water = readWater(world.terrain, px, pz, WATER_SENSE);
+  const shore = waterDepth > 0 ? nearestShore(world.terrain, px, pz, WATER_SENSE) : null;
   const eye = ground + EYE_HEIGHT + state.height;
   for (const entity of world.entities) {
     const dx = entity.x - px;
@@ -364,13 +404,25 @@ export function toObservation(
       speed: round3(state.speed),
       cover: grassHere(px, pz, world.entities, eye) ? 'grass' : null,
       home: insideHome(px, pz),
-      wet,
+      wet: waterDepth > 0,
+      waterDepth: round3(waterDepth),
+      swimming,
       water: water
         ? {
             x: round3(water.x),
             z: round3(water.z),
             distance: round3(water.distance),
             bearing: bearingFrom(water.x - px, water.z - pz, heading),
+            depth: round3(water.depth),
+            span: round3(water.span),
+          }
+        : null,
+      shore: shore
+        ? {
+            x: round3(shore.x),
+            z: round3(shore.z),
+            distance: round3(shore.distance),
+            bearing: bearingFrom(shore.x - px, shore.z - pz, heading),
           }
         : null,
       carrying: carrying.map((item) => ({

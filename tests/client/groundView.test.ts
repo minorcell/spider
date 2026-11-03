@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Group, LineSegments, Mesh } from 'three';
-import { buildIsland, groundGeometry } from '../../src/client/groundView.js';
+import { Group, LineSegments, Mesh, ShaderMaterial } from 'three';
+import { buildIsland, groundGeometry, tickWater } from '../../src/client/groundView.js';
 import { TERRAIN } from '../../src/shared/terrain.js';
 
 describe('groundGeometry', () => {
@@ -40,8 +40,17 @@ describe('buildIsland', () => {
     expect(lines.count).toBeGreaterThan(0);
     const water = island.children[3] as Mesh;
     expect(water).toBeInstanceOf(Mesh);
-    expect(water.position.y).toBeCloseTo(TERRAIN.water);
+    expect(water.name).toBe('water');
+    expect(water.position.y).toBeCloseTo(TERRAIN.water + 0.01);
     expect(water.rotation.x).toBeCloseTo(-Math.PI / 2);
+    expect(water.material).toBeInstanceOf(ShaderMaterial);
+  });
+
+  it('advances the water highlight clock', () => {
+    const water = buildIsland(() => 0).children[3] as Mesh;
+    const material = water.material as ShaderMaterial;
+    tickWater(12.5);
+    expect(material.uniforms.uTime.value).toBe(12.5);
   });
 
   it('lays the same curves on flat ground', () => {

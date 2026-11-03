@@ -295,6 +295,31 @@ describe('ObserveOverlay', () => {
     const readout = wetParent.querySelector('#observe-readout')!;
     expect(readout.textContent).toContain('在水里');
     expect(readout.textContent).toContain('脚下是水');
+    expect(readout.textContent).toContain('正浮着');
+
+    const shoreParent = document.createElement('div');
+    document.body.append(shoreParent);
+    const shore = new ObserveOverlay(shoreParent);
+    shore.sync(
+      true,
+      camera(),
+      fakeSpider(0, 0),
+      world({ terrain: { height: (x) => (Math.abs(x) < 4 ? -2 : 0) } }),
+      view,
+    );
+    expect(shoreParent.querySelector('#observe-readout')!.textContent).toContain('最近的岸在');
+
+    const shallowParent = document.createElement('div');
+    document.body.append(shallowParent);
+    const shallow = new ObserveOverlay(shallowParent);
+    shallow.sync(
+      true,
+      camera(),
+      fakeSpider(10, 0),
+      world({ terrain: { height: () => -0.9, surface: () => -0.8 } }),
+      view,
+    );
+    expect(shallowParent.querySelector('#observe-readout')!.textContent).toContain('在涉水');
   });
 
   it('aims the ahead line with the live yaw', () => {
