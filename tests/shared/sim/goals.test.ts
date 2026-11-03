@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
+import { GAIT } from '../../../src/shared/config.js';
 import type { Spider } from '../../../src/shared/sim/Spider.js';
 import {
   heightGoal,
@@ -232,8 +233,8 @@ describe('routeGoal', () => {
 
 describe('heightGoal', () => {
   it('clamps the target to the deck range', () => {
-    expect(heightGoal(fake(), 5).result()).toEqual({ target: 0.7, achieved: 0 });
-    expect(heightGoal(fake(), -5).result()).toEqual({ target: -0.35, achieved: 0 });
+    expect(heightGoal(fake(), 5).result()).toEqual({ target: GAIT.heightMax, achieved: 0 });
+    expect(heightGoal(fake(), -5).result()).toEqual({ target: GAIT.heightMin, achieved: 0 });
   });
 
   it('lifts while below the target', () => {

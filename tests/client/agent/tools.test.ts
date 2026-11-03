@@ -19,6 +19,8 @@ const observation: Observation = {
     speed: 0,
     cover: null,
     home: true,
+    wet: false,
+    water: null,
     carrying: [],
     ahead: { open: 8, by: 'clear', id: null, kind: null },
     nearby: [],
@@ -55,6 +57,7 @@ beforeEach(() => {
     approach: vi.fn(async () => outcome()),
     eat: vi.fn(async () => outcome()),
     pickUp: vi.fn(async () => outcome()),
+    drink: vi.fn(() => outcome({ action: 'drink' })),
     drop: vi.fn(() => outcome()),
     store: vi.fn(() => outcome()),
     sleep: vi.fn(async () => outcome()),
@@ -78,6 +81,7 @@ describe('spiderTools', () => {
   it('offers every action', () => {
     expect(Object.keys(spiderTools(session as unknown as SimSession)).sort()).toEqual([
       'approach',
+      'drink',
       'drive',
       'drop',
       'eat',
@@ -106,6 +110,15 @@ describe('spiderTools', () => {
     const tools = spiderTools(session as unknown as SimSession);
     await execute(tools.observe, {});
     expect(session.observe).toHaveBeenCalledWith(VIEW_DISTANCE);
+  });
+
+  it('drinks through the session and returns the body', async () => {
+    const tools = spiderTools(session as unknown as SimSession);
+    const result = (await execute(tools.drink, {})) as Record<string, unknown>;
+    expect(session.drink).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ ok: true, action: 'drink' });
+    expect(result).toHaveProperty('self');
+    expect(result).not.toHaveProperty('near');
   });
 
   it('returns the body and what is in reach, and strips the halt field', async () => {
@@ -167,6 +180,7 @@ describe('spiderTools', () => {
     const plain = [
       ['turn', { degrees: 10 }],
       ['turn_to', { heading: 0 }],
+      ['drink', {}],
       ['set_height', { level: 0 }],
       ['wait', { seconds: 1 }],
       ['sleep', {}],

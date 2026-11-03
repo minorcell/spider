@@ -7,13 +7,13 @@ import { block, flat } from '../helpers.js';
 
 const view = { left: 0, top: 0, width: 800, height: 600 };
 
-function fakeSpider(x: number, z: number): Spider {
+function fakeSpider(x: number, z: number, height = 0): Spider {
   const state: SpiderState = {
     time: 0,
     position: { x, y: 0, z },
     yaw: 0,
     speed: 0,
-    height: 0,
+    height,
     chassisPitch: 0,
     chassisRoll: 0,
     headYaw: 0,
@@ -198,6 +198,59 @@ describe('ObserveOverlay', () => {
     overlay.reset();
     overlay.sync(true, camera(), spider, world({ terrain: { height: () => 4 } }), view);
     expect(ring.getY(0)).toBeGreaterThan(y0);
+  });
+
+  it('draws the sight area around a bank instead of a circle', () => {
+    const overlay = new ObserveOverlay(parent);
+    const bank = (_x: number, z: number): number => (z < -4 ? 3 : 0);
+    overlay.sync(true, camera(), fakeSpider(0, 0), world({ terrain: { height: bank } }), view);
+    const ring = (overlay.object.children[0] as Line).geometry.getAttribute(
+      'position',
+    ) as BufferAttribute;
+    expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeLessThan(16);
+    expect(Math.hypot(ring.getX(36), ring.getZ(36))).toBeCloseTo(16);
+  });
+
+  it('widens the sight area when the body rears up', () => {
+    const overlay = new ObserveOverlay(parent);
+    const bank = (_x: number, z: number): number => (z < -4 ? 3 : 0);
+    const ring = (overlay.object.children[0] as Line).geometry.getAttribute(
+      'position',
+    ) as BufferAttribute;
+    overlay.sync(true, camera(), fakeSpider(0, 0), world({ terrain: { height: bank } }), view);
+    const low = Math.hypot(ring.getX(0), ring.getZ(0));
+    overlay.reset();
+    overlay.sync(true, camera(), fakeSpider(0, 0, 1.6), world({ terrain: { height: bank } }), view);
+    expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeGreaterThan(low);
+  });
+
+  it('reports the nearest water and standing in it', () => {
+    const overlay = new ObserveOverlay(parent);
+    const bank = (x: number): number => (x > 1 ? -2 : 0);
+    overlay.sync(
+      true,
+      camera(),
+      fakeSpider(0, 0),
+      world({
+        terrain: { height: bank, surface: (x) => Math.max(bank(x), -0.8) },
+      }),
+      view,
+    );
+    expect(parent.querySelector('#observe-readout')!.textContent).toContain('水在 90° 方向 1.3 米');
+
+    const wetParent = document.createElement('div');
+    document.body.append(wetParent);
+    const wet = new ObserveOverlay(wetParent);
+    wet.sync(
+      true,
+      camera(),
+      fakeSpider(10, 0),
+      world({ terrain: { height: () => -2, surface: () => -0.8 } }),
+      view,
+    );
+    const readout = wetParent.querySelector('#observe-readout')!;
+    expect(readout.textContent).toContain('在水里');
+    expect(readout.textContent).toContain('脚下是水');
   });
 
   it('aims the ahead line with the live yaw', () => {

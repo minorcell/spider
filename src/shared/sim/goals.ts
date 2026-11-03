@@ -1,3 +1,4 @@
+import { GAIT } from '../config.js';
 import type { Spider } from './Spider.js';
 import { IDLE_CONTROLS, type Controls } from '../../shared/types.js';
 import type { PlanPoint } from '../route.js';
@@ -161,9 +162,9 @@ export function routeGoal(spider: Spider, points: readonly PlanPoint[], fast = f
 
 /** Raise or lower the deck to a target height. */
 export function heightGoal(spider: Spider, level: number): Goal {
-  const target = clamp(level, -0.35, 0.7);
+  const target = clamp(level, GAIT.heightMin, GAIT.heightMax);
   return {
-    timeout: 4,
+    timeout: 6,
     controls() {
       return { ...IDLE_CONTROLS, lift: Math.sign(target - spider.heightSet) };
     },

@@ -3,7 +3,7 @@ import { KINDS } from '../kinds.js';
 import type { EntityState, Footprint, SpiderState, WorldState } from '../state.js';
 import { blockedAt, BODY_RADIUS } from '../sight.js';
 import { APPLE_EVERY, nestBlocks, restingY } from '../world.js';
-import { insideLand, Terrain } from '../terrain.js';
+import { insideLand, surfaceOf, Terrain } from '../terrain.js';
 import type { Spider } from './Spider.js';
 
 export const FORMAT = 3;
@@ -85,7 +85,7 @@ export function applyBody(
   world.carrying = structuredClone(body.carrying);
   world.appleIn = body.appleIn;
   world.sprouts = body.sprouts;
-  session.spider.bindGround((x, z) => world.terrain.height(x, z));
+  session.spider.bindGround((x, z) => surfaceOf(world.terrain, x, z));
   session.spider.bindBlocked(
     (x, z) => blockedAt(x, z, world.blocks) || !insideLand(world.terrain, x, z, BODY_RADIUS),
   );

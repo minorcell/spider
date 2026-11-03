@@ -10,6 +10,7 @@ import {
   HOME,
   insideHome,
   occluded,
+  sightOutline,
 } from '../../src/shared/sight.js';
 import type { EntityState } from '../../src/shared/state.js';
 import { block } from '../helpers.js';
@@ -96,8 +97,42 @@ describe('groundOccluded', () => {
     expect(groundOccluded(0, 0, 1, 10, 1, 0, ridge)).toBe(true);
   });
 
+  it('sees over a low bump that is not a ridge', () => {
+    const bump = (x: number): number => (x > 4 && x < 6 ? 1.2 : 0);
+    expect(groundOccluded(0, 0, 1, 10, 1, 0, bump)).toBe(false);
+  });
+
   it('handles a very short span without sampling the same point', () => {
     expect(groundOccluded(0, 0, 1, 0, 1, 0, () => 100)).toBe(false);
+  });
+});
+
+describe('sightOutline', () => {
+  it('keeps a full circle on flat ground', () => {
+    const points = sightOutline(0, 0, 0.85, 8, () => 0, [], 8);
+    expect(points).toHaveLength(8);
+    for (const point of points) expect(Math.hypot(point.x, point.z)).toBeCloseTo(8);
+  });
+
+  it('stops in front of a bank and stays full on the open side', () => {
+    const bank = (_x: number, z: number): number => (z < -4 ? 3 : 0);
+    const points = sightOutline(0, 0, 0.85, 8, bank, [], 16);
+    expect(points[0].z).toBeLessThan(-3.5);
+    expect(points[0].z).toBeGreaterThan(-8);
+    expect(points[8].z).toBeCloseTo(8);
+  });
+
+  it('stops behind a wall', () => {
+    const screen = block('screen', -1, 1, -4, -2);
+    const points = sightOutline(0, 0, 0.85, 8, () => 0, [screen], 16);
+    expect(points[0].z).toBeGreaterThan(-2.5);
+    expect(points[8].z).toBeCloseTo(8);
+  });
+
+  it('is a single point when the look does not reach', () => {
+    expect(sightOutline(1, 2, 0.85, 0, () => 0, [], 8)).toEqual(
+      Array.from({ length: 8 }, () => ({ x: 1, z: 2 })),
+    );
   });
 });
 

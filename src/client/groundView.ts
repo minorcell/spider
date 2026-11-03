@@ -6,10 +6,13 @@ import {
   LineBasicMaterial,
   LineSegments,
   Mesh,
+  MeshBasicMaterial,
+  PlaneGeometry,
 } from 'three';
 import { PALETTE } from '../shared/config.js';
 import { groundAttributes, islandBuffers, type IslandBuffers } from '../shared/island.js';
 import { groundMat } from '../shared/sim/parts.js';
+import { TERRAIN } from '../shared/terrain.js';
 
 const contourInk = new LineBasicMaterial({ color: PALETTE.ink, transparent: true, opacity: 0.2 });
 const contourMajor = new LineBasicMaterial({
@@ -45,6 +48,21 @@ export function islandGroup(buffers: IslandBuffers): Group {
   const contours = new Group();
   contours.add(new LineSegments(minor, contourInk), new LineSegments(major, contourMajor));
   group.add(contours);
+
+  // One flat sheet at the water line. Every hollow below it shows the sheet;
+  // the ground above it hides the sheet, so the shoreline is the real contour.
+  const water = new Mesh(
+    new PlaneGeometry(TERRAIN.half * 2, TERRAIN.half * 2),
+    new MeshBasicMaterial({
+      color: PALETTE.water,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: true,
+    }),
+  );
+  water.rotation.x = -Math.PI / 2;
+  water.position.y = TERRAIN.water;
+  group.add(water);
   return group;
 }
 

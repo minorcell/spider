@@ -78,7 +78,8 @@ export const BONES: readonly BoneSpec[] = [
 export const GAIT = {
   footY: 0.16,
   heightMin: -0.35,
-  heightMax: 0.7,
+  /** A spider can rear up almost its leg length to look over a bank. */
+  heightMax: 1.6,
   swing: 0.42,
   swingLift: 0.28,
   strideScale: 0.7,

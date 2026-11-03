@@ -558,6 +558,26 @@ describe('eat', () => {
   });
 });
 
+describe('water', () => {
+  it('drinks from a pond within reach', () => {
+    const session = new SimSession(8);
+    session.world.terrain = {
+      height: (x) => (x > 0.5 ? -2 : 0),
+      surface: (x) => Math.max(x > 0.5 ? -2 : 0, -0.8),
+    };
+    const outcome = session.drink();
+    expect(outcome).toMatchObject({ ok: true, action: 'drink' });
+    expect(outcome.distance).toBeGreaterThan(0);
+    expect(outcome.distance).toBeLessThanOrEqual(1.2);
+  });
+
+  it('refuses to drink on dry ground', () => {
+    const session = new SimSession(8);
+    session.world.terrain = { height: () => 0 };
+    expect(session.drink()).toMatchObject({ ok: false, reason: 'no-water' });
+  });
+});
+
 describe('carrying', () => {
   it('refuses to pick up more than the limit', async () => {
     const session = new SimSession(8);

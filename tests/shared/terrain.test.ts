@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import {
   bakeTerrainGrid,
   insideLand,
+  nearestWater,
   surfaceAt,
+  surfaceOf,
   Terrain,
   TERRAIN,
   WORLD_RADIUS,
@@ -76,6 +78,49 @@ describe('Terrain', () => {
     expect(insideLand(terrain, 0, 0)).toBe(true);
     expect(insideLand({ height: () => 0 }, 0, 0)).toBe(true);
     expect(insideLand({ height: () => 0, inside: () => false }, 0, 0)).toBe(false);
+  });
+
+  it('stands on the water level in a hollow and on the ground above it', () => {
+    const terrain = new Terrain(5);
+    expect(terrain.surface(0, 0)).toBe(terrain.height(0, 0));
+    let low: { x: number; z: number } | null = null;
+    for (let x = -40; x <= 40 && !low; x += 1) {
+      for (let z = -40; z <= 40; z += 1) {
+        if (terrain.height(x, z) < TERRAIN.water) {
+          low = { x, z };
+          break;
+        }
+      }
+    }
+    expect(low).not.toBeNull();
+    expect(terrain.surface(low!.x, low!.z)).toBe(TERRAIN.water);
+  });
+});
+
+describe('surfaceOf', () => {
+  it('uses the water surface when a terrain has one', () => {
+    expect(surfaceOf({ height: () => -2 }, 0, 0)).toBe(-2);
+    expect(surfaceOf({ height: () => -2, surface: () => -0.8 }, 0, 0)).toBe(-0.8);
+  });
+});
+
+describe('nearestWater', () => {
+  it('finds the nearest hollow within reach', () => {
+    const pond = (x: number): number => (x > 2 ? -1 : 0);
+    const spot = nearestWater({ height: pond }, 0, 0, 4);
+    expect(spot).not.toBeNull();
+    expect(spot!.distance).toBeGreaterThan(2);
+    expect(spot!.distance).toBeLessThanOrEqual(4);
+    expect(spot!.x).toBeGreaterThan(2);
+  });
+
+  it('reports the body itself when it is already on water', () => {
+    expect(nearestWater({ height: () => -1 }, 1, 2, 4)).toEqual({ x: 1, z: 2, distance: 0 });
+  });
+
+  it('is null on dry ground and for a reach shorter than one sample', () => {
+    expect(nearestWater({ height: () => 0 }, 0, 0, 4)).toBeNull();
+    expect(nearestWater({ height: (x) => (x > 2 ? -1 : 0) }, 0, 0, 0.1)).toBeNull();
   });
 });
 

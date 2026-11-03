@@ -16,10 +16,12 @@ import { IDLE_CONTROLS, type Controls } from '../types.js';
 import {
   blockedAt,
   BODY_RADIUS,
+  EYE_HEIGHT,
   grassHere,
   groundOccluded,
   insideHome,
   occluded,
+  SIGHT_TOP,
 } from '../sight.js';
 import {
   createWorld,
@@ -31,7 +33,7 @@ import {
   restingY,
   VIEW_DISTANCE,
 } from '../world.js';
-import { insideLand, Terrain, WORLD_RADIUS } from '../terrain.js';
+import { insideLand, nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '../terrain.js';
 import { CARRY_LIMIT } from '../config.js';
 import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal, type Goal } from './goals.js';
 import { planRoute } from '../route.js';
@@ -71,7 +73,7 @@ export class SimSession {
 
   constructor(seed?: number, terrain?: Terrain) {
     this.world = terrain ? createWorld(terrain.seed, terrain) : createWorld(seed);
-    this.spider.bindGround((x, z) => this.world.terrain.height(x, z));
+    this.spider.bindGround((x, z) => surfaceOf(this.world.terrain, x, z));
     this.spider.bindBlocked(
       (x, z) =>
         blockedAt(x, z, this.world.blocks) || !insideLand(this.world.terrain, x, z, BODY_RADIUS),
@@ -332,6 +334,20 @@ export class SimSession {
     });
   }
 
+  /** Drink from a pond within reach. Water is the only thing this changes. */
+  drink(): GoalOutcome {
+    const { x, z } = this.spider.root.position;
+    const spot = nearestWater(this.world.terrain, x, z, REACH);
+    if (!spot) return { ok: false, reason: 'no-water' };
+    return {
+      ok: true,
+      action: 'drink',
+      x: Math.round(spot.x * 1000) / 1000,
+      z: Math.round(spot.z * 1000) / 1000,
+      distance: Math.round(spot.distance * 1000) / 1000,
+    };
+  }
+
   /** Put down one thing you are carrying. With no id, that is the last one you picked up. */
   drop(id?: string): GoalOutcome {
     const item = this.#carried(id);
@@ -463,12 +479,12 @@ export class SimSession {
     if (distance > REACH || vertical > REACH_Y) {
       return { ok: false, reason: 'out-of-reach', id: entity.id, distance };
     }
-    const eye = this.world.terrain.height(x, z) + 0.85;
+    const eye = surfaceOf(this.world.terrain, x, z) + EYE_HEIGHT + this.spider.heightSet;
     if (occluded(x, z, entity.x, entity.z, this.world.blocks, entity.id, eye)) {
       return { ok: false, reason: 'blocked', id: entity.id };
     }
     if (
-      groundOccluded(x, z, eye, entity.x, entity.y + 0.2, entity.z, (hx, hz) =>
+      groundOccluded(x, z, eye, entity.x, entity.y + SIGHT_TOP, entity.z, (hx, hz) =>
         this.world.terrain.height(hx, hz),
       )
     ) {

@@ -96,7 +96,7 @@ describe('world worker', () => {
     };
     const client = new WorldClient(port);
     const prepared = await client.prepare(6);
-    expect(prepared.island.children).toHaveLength(3);
+    expect(prepared.island.children).toHaveLength(4);
     expect(prepared.terrain.height(0, 0)).toBe(0);
     expect(prepared.terrain.height(0, 0)).toBeCloseTo(new Terrain(6).height(0, 0));
 

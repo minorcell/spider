@@ -14,6 +14,8 @@ export const TERRAIN = {
   flat: 5.2,
   /** Ground mesh divisions. `surfaceAt` has to use this same grid. */
   segments: 104,
+  /** Still water fills every hollow below this height. */
+  water: -0.8,
 } as const;
 
 const GRID_VERTS = (TERRAIN.segments + 1) ** 2;
@@ -29,6 +31,41 @@ export interface Land {
 /** True when the point is on land. A hand-built world without a shore is open. */
 export function insideLand(land: Land, x: number, z: number, margin = 0): boolean {
   return land.inside ? land.inside(x, z, margin) : true;
+}
+
+/** A world that can lift a body onto its water surface. */
+export interface Ground {
+  height(x: number, z: number): number;
+  surface?(x: number, z: number): number;
+}
+
+/** What a foot stands on: the ground, or the still water over a hollow. */
+export function surfaceOf(ground: Ground, x: number, z: number): number {
+  return ground.surface ? ground.surface(x, z) : ground.height(x, z);
+}
+
+/**
+ * The nearest water within `reach`, sampled in rings around the body. Null when
+ * the body is on dry ground with no pond close enough to touch.
+ */
+export function nearestWater(
+  ground: Ground,
+  x: number,
+  z: number,
+  reach: number,
+): { x: number; z: number; distance: number } | null {
+  if (ground.height(x, z) < TERRAIN.water) return { x, z, distance: 0 };
+  const directions = 24;
+  const step = 0.25;
+  for (let distance = step; distance <= reach + 1e-9; distance += step) {
+    for (let i = 0; i < directions; i++) {
+      const angle = (i / directions) * Math.PI * 2;
+      const px = x + Math.cos(angle) * distance;
+      const pz = z + Math.sin(angle) * distance;
+      if (ground.height(px, pz) < TERRAIN.water) return { x: px, z: pz, distance };
+    }
+  }
+  return null;
 }
 
 /** Noise at every ground vertex. The page asks the world worker for this. */
@@ -87,6 +124,14 @@ export class Terrain {
     // Same split as PlaneGeometry: a-b-d when fx + fz <= 1, otherwise b-c-d.
     if (fx + fz <= 1) return h00 * (1 - fx - fz) + h01 * fz + h10 * fx;
     return h01 * (1 - fx) + h11 * (fx + fz - 1) + h10 * (1 - fz);
+  }
+
+  /**
+   * What a foot stands on. Hollows below the water line are a flat pond, so a
+   * body walks on the water instead of sinking to the bottom.
+   */
+  surface(x: number, z: number): number {
+    return Math.max(this.height(x, z), TERRAIN.water);
   }
 
   /**

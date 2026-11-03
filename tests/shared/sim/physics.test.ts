@@ -87,6 +87,16 @@ describe('stepPhysics', () => {
     expect(flat.entities[0]).toMatchObject({ x: 2, z: 3, y: 0.08, vx: 0, vz: 0 });
   });
 
+  it('floats a loose body on the pond surface', () => {
+    const pond = world({
+      terrain: { height: () => -2, surface: () => -0.8, inside: () => true },
+      entities: [apple({ x: 2, z: 3 })],
+    });
+    stepPhysics(pond, body, 1 / 60);
+    expect(pond.entities[0]).toMatchObject({ x: 2, z: 3, vx: 0, vz: 0 });
+    expect(pond.entities[0].y).toBeCloseTo(-0.72);
+  });
+
   it('stops a loose body at the round island edge', () => {
     const land = (x: number, z: number, margin = 0): boolean => Math.hypot(x, z) < 6 - margin;
     const edge = world({

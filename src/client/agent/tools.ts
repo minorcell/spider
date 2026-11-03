@@ -2,7 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import type { GoalOutcome, SimSession } from '../../shared/sim/session.js';
 import type { NearEntity, Observation, Sense } from '../../shared/state.js';
-import { CARRY_LIMIT } from '../../shared/config.js';
+import { CARRY_LIMIT, GAIT } from '../../shared/config.js';
 import { GRASS_VIEW, REACH, VIEW_DISTANCE } from '../../shared/world.js';
 import type { MemoryApi } from '../journal/diary.js';
 
@@ -50,6 +50,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         `走进草丛后距离会缩到 ${GRASS_VIEW}。observation.view 是这一次实际看见的距离。` +
         'observation.beyond 是超出视线的数目，observation.hidden 是被墙体或山丘挡住的数目；hiddenByWall 和 hiddenByGround 分别是墙体、山丘造成的部分。' +
         `inReach 表示水平距离在 ${REACH} 以内，而且没有被挡住。` +
+        'observation.self.wet 为真表示你正站在水里；self.water 是最近的水，给出 x、z、distance 和相对你的 bearing，附近没有水时是 null。' +
         `observation.self.carrying 是你背上的东西，先背上的在前，空着是 []，最多 ${CARRY_LIMIT} 件。observation.self.home 为真表示你在巢里。observation.self.cover 为 grass 表示你站在草丛里。` +
         'observation.self.ahead 是你面前这一段：open 是沿着朝向还能走多远；by 为 wall 时 id 和 kind 是挡住的固体，slope 是陡坡，clear 是这段是空的。' +
         'observation.self.ways 是已经写好的短句，告诉你相对朝向转多少度之后能走多远，正数是顺时针。任何固体都用同一套说法。',
@@ -133,6 +134,12 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       }),
       execute: async ({ id }) => finish(await session.eat(id), true),
     }),
+    drink: tool({
+      description:
+        '喝一口够得着的水。水在低洼处的池塘里。self.water 给出最近的水在哪，走到水边再用。附近没有水时 ok 是 false、reason 是 no-water。喝完只改变这一次行动，不会改变你站的地方。',
+      inputSchema: call({}),
+      execute: async () => finish(session.drink(), false),
+    }),
     pick_up: tool({
       description:
         `搬起一件 properties 里有 carryable 的东西。背上最多 ${CARRY_LIMIT} 件，满了再搬的原因是 full。返回 carrying，是背上全部的 id，先背上的在前。` +
@@ -168,9 +175,11 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       execute: async () => finish(await session.sleep(), false),
     }),
     set_height: tool({
-      description: '把身子相对脚下的地面抬高或放低一点。这不是爬山。返回目标和实际抬起的高度。',
+      description:
+        '把身子相对脚下的地面抬高或放低一点。这不是爬山。抬高以后眼睛也跟着高，能看过矮坡和土包；观察范围会跟着变。返回目标和实际抬起的高度。' +
+        `最高 ${GAIT.heightMax}，最低 ${GAIT.heightMin}。`,
       inputSchema: call({
-        level: z.number().min(-0.35).max(0.7).describe('想离地多高。'),
+        level: z.number().min(GAIT.heightMin).max(GAIT.heightMax).describe('想离地多高。'),
       }),
       execute: async ({ level }) => finish(await session.setHeight(level), false),
     }),

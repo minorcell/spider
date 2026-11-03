@@ -1,6 +1,19 @@
 import { propertiesOf } from './kinds.js';
 import { aheadAt, senseBody, waysAt, type Ahead, type NearbySolid } from './sense.js';
-import { grassHere, groundOccluded, insideHome, occluded } from './sight.js';
+import { EYE_HEIGHT, grassHere, groundOccluded, insideHome, occluded, SIGHT_TOP } from './sight.js';
+
+import { nearestWater, surfaceOf, TERRAIN } from './terrain.js';
+
+/** How far a body can feel the nearest water. */
+export const WATER_SENSE = 6;
+
+export interface WaterSpot {
+  x: number;
+  z: number;
+  distance: number;
+  /** Degrees off the heading, clockwise positive. */
+  bearing: number;
+}
 
 /** Serializable simulation state, world state, and the observation format. */
 
@@ -62,6 +75,8 @@ export interface WorldState {
   seed: number;
   terrain: {
     height(x: number, z: number): number;
+    /** What a body stands on; the still water level over a hollow. Absent on fixtures. */
+    surface?(x: number, z: number): number;
     /** True while the point is still on the island. Absent on hand-built fixtures. */
     inside?(x: number, z: number, margin?: number): boolean;
   };
@@ -153,6 +168,10 @@ export interface Observation {
     cover: 'grass' | null;
     /** True while you are inside the nest. */
     home: boolean;
+    /** True while you stand on a pond. */
+    wet: boolean;
+    /** Nearest water within a few meters of the body. */
+    water: WaterSpot | null;
     /** What is on your back, oldest first. Empty when you carry nothing. */
     carrying: Carried[];
     /** What your heading runs into within the next stretch. */
@@ -177,6 +196,8 @@ export type Sense = Pick<
   | 'speed'
   | 'cover'
   | 'home'
+  | 'wet'
+  | 'water'
   | 'carrying'
   | 'ahead'
 > & {
@@ -201,6 +222,7 @@ function round3(value: number): number {
 
 /** Degrees off the heading. 0 is straight ahead, clockwise positive. */
 function bearingFrom(dx: number, dz: number, heading: number): number {
+  if (dx === 0 && dz === 0) return 0;
   return Math.round(wrapDegrees((Math.atan2(dx, -dz) * 180) / Math.PI - heading) * 10) / 10;
 }
 
@@ -217,17 +239,28 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
   const heading = toHeading(state.yaw);
   const px = state.position.x;
   const pz = state.position.z;
-  const height = (x: number, z: number) => world.terrain.height(x, z);
+  const height = (x: number, z: number) => surfaceOf(world.terrain, x, z);
+  const wet = world.terrain.height(px, pz) < TERRAIN.water;
+  const water = nearestWater(world.terrain, px, pz, WATER_SENSE);
   const sense: Sense = {
     x: round3(px),
     y: round3(state.position.y),
     z: round3(pz),
-    ground: round3(world.terrain.height(px, pz)),
+    ground: round3(surfaceOf(world.terrain, px, pz)),
     heading: Math.round(heading * 10) / 10,
     height: round3(state.height),
     speed: round3(state.speed),
     cover: grassHere(px, pz, world.entities) ? 'grass' : null,
     home: insideHome(px, pz),
+    wet,
+    water: water
+      ? {
+          x: round3(water.x),
+          z: round3(water.z),
+          distance: round3(water.distance),
+          bearing: bearingFrom(water.x - px, water.z - pz, heading),
+        }
+      : null,
     carrying: world.carrying.map((item) => ({
       id: item.id,
       kind: item.kind,
@@ -256,8 +289,10 @@ export function toObservation(
   const px = state.position.x;
   const pz = state.position.z;
   const height = (x: number, z: number): number => world.terrain.height(x, z);
-  const ground = world.terrain.height(px, pz);
-  const eye = ground + 0.85;
+  const ground = surfaceOf(world.terrain, px, pz);
+  const wet = world.terrain.height(px, pz) < TERRAIN.water;
+  const water = nearestWater(world.terrain, px, pz, WATER_SENSE);
+  const eye = ground + EYE_HEIGHT + state.height;
   for (const entity of world.entities) {
     const dx = entity.x - px;
     const dz = entity.z - pz;
@@ -267,7 +302,8 @@ export function toObservation(
       continue;
     }
     const wall = occluded(px, pz, entity.x, entity.z, world.blocks, entity.id, eye);
-    const rise = !wall && groundOccluded(px, pz, eye, entity.x, entity.y + 0.2, entity.z, height);
+    const rise =
+      !wall && groundOccluded(px, pz, eye, entity.x, entity.y + SIGHT_TOP, entity.z, height);
     if (wall || rise) {
       hidden += 1;
       if (wall) hiddenByWall += 1;
@@ -314,6 +350,15 @@ export function toObservation(
       speed: round3(state.speed),
       cover: grassHere(px, pz, world.entities) ? 'grass' : null,
       home: insideHome(px, pz),
+      wet,
+      water: water
+        ? {
+            x: round3(water.x),
+            z: round3(water.z),
+            distance: round3(water.distance),
+            bearing: bearingFrom(water.x - px, water.z - pz, heading),
+          }
+        : null,
       carrying: carrying.map((item) => ({
         id: item.id,
         kind: item.kind,
@@ -342,7 +387,7 @@ export function toNear(
   const px = state.position.x;
   const pz = state.position.z;
   const height = (x: number, z: number): number => world.terrain.height(x, z);
-  const eye = world.terrain.height(px, pz) + 0.85;
+  const eye = surfaceOf(world.terrain, px, pz) + EYE_HEIGHT + state.height;
   const near: NearEntity[] = [];
   for (const entity of world.entities) {
     if (!canAct(entity.kind)) continue;
@@ -352,7 +397,7 @@ export function toNear(
     const vertical = Math.abs(entity.y - state.position.y);
     if (distance > reach || vertical > reachY) continue;
     if (occluded(px, pz, entity.x, entity.z, world.blocks, entity.id, eye)) continue;
-    if (groundOccluded(px, pz, eye, entity.x, entity.y + 0.2, entity.z, height)) continue;
+    if (groundOccluded(px, pz, eye, entity.x, entity.y + SIGHT_TOP, entity.z, height)) continue;
     near.push({
       id: entity.id,
       kind: entity.kind,

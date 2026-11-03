@@ -57,9 +57,26 @@ export function occluded(
   return false;
 }
 
+/** How high the eyes sit above the ground under the body. */
+export const EYE_HEIGHT = 0.85;
+
+/**
+ * How far above an anchor its visible top sits. A look aims at the top of a
+ * thing, not at the point where it touches the ground.
+ */
+export const SIGHT_TOP = 0.35;
+
+/**
+ * How far above the line a ridge has to stand before it hides a target. The
+ * spider is about a body high, so a low bump is not a wall.
+ */
+export const GROUND_CLEARANCE = 0.8;
+
 /**
  * A rise in the ground hides the far point. Samples the horizontal span and
- * compares each ground height with the eye-to-target ray.
+ * compares each ground height with the eye-to-target ray. A small bump is not
+ * enough: the ridge has to stand about a body high above the line, or a gentle
+ * slope would hide half the island.
  */
 export function groundOccluded(
   x0: number,
@@ -69,7 +86,7 @@ export function groundOccluded(
   y1: number,
   z1: number,
   height: (x: number, z: number) => number,
-  clearance = 0.12,
+  clearance = GROUND_CLEARANCE,
 ): boolean {
   const dx = x1 - x0;
   const dz = z1 - z0;
@@ -82,6 +99,51 @@ export function groundOccluded(
     if (ground > y0 + (y1 - y0) * t + clearance) return true;
   }
   return false;
+}
+
+/**
+ * The ground a look can reach, one point per bearing. Each ray marches out and
+ * stops at the first ridge or wall that hides what is behind it. A clear look
+ * is still a circle; a valley with a bank across it is a bite out of the shape.
+ */
+export function sightOutline(
+  x: number,
+  z: number,
+  eye: number,
+  view: number,
+  height: (x: number, z: number) => number,
+  blocks: readonly Block[],
+  segments = 72,
+  step = 0.25,
+): { x: number; z: number }[] {
+  const points: { x: number; z: number }[] = [];
+  const outer = Math.max(0, view);
+  const steps = Math.max(1, Math.ceil(outer / step));
+  for (let i = 0; i < segments; i++) {
+    const angle = (i / segments) * Math.PI * 2;
+    const dx = Math.sin(angle);
+    const dz = -Math.cos(angle);
+    let horizon = Number.NEGATIVE_INFINITY;
+    let reach = 0;
+    if (outer <= 0) {
+      points.push({ x, z });
+      continue;
+    }
+    for (let s = 1; s <= steps; s++) {
+      const r = Math.min(outer, s * step);
+      const px = x + dx * r;
+      const pz = z + dz * r;
+      const ground = height(px, pz);
+      const slope = (ground + SIGHT_TOP - eye) / r;
+      if (slope < horizon) break;
+      if (blocks.length > 0 && occluded(x, z, px, pz, blocks, '', eye)) break;
+      horizon = Math.max(horizon, (ground - eye - GROUND_CLEARANCE) / r);
+      reach = r;
+      if (r >= outer) break;
+    }
+    points.push({ x: x + dx * reach, z: z + dz * reach });
+  }
+  return points;
 }
 
 export function grassHere(x: number, z: number, entities: readonly EntityState[]): boolean {

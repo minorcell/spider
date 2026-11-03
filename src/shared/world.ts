@@ -210,8 +210,8 @@ function scatter(
   return entities;
 }
 
-/** Deep enough that a loose body is in the water and should not be placed. */
-const WATER = -0.7;
+/** Water fills every hollow below this level, so nothing is placed in it. */
+const WATER = TERRAIN.water;
 const SETTLE_STEPS = 30;
 const SETTLE_DT = 1 / 15;
 
@@ -229,6 +229,7 @@ export function settle(
   avoid?: { x: number; z: number },
 ): { x: number; z: number } | null {
   const spec = kindOf(kind)?.physics;
+  if (terrain.height(start.x, start.z) <= WATER) return null;
   if (!spec?.loose) return { x: start.x, z: start.z };
 
   const entity: EntityState = {
@@ -278,7 +279,7 @@ export function settle(
   );
   const asleep = entity.vx === 0 && entity.vz === 0;
   if (asleep && slope > PHYSICS.sleepSlope) return null;
-  if (terrain.height(x, z) < WATER) return null;
+  if (terrain.height(x, z) <= WATER) return null;
   if (Math.hypot(x, z) > TERRAIN.island * 0.7) return null;
   if (avoid && Math.hypot(avoid.x - x, avoid.z - z) < SPROUT_CLEAR) return null;
   if (placed.some((point) => Math.hypot(point.x - x, point.z - z) < MIN_GAP)) return null;
@@ -321,6 +322,7 @@ function roll(
   const radius = Math.hypot(x, z);
   if (radius < minFromHome || radius > TERRAIN.island * 0.72) return null;
   const ground = terrain.height(x, z);
+  if (ground <= WATER) return null;
   const slope =
     Math.hypot(terrain.height(x + 0.8, z) - ground, terrain.height(x, z + 0.8) - ground) / 0.8;
   if (slope > 0.32) return null;

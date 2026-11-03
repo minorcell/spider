@@ -108,6 +108,25 @@ describe('toSense', () => {
   });
 });
 
+describe('water sense', () => {
+  it('feels the nearest pond within reach', () => {
+    const sense = toSense(spider(), world({ terrain: { height: (x) => (x > 1 ? -2 : 0) } }));
+    expect(sense.wet).toBe(false);
+    expect(sense.water).toMatchObject({ x: 1.25, z: 0, distance: 1.25, bearing: 90 });
+  });
+
+  it('reports standing on the water surface', () => {
+    const sense = toSense(spider(), world({ terrain: { height: () => -2, surface: () => -0.8 } }));
+    expect(sense.wet).toBe(true);
+    expect(sense.ground).toBe(-0.8);
+    expect(sense.water).toEqual({ x: 0, z: 0, distance: 0, bearing: 0 });
+  });
+
+  it('reports no water on dry ground', () => {
+    expect(toSense(spider(), world()).water).toBeNull();
+  });
+});
+
 describe('toObservation', () => {
   it('describes a visible entity in reach', () => {
     const seen = toObservation(spider(), world({ entities: [apple()] }), 4, 16, 1.6);
@@ -163,6 +182,19 @@ describe('toObservation', () => {
     expect(seen.hiddenByWall).toBe(1);
     expect(seen.hiddenByGround).toBe(0);
     expect(seen.entities).toEqual([]);
+  });
+
+  it('sees a low apple over a bank once the body is reared up', () => {
+    const bank = (_x: number, z: number): number => (z < -1 && z > -2 ? 1.5 : 0);
+    const spot = world({
+      entities: [apple({ x: 0, y: 0, z: -3 })],
+      terrain: { height: bank },
+    });
+    const low = toObservation(spider({ height: 0 }), spot, 4, 16, 1.6);
+    expect(low.hiddenByGround).toBe(1);
+    const high = toObservation(spider({ height: 1.6 }), spot, 4, 16, 1.6);
+    expect(high.hiddenByGround).toBe(0);
+    expect(high.entities).toHaveLength(1);
   });
 
   it('counts things behind a hill', () => {

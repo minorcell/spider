@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Group, LineSegments, Mesh } from 'three';
 import { buildIsland, groundGeometry } from '../../src/client/groundView.js';
+import { TERRAIN } from '../../src/shared/terrain.js';
 
 describe('groundGeometry', () => {
   it('displaces the plane onto the height field', () => {
@@ -19,7 +20,7 @@ describe('buildIsland', () => {
     const height = (x: number, z: number): number => x * 0.1 + z * 0.2;
     const island = buildIsland(height);
     expect(island).toBeInstanceOf(Group);
-    expect(island.children).toHaveLength(3);
+    expect(island.children).toHaveLength(4);
     expect(island.children[0]).toBeInstanceOf(Mesh);
     const grid = island.children[1];
     const position = (grid as Mesh).geometry.getAttribute('position');
@@ -37,6 +38,10 @@ describe('buildIsland', () => {
     expect(contours.children).toHaveLength(2);
     const lines = (contours.children[0] as LineSegments).geometry.getAttribute('position');
     expect(lines.count).toBeGreaterThan(0);
+    const water = island.children[3] as Mesh;
+    expect(water).toBeInstanceOf(Mesh);
+    expect(water.position.y).toBeCloseTo(TERRAIN.water);
+    expect(water.rotation.x).toBeCloseTo(-Math.PI / 2);
   });
 
   it('lays the same curves on flat ground', () => {

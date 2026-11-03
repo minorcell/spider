@@ -2,7 +2,7 @@ import { Quaternion, Vector3 } from 'three';
 import { PHYSICS } from '../config.js';
 import { kindOf } from '../kinds.js';
 import { BODY_RADIUS, blockedAt } from '../sight.js';
-import { insideLand } from '../terrain.js';
+import { insideLand, surfaceOf } from '../terrain.js';
 import type { EntityState, WorldState } from '../state.js';
 
 // 松散的东西共用这一套：顺坡加速、被身体顶开、彼此挤开，碰到实体就停。
@@ -78,12 +78,12 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
     const { entity, radius } = mover;
     let { vx, vz } = mover;
     const gx =
-      (world.terrain.height(entity.x + EPS, entity.z) -
-        world.terrain.height(entity.x - EPS, entity.z)) /
+      (surfaceOf(world.terrain, entity.x + EPS, entity.z) -
+        surfaceOf(world.terrain, entity.x - EPS, entity.z)) /
       (2 * EPS);
     const gz =
-      (world.terrain.height(entity.x, entity.z + EPS) -
-        world.terrain.height(entity.x, entity.z - EPS)) /
+      (surfaceOf(world.terrain, entity.x, entity.z + EPS) -
+        surfaceOf(world.terrain, entity.x, entity.z - EPS)) /
       (2 * EPS);
     const slope = Math.hypot(gx, gz);
     mover.slope = slope;
@@ -171,7 +171,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       mover.vx = 0;
       mover.vz = 0;
     }
-    mover.entity.y = world.terrain.height(mover.entity.x, mover.entity.z) + CLEARANCE;
+    mover.entity.y = surfaceOf(world.terrain, mover.entity.x, mover.entity.z) + CLEARANCE;
     if (mover.rolls) {
       roll(mover.entity, mover.radius, mover.entity.x - mover.x0, mover.entity.z - mover.z0);
     }
