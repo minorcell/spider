@@ -186,6 +186,9 @@ export class ObserveOverlay {
               ? '挡住'
               : '视线外';
       const name = NAME[entity.kind] ?? entity.kind;
+      const rise = entity.y - observation.self.y;
+      const climb =
+        Math.abs(rise) < 0.05 ? '' : rise > 0 ? `　高 ${meters(rise)}` : `　低 ${meters(-rise)}`;
       let pin = this.#nodes.get(entity.id);
       if (!pin) {
         pin = this.#layer.ownerDocument.createElement('span');
@@ -197,7 +200,7 @@ export class ObserveOverlay {
         pin.dataset.state = state;
         paintPin(pin, state);
       }
-      const label = `${entity.id}　${name}　${note}`;
+      const label = `${entity.id}　${name}　${note}${climb}`;
       if (pin.textContent !== label) pin.textContent = label;
       this.#at.set(entity.id, { x: entity.x, y: ground(entity.x, entity.z) + 0.4, z: entity.z });
     }
@@ -247,12 +250,18 @@ export class ObserveOverlay {
         ? '在草里'
         : '在空地上';
     return [
-      `${where}　朝向 ${observation.self.heading}°　速度 ${observation.self.speed}`,
+      `${where}　地面 ${meters(observation.self.ground)} 米　离地 ${meters(observation.self.height)} 米`,
+      `朝向 ${observation.self.heading}°　速度 ${observation.self.speed}`,
       `看见 ${observation.view}　够得着 ${REACH}　${front}`,
       `背上 ${carrying}　超出视线 ${observation.beyond}　被挡住 ${observation.hidden}`,
       ...observation.self.ways,
     ].join('\n');
   }
+}
+
+function meters(value: number): string {
+  const text = (Math.round(value * 10) / 10).toFixed(1);
+  return text.endsWith('.0') ? text.slice(0, -2) : text;
 }
 
 function ringGeometry(): BufferGeometry {

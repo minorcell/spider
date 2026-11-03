@@ -93,6 +93,21 @@ describe('ObserveOverlay', () => {
     expect(readout.textContent).toContain('被挡住');
   });
 
+  it('shows the ground height and each target rise', () => {
+    const overlay = new ObserveOverlay(parent);
+    const entities = [
+      entity({ id: 'apple-high', x: 2, y: 2.5, z: 0 }),
+      entity({ id: 'apple-low', x: -2, y: -0.5, z: 0 }),
+    ];
+    overlay.sync(true, camera(), fakeSpider(0, 0), world({ entities }), view);
+    const pins = parent.querySelector('#observe-pins')!;
+    expect(pins.textContent).toContain('高 2.5');
+    expect(pins.textContent).toContain('低 0.5');
+    const readout = parent.querySelector('#observe-readout')!;
+    expect(readout.textContent).toContain('地面 0 米');
+    expect(readout.textContent).toContain('离地 0 米');
+  });
+
   it('reports grass cover and what is carried', () => {
     const overlay = new ObserveOverlay(parent);
     const grass = entity({
