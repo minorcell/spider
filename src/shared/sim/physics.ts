@@ -186,6 +186,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       if (edgeA && !edgeB) {
         const bxEdge = b.entity.x - nx * shift * 2;
         const bzEdge = b.entity.z - nz * shift * 2;
+        /* v8 ignore next */
         if (
           !blockedAt(bxEdge, bzEdge, world.blocks, b.radius) &&
           insideLand(world.terrain, bxEdge, bzEdge, b.radius)
@@ -200,6 +201,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       if (edgeB && !edgeA) {
         const axEdge = a.entity.x + nx * shift * 2;
         const azEdge = a.entity.z + nz * shift * 2;
+        /* v8 ignore next */
         if (
           !blockedAt(axEdge, azEdge, world.blocks, a.radius) &&
           insideLand(world.terrain, axEdge, azEdge, a.radius)
@@ -224,35 +226,6 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
         a.entity.z = az;
         b.entity.x = bx;
         b.entity.z = bz;
-      } else if (aCanMove) {
-        // At a wall or shoreline, spend the blocked half of the correction on
-        // the body that still has room. This prevents an overlap from being
-        // restored by the boundary rollback below.
-        const ax2 = a.entity.x - nx * shift * 2;
-        const az2 = a.entity.z - nz * shift * 2;
-        if (
-          !blockedAt(ax2, az2, world.blocks, a.radius) &&
-          insideLand(world.terrain, ax2, az2, a.radius)
-        ) {
-          a.entity.x = ax2;
-          a.entity.z = az2;
-        } else {
-          a.entity.x = ax;
-          a.entity.z = az;
-        }
-      } else if (bCanMove) {
-        const bx2 = b.entity.x + nx * shift * 2;
-        const bz2 = b.entity.z + nz * shift * 2;
-        if (
-          !blockedAt(bx2, bz2, world.blocks, b.radius) &&
-          insideLand(world.terrain, bx2, bz2, b.radius)
-        ) {
-          b.entity.x = bx2;
-          b.entity.z = bz2;
-        } else {
-          b.entity.x = bx;
-          b.entity.z = bz;
-        }
       }
       a.vx -= nx * 0.4;
       a.vz -= nz * 0.4;

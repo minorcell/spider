@@ -253,6 +253,16 @@ describe('stepPhysics', () => {
     expect(Math.hypot(b.x - a.x, b.z - a.z)).toBeGreaterThanOrEqual(0.72 - 1e-6);
   });
 
+  it('resolves a collision toward the side with room at a shore', () => {
+    const land = (x: number, z: number, margin = 0): boolean => Math.hypot(x, z) < 6 - margin;
+    const shore = world({
+      terrain: { height: () => 0, inside: land },
+      entities: [apple({ id: 'a', x: 5.2 }), apple({ id: 'b', x: 5.7 })],
+    });
+    stepPhysics(shore, body, 1 / 60);
+    expect(shore.entities[0].x).toBeGreaterThan(5.2);
+  });
+
   it('ignores two apples at one exact point', () => {
     const pair = world({ entities: [apple({ id: 'a' }), apple({ id: 'b' })] });
     stepPhysics(pair, body, 1 / 60);

@@ -350,4 +350,20 @@ describe('ObserveOverlay', () => {
     expect(pos.getX(1)).toBeGreaterThan(-2);
     expect(pos.getX(1)).toBeLessThan(0);
   });
+
+  it('keeps the ahead line inside a circular shore', () => {
+    const overlay = new ObserveOverlay(parent);
+    const inside = (x: number, z: number, margin = 0): boolean => Math.hypot(x, z) < 3 - margin;
+    overlay.sync(
+      true,
+      camera(),
+      fakeSpider(2, 0),
+      world({ terrain: { height: flat, inside } }),
+      view,
+    );
+    const pos = (overlay.object.children[2] as Line).geometry.getAttribute(
+      'position',
+    ) as BufferAttribute;
+    expect(pos.getX(1)).toBeLessThan(3);
+  });
 });
