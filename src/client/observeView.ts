@@ -163,7 +163,11 @@ export class ObserveOverlay {
     const yaw = spider.yaw;
     const ahead = this.#aheadAt;
     if (ahead.x !== x || ahead.z !== z || ahead.heading !== yaw) {
-      const felt = aheadAt(x, z, toHeading(yaw), walk, world.blocks);
+      const inside = world.terrain.inside
+        ? (px: number, pz: number, margin?: number): boolean =>
+            world.terrain.inside!(px, pz, margin)
+        : undefined;
+      const felt = aheadAt(x, z, toHeading(yaw), walk, world.blocks, inside);
       const open = Math.max(felt.open, 0.6);
       ahead.x = x;
       ahead.z = z;

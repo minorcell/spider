@@ -1,6 +1,6 @@
 import { Euler, Group, MathUtils, Matrix4, Mesh, Vector3 } from 'three';
 import { BONES, GAIT, MOUNTS } from '../config.js';
-import { TERRAIN } from '../terrain.js';
+import { WORLD_RADIUS } from '../terrain.js';
 import type { SpiderState } from '../state.js';
 import { IDLE_CONTROLS, type Controls } from '../types.js';
 import { floatHeight, WATER, waterPace, type Water } from '../water.js';
@@ -76,7 +76,7 @@ export class Spider {
   #waterNow: Water = NO_WATER;
   /** True while the water is deep enough that the feet leave the bottom. */
   #swimming = false;
-  #limit = TERRAIN.island;
+  #limit = WORLD_RADIUS;
   /** Stays on while the body is still turning or walking, so feet are not glued mid-settle. */
   #stepping = false;
   /** How long the body has been fully still, in seconds. */
@@ -95,7 +95,7 @@ export class Spider {
   }
 
   /** The ground the feet plant on. Reseeds the stance for the new surface. */
-  bindGround(ground: (x: number, z: number) => number, limit = TERRAIN.island): void {
+  bindGround(ground: (x: number, z: number) => number, limit = WORLD_RADIUS): void {
     this.#ground = ground;
     this.#limit = limit;
     this.fall = 0;

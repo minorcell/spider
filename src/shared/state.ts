@@ -2,8 +2,8 @@ import { propertiesOf } from './kinds.js';
 import { aheadAt, senseBody, waysAt, type Ahead, type NearbySolid } from './sense.js';
 import { EYE_HEIGHT, grassHere, groundOccluded, insideHome, occluded, SIGHT_TOP } from './sight.js';
 
-import { surfaceOf, TERRAIN } from './terrain.js';
-import { floatsAt, nearestShore, readWater } from './water.js';
+import { surfaceOf } from './terrain.js';
+import { floatsAt, nearestShore, readWater, waterAt } from './water.js';
 
 /** How far a body can feel the nearest water and its shoreline. */
 export const WATER_SENSE = 8;
@@ -277,8 +277,11 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
   const pz = state.position.z;
   const height = (x: number, z: number) => surfaceOf(world.terrain, x, z);
   const ground = surfaceOf(world.terrain, px, pz);
+  const inside = world.terrain.inside
+    ? (x: number, z: number, margin?: number): boolean => world.terrain.inside!(x, z, margin)
+    : undefined;
   const eye = ground + EYE_HEIGHT + state.height;
-  const waterDepth = Math.max(0, TERRAIN.water - world.terrain.height(px, pz));
+  const waterDepth = waterAt(world.terrain, px, pz).depth;
   const swimming = floatsAt(world.terrain, px, pz);
   const water = readWater(world.terrain, px, pz, WATER_SENSE);
   const shore = waterDepth > 0 ? nearestShore(world.terrain, px, pz, WATER_SENSE) : null;
@@ -319,9 +322,9 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
       stage: item.stage,
       properties: propertiesOf(item.kind),
     })),
-    ahead: aheadAt(px, pz, heading, height, world.blocks),
+    ahead: aheadAt(px, pz, heading, height, world.blocks, inside),
   };
-  if (withWays) sense.ways = waysAt(px, pz, heading, height, world.blocks);
+  if (withWays) sense.ways = waysAt(px, pz, heading, height, world.blocks, inside);
   return sense;
 }
 
@@ -342,7 +345,10 @@ export function toObservation(
   const pz = state.position.z;
   const height = (x: number, z: number): number => world.terrain.height(x, z);
   const ground = surfaceOf(world.terrain, px, pz);
-  const waterDepth = Math.max(0, TERRAIN.water - world.terrain.height(px, pz));
+  const inside = world.terrain.inside
+    ? (x: number, z: number, margin?: number): boolean => world.terrain.inside!(x, z, margin)
+    : undefined;
+  const waterDepth = waterAt(world.terrain, px, pz).depth;
   const swimming = floatsAt(world.terrain, px, pz);
   const water = readWater(world.terrain, px, pz, WATER_SENSE);
   const shore = waterDepth > 0 ? nearestShore(world.terrain, px, pz, WATER_SENSE) : null;
@@ -386,6 +392,7 @@ export function toObservation(
     heading,
     (x, z) => world.terrain.height(x, z),
     world.blocks,
+    inside,
   );
   return {
     time: round3(state.time),

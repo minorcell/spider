@@ -1,5 +1,5 @@
 import { GAIT } from './config.js';
-import { blockAt } from './sight.js';
+import { blockAt, BODY_RADIUS } from './sight.js';
 import type { Block } from './state.js';
 
 /** How far a look along the heading bothers to check. */
@@ -12,7 +12,7 @@ export interface Ahead {
   /** Meters you can still walk along your heading. 0 means you are against it. */
   open: number;
   /** clear: nothing in that stretch. wall: a solid. slope: the ground rises too fast. */
-  by: 'clear' | 'wall' | 'slope';
+  by: 'clear' | 'wall' | 'slope' | 'edge';
   /** The solid's id, when by is wall. */
   id: string | null;
   kind: 'nest' | 'solid' | null;
@@ -38,7 +38,7 @@ function kindOfBlock(id: string): 'nest' | 'solid' {
 
 interface Probe {
   open: number;
-  by: 'clear' | 'wall' | 'slope';
+  by: 'clear' | 'wall' | 'slope' | 'edge';
   id: string | null;
   kind: 'nest' | 'solid' | null;
 }
@@ -54,10 +54,11 @@ export function aheadAt(
   heading: number,
   height: (x: number, z: number) => number,
   blocks: readonly Block[],
+  inside?: (x: number, z: number, margin?: number) => boolean,
 ): Ahead {
   const here = blockAt(x, z, blocks);
   if (here) return { open: 0, by: 'wall', id: here.id, kind: kindOfBlock(here.id) };
-  return probe(x, z, heading, height, blocks);
+  return probe(x, z, heading, height, blocks, inside);
 }
 
 /** Heading 0 faces world -Z. Clockwise is positive, matching the body's turn. */
@@ -67,6 +68,7 @@ function probe(
   heading: number,
   height: (x: number, z: number) => number,
   blocks: readonly Block[],
+  inside?: (x: number, z: number, margin?: number) => boolean,
 ): Probe {
   const rad = (heading * Math.PI) / 180;
   const fx = Math.sin(rad);
@@ -75,6 +77,8 @@ function probe(
   for (let traveled = STEP; traveled <= AHEAD + 1e-6; traveled += STEP) {
     const nx = x + fx * traveled;
     const nz = z + fz * traveled;
+    if (inside && !inside(nx, nz, BODY_RADIUS))
+      return { open: round(traveled - STEP), by: 'edge', id: null, kind: null };
     const ground = height(nx, nz);
     const hit = blockAt(nx, nz, blocks);
     if (hit) return { open: round(traveled), by: 'wall', id: hit.id, kind: kindOfBlock(hit.id) };
@@ -108,8 +112,9 @@ export function waysAt(
   heading: number,
   height: (x: number, z: number) => number,
   blocks: readonly Block[],
+  inside?: (x: number, z: number, margin?: number) => boolean,
 ): string[] {
-  return waysFrom(x, z, heading, height, blocks);
+  return waysFrom(x, z, heading, height, blocks, inside);
 }
 
 /** Sentences the agent can follow: which way is walkable, and how far. */
@@ -119,11 +124,12 @@ function waysFrom(
   heading: number,
   height: (x: number, z: number) => number,
   blocks: readonly Block[],
+  inside?: (x: number, z: number, margin?: number) => boolean,
 ): string[] {
   const samples = [];
   for (let step = 0; step < 24; step++) {
     const absolute = step * 15;
-    const seen = probe(x, z, absolute, height, blocks);
+    const seen = probe(x, z, absolute, height, blocks, inside);
     samples.push({ bearing: wrap(absolute - heading), open: seen.open });
   }
   const forward = samples.reduce((a, b) => (Math.abs(a.bearing) < Math.abs(b.bearing) ? a : b));
@@ -157,8 +163,9 @@ export function senseBody(
   heading: number,
   height: (x: number, z: number) => number,
   blocks: readonly Block[],
+  inside?: (x: number, z: number, margin?: number) => boolean,
 ): { ahead: Ahead; nearby: NearbySolid[]; ways: string[] } {
-  const ahead = aheadAt(x, z, heading, height, blocks);
+  const ahead = aheadAt(x, z, heading, height, blocks, inside);
 
   const nearby: NearbySolid[] = [];
   for (const block of blocks) {
@@ -176,5 +183,9 @@ export function senseBody(
   }
   nearby.sort((a, b) => a.distance - b.distance);
 
-  return { ahead, nearby: nearby.slice(0, 8), ways: waysFrom(x, z, heading, height, blocks) };
+  return {
+    ahead,
+    nearby: nearby.slice(0, 8),
+    ways: waysFrom(x, z, heading, height, blocks, inside),
+  };
 }

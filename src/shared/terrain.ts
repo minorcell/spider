@@ -62,7 +62,9 @@ export function nearestWater(
   z: number,
   reach: number,
 ): { x: number; z: number; distance: number } | null {
-  if (ground.height(x, z) < TERRAIN.water) return { x, z, distance: 0 };
+  const wet = (px: number, pz: number): boolean =>
+    (ground.surface ? ground.surface(px, pz) : TERRAIN.water) > ground.height(px, pz);
+  if (wet(x, z)) return { x, z, distance: 0 };
   const directions = 24;
   const step = 0.25;
   for (let distance = step; distance <= reach + 1e-9; distance += step) {
@@ -70,7 +72,7 @@ export function nearestWater(
       const angle = (i / directions) * Math.PI * 2;
       const px = x + Math.cos(angle) * distance;
       const pz = z + Math.sin(angle) * distance;
-      if (ground.height(px, pz) < TERRAIN.water) return { x: px, z: pz, distance };
+      if (wet(px, pz)) return { x: px, z: pz, distance };
     }
   }
   return null;

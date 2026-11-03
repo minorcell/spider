@@ -172,6 +172,12 @@ describe('water sense', () => {
     expect(sense.swimming).toBe(false);
   });
 
+  it('reports depth from a custom water surface', () => {
+    const sense = toSense(spider(), world({ terrain: { height: () => -2, surface: () => -0.25 } }));
+    expect(sense.waterDepth).toBeCloseTo(1.75);
+    expect(sense.swimming).toBe(true);
+  });
+
   it('reports no water on dry ground', () => {
     expect(toSense(spider(), world()).water).toBeNull();
   });

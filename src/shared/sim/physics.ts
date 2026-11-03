@@ -181,10 +181,79 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       const nx = dx / distance;
       const nz = dz / distance;
       const shift = (min - distance) / 2;
-      a.entity.x -= nx * shift;
-      a.entity.z -= nz * shift;
-      b.entity.x += nx * shift;
-      b.entity.z += nz * shift;
+      const edgeA = !insideLand(world.terrain, a.entity.x, a.entity.z, a.radius + 0.05);
+      const edgeB = !insideLand(world.terrain, b.entity.x, b.entity.z, b.radius + 0.05);
+      if (edgeA && !edgeB) {
+        const bxEdge = b.entity.x - nx * shift * 2;
+        const bzEdge = b.entity.z - nz * shift * 2;
+        if (
+          !blockedAt(bxEdge, bzEdge, world.blocks, b.radius) &&
+          insideLand(world.terrain, bxEdge, bzEdge, b.radius)
+        ) {
+          b.entity.x = bxEdge;
+          b.entity.z = bzEdge;
+          a.vx = a.vz = 0;
+          b.vx = b.vz = 0;
+          continue;
+        }
+      }
+      if (edgeB && !edgeA) {
+        const axEdge = a.entity.x + nx * shift * 2;
+        const azEdge = a.entity.z + nz * shift * 2;
+        if (
+          !blockedAt(axEdge, azEdge, world.blocks, a.radius) &&
+          insideLand(world.terrain, axEdge, azEdge, a.radius)
+        ) {
+          a.entity.x = axEdge;
+          a.entity.z = azEdge;
+          a.vx = a.vz = 0;
+          b.vx = b.vz = 0;
+          continue;
+        }
+      }
+      const ax = a.entity.x - nx * shift;
+      const az = a.entity.z - nz * shift;
+      const bx = b.entity.x + nx * shift;
+      const bz = b.entity.z + nz * shift;
+      const aCanMove =
+        !blockedAt(ax, az, world.blocks, a.radius) && insideLand(world.terrain, ax, az, a.radius);
+      const bCanMove =
+        !blockedAt(bx, bz, world.blocks, b.radius) && insideLand(world.terrain, bx, bz, b.radius);
+      if (aCanMove && bCanMove) {
+        a.entity.x = ax;
+        a.entity.z = az;
+        b.entity.x = bx;
+        b.entity.z = bz;
+      } else if (aCanMove) {
+        // At a wall or shoreline, spend the blocked half of the correction on
+        // the body that still has room. This prevents an overlap from being
+        // restored by the boundary rollback below.
+        const ax2 = a.entity.x - nx * shift * 2;
+        const az2 = a.entity.z - nz * shift * 2;
+        if (
+          !blockedAt(ax2, az2, world.blocks, a.radius) &&
+          insideLand(world.terrain, ax2, az2, a.radius)
+        ) {
+          a.entity.x = ax2;
+          a.entity.z = az2;
+        } else {
+          a.entity.x = ax;
+          a.entity.z = az;
+        }
+      } else if (bCanMove) {
+        const bx2 = b.entity.x + nx * shift * 2;
+        const bz2 = b.entity.z + nz * shift * 2;
+        if (
+          !blockedAt(bx2, bz2, world.blocks, b.radius) &&
+          insideLand(world.terrain, bx2, bz2, b.radius)
+        ) {
+          b.entity.x = bx2;
+          b.entity.z = bz2;
+        } else {
+          b.entity.x = bx;
+          b.entity.z = bz;
+        }
+      }
       a.vx -= nx * 0.4;
       a.vz -= nz * 0.4;
       b.vx += nx * 0.4;

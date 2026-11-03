@@ -25,6 +25,14 @@ describe('waterAt', () => {
     expect(wet.depth).toBeCloseTo(1.5);
     expect(waterAt(ground, -1, 0)).toEqual({ surface: Number.NEGATIVE_INFINITY, depth: 0 });
   });
+
+  it('uses a terrain-provided water surface when one is available', () => {
+    const ground = {
+      height: () => -2,
+      surface: () => -0.25,
+    };
+    expect(waterAt(ground, 0, 0)).toEqual({ surface: -0.25, depth: 1.75 });
+  });
 });
 
 describe('water pace', () => {

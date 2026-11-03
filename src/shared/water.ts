@@ -35,14 +35,26 @@ export interface Water {
 
 const DRY: Water = Object.freeze({ surface: Number.NEGATIVE_INFINITY, depth: 0 });
 
+function depthAt(
+  ground: { height(x: number, z: number): number; surface?: (x: number, z: number) => number },
+  x: number,
+  z: number,
+): number {
+  const height = ground.height(x, z);
+  const surface = ground.surface ? ground.surface(x, z) : TERRAIN.water;
+  return surface - height;
+}
+
 /** The water column at a point. `depth` is zero on dry ground. */
 export function waterAt(
-  ground: { height(x: number, z: number): number },
+  ground: { height(x: number, z: number): number; surface?: (x: number, z: number) => number },
   x: number,
   z: number,
 ): Water {
-  const depth = TERRAIN.water - ground.height(x, z);
-  return depth > 0 ? { surface: TERRAIN.water, depth } : DRY;
+  const height = ground.height(x, z);
+  const surface = ground.surface ? ground.surface(x, z) : TERRAIN.water;
+  const depth = surface - height;
+  return depth > 0 ? { surface, depth } : DRY;
 }
 
 /**
@@ -119,7 +131,7 @@ export function floatHeight(water: Water): number {
 
 /** True when the water is deep enough to hold the spider off the bottom. */
 export function floatsAt(
-  ground: { height(x: number, z: number): number },
+  ground: { height(x: number, z: number): number; surface?: (x: number, z: number) => number },
   x: number,
   z: number,
 ): boolean {
@@ -168,12 +180,12 @@ export function readWater(
 
 /** How far and how deep the connected water runs from a wet point. */
 export function surveyWater(
-  ground: { height(x: number, z: number): number },
+  ground: { height(x: number, z: number): number; surface?: (x: number, z: number) => number },
   x: number,
   z: number,
   reach: number,
 ): WaterSurvey {
-  if (ground.height(x, z) >= TERRAIN.water) return { span: 0, deepest: 0 };
+  if (depthAt(ground, x, z) <= 0) return { span: 0, deepest: 0 };
   let span = 0;
   let deepest = 0;
   for (let i = 0; i < SURVEY_DIRECTIONS; i++) {
@@ -181,10 +193,12 @@ export function surveyWater(
     const dx = Math.cos(angle);
     const dz = Math.sin(angle);
     for (let distance = SURVEY_STEP; distance <= reach + 1e-9; distance += SURVEY_STEP) {
-      const height = ground.height(x + dx * distance, z + dz * distance);
-      if (height >= TERRAIN.water) break;
+      const px = x + dx * distance;
+      const pz = z + dz * distance;
+      const depth = depthAt(ground, px, pz);
+      if (depth <= 0) break;
       span = Math.max(span, distance);
-      deepest = Math.max(deepest, TERRAIN.water - height);
+      deepest = Math.max(deepest, depth);
     }
   }
   return { span, deepest };
@@ -192,18 +206,18 @@ export function surveyWater(
 
 /** The nearest dry ground from a wet body, or null when already dry. */
 export function nearestShore(
-  ground: { height(x: number, z: number): number },
+  ground: { height(x: number, z: number): number; surface?: (x: number, z: number) => number },
   x: number,
   z: number,
   reach: number,
 ): ShoreReading | null {
-  if (ground.height(x, z) >= TERRAIN.water) return null;
+  if (depthAt(ground, x, z) <= 0) return null;
   for (let distance = SURVEY_STEP; distance <= reach + 1e-9; distance += SURVEY_STEP) {
     for (let i = 0; i < SURVEY_DIRECTIONS; i++) {
       const angle = (i / SURVEY_DIRECTIONS) * Math.PI * 2;
       const px = x + Math.cos(angle) * distance;
       const pz = z + Math.sin(angle) * distance;
-      if (ground.height(px, pz) >= TERRAIN.water) return { x: px, z: pz, distance };
+      if (depthAt(ground, px, pz) <= 0) return { x: px, z: pz, distance };
     }
   }
   return null;

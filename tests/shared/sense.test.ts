@@ -36,6 +36,13 @@ describe('senseBody', () => {
     expect(felt.ahead.kind).toBeNull();
   });
 
+  it('reports the round shore before the body leaves the walkable world', () => {
+    const inside = (x: number, z: number, margin = 0): boolean => Math.hypot(x, z) < 3 - margin;
+    const felt = senseBody(2, 0, 0, 90, flat, [], inside);
+    expect(felt.ahead).toEqual({ open: 0.5, by: 'edge', id: null, kind: null });
+    expect(felt.ways.some((line) => line.includes('8 米'))).toBe(false);
+  });
+
   it('overrides everything when the body stands inside a solid', () => {
     const wall = block('nest-n', -1, 1, -1, 1);
     const felt = senseBody(0, 0, 0, 0, flat, [wall]);
