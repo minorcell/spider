@@ -1,7 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import type { GoalOutcome, SimSession } from '../../shared/sim/session.js';
-import type { NearEntity, Observation, Sense } from '../../shared/state.js';
+import type { ActionHint, NearEntity, Observation, Sense, WorldInfo } from '../../shared/state.js';
 import {
   CARRY_LIMIT,
   GAIT,
@@ -21,14 +21,21 @@ import type { MemoryApi } from '../journal/diary.js';
 export interface ToolResult extends GoalOutcome {
   observation?: Observation;
   self?: Sense;
+  /** Current simulation and client-local world clock. */
+  world: WorldInfo;
   /** Present after an absolute turn. */
   heading?: number;
   /** Present after a move or after handling something on the ground. */
-  near?: NearEntity[];
+  /** Always present for spatial tools; empty means there is no actionable nearby object. */
+  near: NearEntity[];
+  hint?: ActionHint;
 }
 
-const NEAR =
-  'near 是现在够得着、能吃或能搬的东西，近的在前。空数组就是没有。要吃或搬就用这里的 id，不要为了确认再 observe。';
+const WORLD =
+  'world 是当前世界上下文：simulationTime 是蜘蛛模拟已经推进的秒数；world.clock.localDate 和 world.clock.localTime 是客户端本地日期和时间；world.clock.phase 是 night、dawn、day 或 dusk；world.clock.daylight 是 0 到 1 的连续日照值。';
+
+const RESULT_CONTRACT =
+  '空间工具结果里的 world 和 near 是当前行动完成后的状态；改变身体的行动还会返回 self。near 永远存在，空数组就是现在没有能吃、能搬或能交互的近处对象。hint 只在有明确的下一步时出现，优先按 hint 处理，不要盲目重复失败的行动。observe 另外返回 observation，里面是这一次看见的东西和 observation.self。';
 
 const thought = z
   .string()
@@ -41,27 +48,90 @@ function call<T extends z.ZodRawShape>(shape: T) {
 }
 
 export function spiderTools(session: SimSession, memory?: MemoryApi) {
-  const finish = (outcome: GoalOutcome, withNear: boolean): ToolResult => {
+  const hintFor = (outcome: GoalOutcome, self: Sense): ActionHint | undefined => {
+    switch (outcome.reason) {
+      case 'blocked':
+        return {
+          code: 'blocked',
+          message: self.ways?.length
+            ? '前方被固体挡住了。按 self.ways 里的转向换一条路，不要继续顶同一个方向。'
+            : '前方被固体挡住了，换一个方向或使用 move_to 绕路。',
+          next: self.ways?.length ? 'turn' : 'move_to',
+        };
+      case 'steep':
+        return {
+          code: 'steep',
+          message: '这段坡太陡。先用 self.ways 找可走方向，或抬高身体后重新观察。',
+          next: 'observe',
+        };
+      case 'no-path':
+        return {
+          code: 'no-path',
+          message: '目标没有找到可走的路线，换一个目标点或先观察环境。',
+          next: 'observe',
+        };
+      case 'out-of-reach':
+        return {
+          code: 'out-of-reach',
+          message: '目标还不在够得着的范围内，先 approach 到它旁边。',
+          next: 'approach',
+        };
+      case 'not-found':
+        return {
+          code: 'stale-target',
+          message: '这个 id 已经不在当前世界里，先 observe 获取新的 id。',
+          next: 'observe',
+        };
+      case 'nothing-to-eat':
+      case 'nothing-to-carry':
+        return {
+          code: 'no-target',
+          message: '当前附近没有符合条件的对象，不要重复调用同一个动作。',
+          next: 'observe',
+        };
+      case 'full':
+        return {
+          code: 'carry-full',
+          message: '背包已经满了，先 drop 或 store 一件再继续搬。',
+          next: 'drop',
+        };
+      case 'no-water':
+        return {
+          code: 'no-water',
+          message: '附近没有够得着的水，先根据 self.water 找到水边。',
+          next: 'observe',
+        };
+      case 'cancelled':
+      case 'timeout':
+        return {
+          code: outcome.reason,
+          message: '行动没有完成，先根据当前 self 和 near 重新决定下一步。',
+          next: 'observe',
+        };
+      default:
+        return undefined;
+    }
+  };
+
+  const finish = (outcome: GoalOutcome): ToolResult => {
     const { halt: _halt, ...rest } = outcome;
     const blocked =
       rest.reason === 'blocked' || rest.reason === 'steep' || rest.reason === 'no-path';
-    const result: ToolResult = { ...rest, self: session.sense(blocked) };
-    if (withNear) result.near = session.near();
+    const self = session.sense(blocked);
+    const hint = hintFor(rest, self);
+    const result: ToolResult = {
+      ...rest,
+      self,
+      world: session.worldInfo(),
+      near: session.near(),
+    };
+    if (hint) result.hint = hint;
     return result;
   };
 
-  return {
+  const tools = {
     observe: tool({
-      description:
-        '停下看看。这是往远处看的唯一行动。返回你在哪里，以及你看得见的东西：位置、stage，还有 properties。' +
-        `不填距离就看 ${VIEW_DISTANCE}，最远也是这么远，没有一次看完这片地方的办法。` +
-        `走进草丛后距离会缩到 ${GRASS_VIEW}；把身子抬到草尖以上就能看远。observation.view 是这一次实际看见的距离。` +
-        'observation.beyond 是超出视线的数目，observation.hidden 是被墙体或山丘挡住的数目；hiddenByWall 和 hiddenByGround 分别是墙体、山丘造成的部分。' +
-        `inReach 表示水平距离在 ${REACH} 以内，而且没有被挡住。` +
-        'observation.self.wet 为真表示你正处在水里；self.waterDepth 是脚下的水深，self.swimming 为真表示水够深、你已经浮起来而不是踩到底。水里移动更慢。self.water 是最近的水，给出 x、z、distance、相对你的 bearing、那里的 depth，以及这段水在你周围最远延伸到多远的 span；附近没有水时是 null。self.shore 只在你在水里时出现，给出最近的干岸 x、z、distance 和 bearing。' +
-        `observation.self.carrying 是你背上的东西，先背上的在前，空着是 []，最多 ${CARRY_LIMIT} 件。observation.self.home 为真表示你在巢里。observation.self.cover 为 grass 表示你站在草丛里。` +
-        'observation.self.ahead 是你面前这一段：open 是沿着朝向还能走多远；by 为 wall 时 id 和 kind 是挡住的固体，slope 是陡坡，clear 是这段是空的。' +
-        'observation.self.ways 是已经写好的短句，告诉你相对朝向转多少度之后能走多远，正数是顺时针。任何固体都用同一套说法。',
+      description: `停下观察远处。默认最多看 ${VIEW_DISTANCE}；草丛会把范围缩到 ${GRASS_VIEW}，抬高身体可以恢复。结果给出可见对象、距离和遮挡；inReach 表示不超过 ${REACH} 且没有被挡住。${WORLD}`,
       inputSchema: call({
         distance: z
           .number()
@@ -70,26 +140,50 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
           .optional()
           .describe(`往外看多远，最多 ${VIEW_DISTANCE}。不填就看这么远。`),
       }),
-      execute: async ({ distance }) => ({
-        ok: true,
-        observation: session.observe(distance ?? VIEW_DISTANCE),
-      }),
+      execute: async ({ distance }) => {
+        const observation = session.observe(distance ?? VIEW_DISTANCE);
+        const world = session.worldInfo();
+        const hint =
+          observation.self.cover === 'grass' && observation.view < VIEW_DISTANCE
+            ? {
+                code: 'view-limited-by-grass',
+                message: `草丛把视野缩短到了 ${observation.view}。先用 set_height 抬高身体，再 observe。`,
+                next: 'set_height',
+              }
+            : world.clock.phase !== 'day' && observation.view < VIEW_DISTANCE
+              ? {
+                  code: 'view-limited-by-light',
+                  message: `现在是${world.clock.phase}，光线把视野缩短到了 ${observation.view}。靠近、换方向或等到更亮时再 observe。`,
+                  next: 'observe',
+                }
+              : observation.beyond > 0 || observation.hidden > 0
+                ? {
+                    code: 'partial-observation',
+                    message: `这次只看到了视野内的对象，还有 ${observation.beyond} 个在视野外、${observation.hidden} 个被遮挡。移动、抬高身体或换方向后再 observe。`,
+                    next: 'observe',
+                  }
+                : undefined;
+        return {
+          ok: true,
+          world,
+          near: session.near(),
+          ...(hint ? { hint } : {}),
+          observation,
+        };
+      },
     }),
     walk: tool({
       description:
-        '顺着现在的朝向走一段路，快到的时候慢下来。负数是后退。大约超过 2 个单位就设 fast，不然你只会慢慢挪。这条路不会自己绕开。返回要走的距离和实际走过的距离。被固体挡住时 ok 是 false、reason 是 blocked；坡太陡是 steep。这时 self.ways 是已经写好的短句，按里面的角度转，不要用同样的参数再顶。' +
-        NEAR,
+        '沿当前朝向走；walk 不会绕障碍，失败后按 hint 或 self.ways 换方向。距离较长时设置 fast。',
       inputSchema: call({
         distance: z.number().describe('顺着朝向走多少单位。正数向前。'),
         fast: z.boolean().optional().describe('为真就跑。距离大约超过 2 个单位时用。'),
       }),
-      execute: async ({ distance, fast }) =>
-        finish(await session.walk(distance, fast ?? false), true),
+      execute: async ({ distance, fast }) => finish(await session.walk(distance, fast ?? false)),
     }),
     turn: tool({
       description:
-        '原地转。填 degrees 转相对角度，填 heading 转到绝对朝向，两个只填一个。正数是顺时针。' +
-        'heading 的 0 是世界的 -Z，范围 -180 到 180。返回要转的度数和实际转过的度数；按 heading 转时还会返回这个朝向。',
+        '原地转。degrees 是相对角度，heading 是绝对朝向；两个只填一个。正数顺时针，heading 的 0 是世界 -Z。',
       inputSchema: call({
         degrees: z.number().optional().describe('相对现在转多少度。正数顺时针。'),
         heading: z
@@ -101,29 +195,25 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       }),
       execute: async ({ degrees, heading }) => {
         if (degrees === undefined) {
-          if (heading === undefined) return finish({ ok: false, reason: 'need-turn' }, false);
-          return { ...finish(await session.turnTo(heading), false), heading };
+          if (heading === undefined) return finish({ ok: false, reason: 'need-turn' });
+          return { ...finish(await session.turnTo(heading)), heading };
         }
-        if (heading !== undefined) return finish({ ok: false, reason: 'ambiguous-turn' }, false);
-        return finish(await session.turn(degrees), false);
+        if (heading !== undefined) return finish({ ok: false, reason: 'ambiguous-turn' });
+        return finish(await session.turn(degrees));
       },
     }),
     move_to: tool({
       description:
-        '走到地上的一个点。挡住的固体由这条路自己绕开，你不用为了绕路再去转身。坡你自己爬。大约超过 2 个单位就设 fast。到了之后，detour 是一句已经写好的话，说明绕开了什么；直线能到时 detour 是 null。哪里都走不过去时 reason 是 no-path。近乎竖直的地方是 steep，被固体卡住是 blocked。' +
-        NEAR,
+        '走到 x、z。move_to 会自动绕开固体；坡仍需自己爬。距离较长时设置 fast，失败后按 hint 重新观察或换目标。',
       inputSchema: call({
         x: z.number().describe('目标的 x，单位。'),
         z: z.number().describe('目标的 z，单位。'),
         fast: z.boolean().optional().describe('走路这一段要不要跑。'),
       }),
-      execute: async ({ x, z: zPos, fast }) =>
-        finish(await session.moveTo(x, zPos, fast ?? false), true),
+      execute: async ({ x, z: zPos, fast }) => finish(await session.moveTo(x, zPos, fast ?? false)),
     }),
     mark: tool({
-      description:
-        '记住、查看、忘掉或回到一个地方。add 把现在站的地方按 name 记下来，note 可以留一句；list 按距离列出所有标记；remove 按 name 忘掉；go 按 name 走回去，会自己绕开固体。' +
-        `最多 ${MARK_LIMIT} 个。name 用用户的语言，短、能认出来，不要用坐标当名字；名字最多 ${MARK_NAME_MAX} 个字，note 最多 ${MARK_NOTE_MAX} 个字，同名会被拒绝。add、list、remove 不改变你站的地方。`,
+      description: `保存和回到有名字的地点。add 记录当前位置，list 查看，remove 删除，go 自动走回去。最多 ${MARK_LIMIT} 个；name 最多 ${MARK_NAME_MAX} 个字，note 最多 ${MARK_NOTE_MAX} 个字。`,
       inputSchema: call({
         command: z
           .enum(['add', 'list', 'remove', 'go'])
@@ -133,19 +223,16 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         fast: z.boolean().optional().describe('go 时路程大约超过 2 个单位就设。'),
       }),
       execute: async ({ command, name, note, fast }) => {
-        if (command === 'list') return { ok: true, marks: session.marks() };
-        if (!name) return { ok: false, reason: 'need-name' };
-        if (command === 'add') return session.mark(name, note);
-        if (command === 'remove') return session.forgetMark(name);
+        if (command === 'list') return { ...finish({ ok: true }), marks: session.marks() };
+        if (!name) return finish({ ok: false, reason: 'need-name' });
+        if (command === 'add') return finish(session.mark(name, note));
+        if (command === 'remove') return finish(session.forgetMark(name));
         const outcome = await session.goToMark(name, fast ?? false);
-        if (outcome.reason === 'not-found') return outcome;
-        return { ...finish(outcome, true), name };
+        return { ...finish(outcome), name };
       },
     }),
     approach: tool({
-      description:
-        '走到一件东西够得着的地方，并面向它。中间的固体由这条路自己绕开。id 用最近一次 near 或观察里的。大约超过 2 个单位就设 fast。detour 的写法和 move_to 一样。找不到是 not-found，已经够近是 already-close，走不过去是 no-path。' +
-        NEAR,
+      description: `走到 id 对应对象旁边并面向它。id 必须来自 near 或 observation.entities；中间的固体会自动绕开。默认停在 ${REACH - 0.3} 的距离。`,
       inputSchema: call({
         id: z.string().describe('最近一次 near 或观察里的 id。'),
         standoff: z
@@ -156,11 +243,11 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         fast: z.boolean().optional().describe('离它大约超过 2 个单位时就跑。'),
       }),
       execute: async ({ id, standoff, fast }) =>
-        finish(await session.approach(id, standoff, fast ?? false), true),
+        finish(await session.approach(id, standoff, fast ?? false)),
     }),
     eat: tool({
       description:
-        '吃一件 properties 里有 edible 的东西。它在够得着的地方，或者已经在你背上。吃要花时间，stage 会变。吃完这一只就没了，以后也不会再出现。中途停下的话，咬到哪算哪。做完以后 near 是还够得着的。',
+        '吃 properties 含 edible 的对象。id 来自 near 或背包；进食有阶段，完成后对象会消失。',
       inputSchema: call({
         id: z
           .string()
@@ -169,63 +256,55 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
             '最近一次 near 或观察里的 id，或背上某一件的 id。不填就吃够得着的、最近的能吃的，背上的也算。',
           ),
       }),
-      execute: async ({ id }) => finish(await session.eat(id), true),
+      execute: async ({ id }) => finish(await session.eat(id)),
     }),
     drink: tool({
-      description:
-        '喝一口够得着的水。水在低洼处的池塘和河道里。self.water 给出最近的水在哪，走到水边再用。附近没有水时 ok 是 false、reason 是 no-water。喝完只改变这一次行动，不会改变你站的地方。',
+      description: '在够得着的水边喝水。没有水时按 hint 使用 self.water 找位置。',
       inputSchema: call({}),
-      execute: async () => finish(session.drink(), false),
+      execute: async () => finish(session.drink()),
     }),
     pick_up: tool({
-      description:
-        `搬起一件 properties 里有 carryable 的东西。背上最多 ${CARRY_LIMIT} 件，满了再搬的原因是 full。返回 carrying，是背上全部的 id，先背上的在前。` +
-        '够得着的能搬的有几件，就在同一次回复里对每件各调用一次，每次填那个 id。做完以后 near 是还够得着的。',
+      description: `搬起 properties 含 carryable 的对象。背上最多 ${CARRY_LIMIT} 件；near 中有几件就按 id 分别调用。`,
       inputSchema: call({
         id: z
           .string()
           .optional()
           .describe('最近一次 near 或观察里的 id。不填就搬最近的、够得着的、能搬的。'),
       }),
-      execute: async ({ id }) => finish(await session.pickUp(id), true),
+      execute: async ({ id }) => finish(await session.pickUp(id)),
     }),
     drop: tool({
-      description:
-        '把背上的一件放在面前。不填 id 就放最后背上的那件。放下的那件不再在 carrying 里。' +
-        '有几件要放，就在同一次回复里对每件各调用一次，每次填那个 id。放下以后 near 是还够得着的。',
+      description: '把背上的对象放在面前。省略 id 表示最后背上的一件。',
       inputSchema: call({
         id: z.string().optional().describe('背上某一件的 id。不填就放最后背上的那件。'),
       }),
-      execute: async ({ id }) => finish(session.drop(id), true),
+      execute: async ({ id }) => finish(session.drop(id)),
     }),
     store: tool({
-      description:
-        '把背上的一件留在巢里。你得在家里。不填 id 就留最后背上的那件。留下的那件不再在 carrying 里。留下以后 near 是还够得着的。',
+      description: '在巢里把背上的对象留下。省略 id 表示最后背上的一件；不在巢里时按 hint 处理。',
       inputSchema: call({
         id: z.string().optional().describe('背上某一件的 id。不填就留最后背上的那件。'),
       }),
-      execute: async ({ id }) => finish(session.store(id), true),
+      execute: async ({ id }) => finish(session.store(id)),
     }),
     sleep: tool({
-      description: '在巢里睡觉。你得在家里。醒来还在你躺下的地方。',
+      description: '在巢里睡觉，推进模拟时间，醒来仍在原地。',
       inputSchema: call({}),
-      execute: async () => finish(await session.sleep(), false),
+      execute: async () => finish(await session.sleep()),
     }),
     set_height: tool({
-      description:
-        '把身子相对脚下的地面抬高或放低一点。这不是爬山。抬高以后眼睛也跟着高，能看过矮坡和土包；观察范围会跟着变。返回目标和实际抬起的高度。' +
-        `最高 ${GAIT.heightMax}，最低 ${GAIT.heightMin}。`,
+      description: `抬高或放低身体来改变视线和越过矮坡；不会移动位置，范围是 ${GAIT.heightMin} 到 ${GAIT.heightMax}。`,
       inputSchema: call({
         level: z.number().min(GAIT.heightMin).max(GAIT.heightMax).describe('想离地多高。'),
       }),
-      execute: async ({ level }) => finish(await session.setHeight(level), false),
+      execute: async ({ level }) => finish(await session.setHeight(level)),
     }),
     wait: tool({
-      description: '停在原地，让时间过去。返回秒数。',
+      description: '停在原地推进模拟时间，最多等待 10 秒；真实客户端时间由 world.clock 提供。',
       inputSchema: call({
         seconds: z.number().min(0).max(10).describe('等多久，秒。'),
       }),
-      execute: async ({ seconds }) => finish(await session.wait(seconds), false),
+      execute: async ({ seconds }) => finish(await session.wait(seconds)),
     }),
     ...(memory
       ? {
@@ -253,4 +332,10 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         }
       : {}),
   };
+  for (const [name, current] of Object.entries(tools)) {
+    if (name === 'memory') continue;
+    const tool = current as { description?: string };
+    tool.description = `${String(tool.description)} ${RESULT_CONTRACT}`;
+  }
+  return tools;
 }

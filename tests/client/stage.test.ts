@@ -32,6 +32,7 @@ vi.mock('three', async (importOriginal) => {
   class WebGLRenderer implements FakeRenderer {
     domElement = document.createElement('canvas');
     loop: ((time: number) => void) | null = null;
+    shadowMap = { enabled: false, type: 0 };
     setPixelRatio = vi.fn();
     setClearColor = vi.fn();
     setSize = vi.fn();
@@ -382,7 +383,10 @@ describe('world sync', () => {
     await Promise.resolve();
     frame();
     const scene = renderer().render.mock.calls.at(-1)?.[0] as { children: unknown[] };
-    expect(scene.children).toHaveLength(3);
+    expect(scene.children.map((child) => (child as { name: string }).name)).toContain(
+      'ecology-sky',
+    );
+    expect(scene.children).toHaveLength(4);
     resolveFresh(fresh);
     await Promise.resolve();
     frame();

@@ -10,6 +10,7 @@ import {
   type PlaceMark,
   type Sense,
   type SpiderState,
+  type WorldInfo,
   type WorldState,
 } from '../state.js';
 import { kindOf, propertiesOf, slicesOf } from '../kinds.js';
@@ -42,6 +43,8 @@ import { planRoute } from '../route.js';
 import { applyBody, type SimBody } from './snapshot.js';
 import { stepPhysics } from './physics.js';
 import { Spider } from './Spider.js';
+import { localDate } from '../dates.js';
+import { visualRangeMultiplier, worldClock } from '../ecology.js';
 
 /** A sentence for a detour the body already took. Null when the straight walk was clear. */
 function detourNote(around: readonly string[], direct: boolean, arrived: boolean): string | null {
@@ -106,6 +109,21 @@ export class SimSession {
     return { state: this.spider.capture(), world: this.world };
   }
 
+  /** Stable world context for the model. The local clock is never persisted. */
+  worldInfo(now = new Date()): WorldInfo {
+    const clock = worldClock(now);
+    const pad = (value: number): string => String(value).padStart(2, '0');
+    return {
+      simulationTime: round3(this.spider.time),
+      clock: {
+        localDate: localDate(now),
+        localTime: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+        phase: clock.period,
+        daylight: round3(clock.daylight),
+      },
+    };
+  }
+
   /** Load a saved island into this same world object. */
   adopt(body: SimBody): void {
     applyBody(this, body);
@@ -117,10 +135,14 @@ export class SimSession {
    */
   observe(distance = VIEW_DISTANCE): Observation {
     const asked = Math.min(VIEW_DISTANCE, Math.max(0, distance));
+    const light = worldClock();
+    const lightLimit = VIEW_DISTANCE * visualRangeMultiplier(light.period);
     const { x, z } = this.spider.root.position;
     const ground = surfaceOf(this.world.terrain, x, z);
     const eye = ground + EYE_HEIGHT + this.spider.heightSet;
-    const view = grassHere(x, z, this.world.entities, eye) ? Math.min(asked, GRASS_VIEW) : asked;
+    const view = grassHere(x, z, this.world.entities, eye)
+      ? Math.min(asked, GRASS_VIEW, lightLimit)
+      : Math.min(asked, lightLimit);
     return toObservation(this.spider.capture(), this.world, REACH, view, REACH_Y);
   }
 

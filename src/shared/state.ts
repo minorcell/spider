@@ -4,6 +4,7 @@ import { EYE_HEIGHT, grassHere, groundOccluded, insideHome, occluded, SIGHT_TOP 
 
 import { surfaceOf } from './terrain.js';
 import { floatsAt, nearestShore, readWater, waterAt } from './water.js';
+import type { LightPeriod } from './ecology.js';
 
 /** How far a body can feel the nearest water and its shoreline. */
 export const WATER_SENSE = 8;
@@ -125,6 +126,30 @@ export interface WorldState {
     sleepSlope: number;
     sleepSpeed: number;
     maxSpeed: number;
+  };
+}
+
+/** A recovery hint attached to a tool result. It is a fact plus a useful next move. */
+export interface ActionHint {
+  code: string;
+  message: string;
+  /** Tool name that can make progress, when there is one obvious next step. */
+  next?: string;
+}
+
+/** Model-facing world context. It deliberately omits terrain functions and render details. */
+export interface WorldInfo {
+  /** Seconds advanced by the local spider simulation. */
+  simulationTime: number;
+  clock: {
+    /** Client-local calendar date, YYYY-MM-DD. */
+    localDate: string;
+    /** Client-local wall-clock time, HH:mm:ss. */
+    localTime: string;
+    /** Local light phase used by the world ecology. */
+    phase: LightPeriod;
+    /** Continuous local daylight in [0, 1]. */
+    daylight: number;
   };
 }
 

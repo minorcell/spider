@@ -88,12 +88,10 @@ describe('runAgent', () => {
     stream([]);
     await runAgent({ goal: 'go', session: fakeSession(), settings });
     const system = String(aiControl.streamText.mock.calls[0][0].system);
-    expect(system).toContain('对各件各写一次 drop');
-    expect(system).toContain('一次回复不要同时写一段话和一个行动');
+    expect(system).toContain('near 或 observation.entities');
+    expect(system).toContain('每次工具调用都写一句简短的第一人称 description');
     expect(system).toContain('正文留空');
-    expect(system).toContain('只写文字、不再调用行动的那一次回复会结束这一轮');
-    expect(system).not.toContain('另起一条消息');
-    expect(system).not.toContain('只放行动调用');
+    expect(system).toContain('只有行动完成或确定无法完成时才用正文回答');
   });
 
   it('streams text, tool results, and errors', async () => {
@@ -156,7 +154,7 @@ describe('runAgent', () => {
     expect(aiControl.provider!).toHaveBeenCalledWith('model-1');
     const options = aiControl.streamText.mock.calls[0][0] as Record<string, unknown>;
     expect(options.messages).toEqual([{ role: 'user', content: 'go' }]);
-    expect(String(options.system)).toContain('你是一个蜘蛛');
+    expect(String(options.system)).toContain('你是一只生活在这片岛上的蜘蛛');
     expect(options.toolCallConcurrency).toBe(1);
     expect(options.stopWhen).toEqual({ until: 'finished' });
     expect(options.reasoning).toBe('provider-default');

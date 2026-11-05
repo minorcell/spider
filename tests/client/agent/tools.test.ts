@@ -35,6 +35,16 @@ const observation: Observation = {
 
 let session: Record<string, ReturnType<typeof vi.fn>>;
 
+const world = {
+  simulationTime: 0,
+  clock: {
+    localDate: '2026-11-05',
+    localTime: '12:00:00',
+    phase: 'day' as const,
+    daylight: 1,
+  },
+};
+
 function outcome(over: Partial<GoalOutcome> = {}): GoalOutcome {
   return { ok: true, ...over };
 }
@@ -49,6 +59,7 @@ function execute(tool: { execute?: unknown }, input: unknown): Promise<unknown> 
 beforeEach(() => {
   session = {
     observe: vi.fn(() => observation),
+    worldInfo: vi.fn(() => world),
     sense: vi.fn((withWays = false) => {
       if (withWays) return observation.self;
       const { ways: _ways, nearby: _nearby, ...self } = observation.self;
@@ -111,7 +122,7 @@ describe('spiderTools', () => {
     const tools = spiderTools(session as unknown as SimSession);
     const result = (await execute(tools.observe, { distance: 3 })) as Record<string, unknown>;
     expect(session.observe).toHaveBeenCalledWith(3);
-    expect(result).toMatchObject({ ok: true, observation });
+    expect(result).toMatchObject({ ok: true, world, observation });
     expect(result).not.toHaveProperty('ahead');
   });
 
@@ -121,13 +132,42 @@ describe('spiderTools', () => {
     expect(session.observe).toHaveBeenCalledWith(VIEW_DISTANCE);
   });
 
+  it('explains why an observation is partial and how to recover', async () => {
+    const tools = spiderTools(session as unknown as SimSession);
+    session.observe.mockReturnValueOnce({
+      ...observation,
+      view: 4.5,
+      self: { ...observation.self, cover: 'grass' },
+    });
+    const grass = (await execute(tools.observe, { distance: VIEW_DISTANCE })) as Record<
+      string,
+      any
+    >;
+    expect(grass.hint).toMatchObject({ code: 'view-limited-by-grass', next: 'set_height' });
+
+    session.observe.mockReturnValueOnce({ ...observation, beyond: 2, hidden: 1 });
+    const partial = (await execute(tools.observe, { distance: VIEW_DISTANCE })) as Record<
+      string,
+      any
+    >;
+    expect(partial.hint).toMatchObject({ code: 'partial-observation', next: 'observe' });
+
+    session.observe.mockReturnValueOnce({ ...observation, view: 8.8 });
+    session.worldInfo.mockReturnValueOnce({
+      ...world,
+      clock: { ...world.clock, phase: 'night', daylight: 0 },
+    });
+    const dark = (await execute(tools.observe, { distance: VIEW_DISTANCE })) as Record<string, any>;
+    expect(dark.hint).toMatchObject({ code: 'view-limited-by-light', next: 'observe' });
+  });
+
   it('drinks through the session and returns the body', async () => {
     const tools = spiderTools(session as unknown as SimSession);
     const result = (await execute(tools.drink, {})) as Record<string, unknown>;
     expect(session.drink).toHaveBeenCalledOnce();
     expect(result).toMatchObject({ ok: true, action: 'drink' });
     expect(result).toHaveProperty('self');
-    expect(result).not.toHaveProperty('near');
+    expect(result).toHaveProperty('near');
   });
 
   it('returns the body and what is in reach, and strips the halt field', async () => {
@@ -167,7 +207,32 @@ describe('spiderTools', () => {
     }
   });
 
-  it('attaches near after a move or handling, and leaves it off a turn', async () => {
+  it.each([
+    ['out-of-reach', 'approach'],
+    ['nothing-to-eat', 'observe'],
+    ['nothing-to-carry', 'observe'],
+    ['full', 'drop'],
+    ['no-water', 'observe'],
+    ['cancelled', 'observe'],
+    ['timeout', 'observe'],
+  ] as const)('gives a recovery hint for %s', async (reason, next) => {
+    const tools = spiderTools(session as unknown as SimSession);
+    session.walk.mockResolvedValue(outcome({ reason }));
+    const result = (await execute(tools.walk, { distance: 1 })) as Record<string, any>;
+    expect(result.hint).toMatchObject({ next });
+    expect(result).toHaveProperty('world.clock.localTime');
+    expect(result).toHaveProperty('near');
+  });
+
+  it('gives a less specific blocked hint when no route sentences are available', async () => {
+    const tools = spiderTools(session as unknown as SimSession);
+    session.sense.mockReturnValueOnce({ ...observation.self, ways: undefined });
+    session.walk.mockResolvedValue(outcome({ reason: 'blocked' }));
+    const result = (await execute(tools.walk, { distance: 1 })) as Record<string, any>;
+    expect(result.hint).toMatchObject({ code: 'blocked', next: 'move_to' });
+  });
+
+  it('attaches the same near context after every spatial action', async () => {
     const tools = spiderTools(session as unknown as SimSession);
     const beside = [
       ['walk', { distance: 1 }],
@@ -197,8 +262,8 @@ describe('spiderTools', () => {
     for (const [name, input] of plain) {
       session.near.mockClear();
       const result = (await execute(tools[name], input)) as Record<string, unknown>;
-      expect(session.near).not.toHaveBeenCalled();
-      expect(result).not.toHaveProperty('near');
+      expect(session.near).toHaveBeenCalledOnce();
+      expect(result).toHaveProperty('near');
     }
   });
 
@@ -255,12 +320,14 @@ describe('spiderTools', () => {
     session.goToMark.mockResolvedValueOnce(
       outcome({ ok: false, reason: 'not-found', name: '水边' }),
     );
-    await expect(execute(tools.mark, { command: 'go', name: '水边' })).resolves.toEqual({
+    await expect(execute(tools.mark, { command: 'go', name: '水边' })).resolves.toMatchObject({
       ok: false,
       reason: 'not-found',
       name: '水边',
+      world,
+      hint: { code: 'stale-target', next: 'observe' },
     });
-    expect(session.near).not.toHaveBeenCalled();
+    expect(session.near).toHaveBeenCalledOnce();
   });
 
   it('passes movement arguments through', async () => {

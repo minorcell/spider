@@ -61,6 +61,21 @@ const waterMaterial = new ShaderMaterial({
   `,
 });
 
+const contourBase = new Color(PALETTE.ink);
+const waterBase = new Color(PALETTE.water);
+
+/** Apply the current ecology tint without rebuilding the baked island. */
+export function setGroundLight(red: number, green: number, blue: number): void {
+  contourInk.color.copy(contourBase);
+  contourMajor.color.copy(contourBase);
+  waterUniforms.uShallow.value
+    .copy(waterBase)
+    .setRGB(waterBase.r * red, waterBase.g * green, waterBase.b * blue);
+  waterUniforms.uDeep.value
+    .copy(waterBase)
+    .setRGB(waterBase.r * red * 0.78, waterBase.g * green * 0.78, waterBase.b * blue * 0.78);
+}
+
 /** Advance the moving highlights on every water sheet. */
 export function tickWater(seconds: number): void {
   waterTime.value = seconds;

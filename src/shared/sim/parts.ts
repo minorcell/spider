@@ -6,13 +6,14 @@ import {
   Float32BufferAttribute,
   LineBasicMaterial,
   MeshBasicMaterial,
+  MeshLambertMaterial,
   SphereGeometry,
 } from 'three';
 import { PALETTE } from '../config.js';
 
 // Every part of the model shares these materials and primitives.
 
-export const paperMat = new MeshBasicMaterial({
+export const paperMat = new MeshLambertMaterial({
   color: PALETTE.paper,
   polygonOffset: true,
   polygonOffsetFactor: 1,
@@ -32,7 +33,7 @@ export const silkMat = new LineBasicMaterial({
 export const inkSolidMat = new MeshBasicMaterial({ color: PALETTE.ink, side: BackSide });
 
 /** 草叶要双面，纸面填色。 */
-export const grassMat = new MeshBasicMaterial({
+export const grassMat = new MeshLambertMaterial({
   color: PALETTE.grass,
   side: DoubleSide,
   polygonOffset: true,
@@ -41,34 +42,34 @@ export const grassMat = new MeshBasicMaterial({
 });
 
 /** 岛面、苹果、叶子和梗各用一点淡色；线稿还是同一套墨线。 */
-export const groundMat = new MeshBasicMaterial({
+export const groundMat = new MeshLambertMaterial({
   color: 0xffffff,
   vertexColors: true,
   polygonOffset: true,
   polygonOffsetFactor: 1,
   polygonOffsetUnits: 1,
 });
-export const appleMat = new MeshBasicMaterial({
+export const appleMat = new MeshLambertMaterial({
   color: PALETTE.apple,
   polygonOffset: true,
   polygonOffsetFactor: 1,
   polygonOffsetUnits: 1,
 });
-export const leafMat = new MeshBasicMaterial({
+export const leafMat = new MeshLambertMaterial({
   color: PALETTE.leaf,
   side: DoubleSide,
   polygonOffset: true,
   polygonOffsetFactor: 1,
   polygonOffsetUnits: 1,
 });
-export const stemMat = new MeshBasicMaterial({ color: PALETTE.stem });
-export const stoneMat = new MeshBasicMaterial({
+export const stemMat = new MeshLambertMaterial({ color: PALETTE.stem });
+export const stoneMat = new MeshLambertMaterial({
   color: PALETTE.stone,
   polygonOffset: true,
   polygonOffsetFactor: 1,
   polygonOffsetUnits: 1,
 });
-export const spiderMat = new MeshBasicMaterial({
+export const spiderMat = new MeshLambertMaterial({
   color: PALETTE.spider,
   polygonOffset: true,
   polygonOffsetFactor: 1,
@@ -77,7 +78,7 @@ export const spiderMat = new MeshBasicMaterial({
 export const eyeMat = new MeshBasicMaterial({ color: PALETTE.eye });
 
 /** 巢穴的土面。 */
-export const soilMat = new MeshBasicMaterial({
+export const soilMat = new MeshLambertMaterial({
   color: PALETTE.soil,
   side: DoubleSide,
   polygonOffset: true,

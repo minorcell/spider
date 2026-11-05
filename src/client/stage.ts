@@ -2,6 +2,7 @@ import {
   Group,
   MathUtils,
   PerspectiveCamera,
+  PCFShadowMap,
   Scene,
   Vector3,
   WebGLRenderer,
@@ -15,6 +16,8 @@ import type { EntityState, WorldState } from '../shared/state.js';
 import type { Spider } from '../shared/sim/Spider.js';
 import { paintCanvas } from '../ui/dress.js';
 import { buildIsland, tickWater } from './groundView.js';
+import { applyEcologyLighting, EcologySky, enableWorldShadows } from './ecologyView.js';
+import { worldClock } from '../shared/ecology.js';
 import { ObserveOverlay } from './observeView.js';
 import { buildProp, drapeGrass } from './props.js';
 import { createSound } from './sound.js';
@@ -94,12 +97,18 @@ export class Stage {
   readonly #lookPos = new Vector3();
   #camReady = false;
   #last = performance.now();
+  /** Ecology follows local wall time and only needs a once-per-second update. */
+  #ecologySecond = -1;
+  readonly #sky = new EcologySky();
+  #clock = worldClock();
 
   constructor(host: HTMLElement, spider: Spider) {
     this.#host = host;
     this.#spider = spider;
 
     this.#renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.#renderer.shadowMap.enabled = true;
+    this.#renderer.shadowMap.type = PCFShadowMap;
     // Draw at the screen's own pixels, capped at 2, so the ink stays sharp.
     this.#renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     this.#renderer.setClearColor(PALETTE.paper, 1);
@@ -108,7 +117,9 @@ export class Stage {
 
     this.#camera = new PerspectiveCamera(VIEW.fov, 1, VIEW.near, VIEW.far);
     this.#observe = new ObserveOverlay(host);
-    this.#scene.add(this.#spider.root, this.#spider.rig, this.#observe.object);
+    enableWorldShadows(this.#spider.root);
+    enableWorldShadows(this.#spider.rig);
+    this.#scene.add(this.#spider.root, this.#spider.rig, this.#observe.object, this.#sky.object);
 
     this.#bindEvents();
     this.#resize();
@@ -150,6 +161,7 @@ export class Stage {
   /** Use an island the world worker already built. */
   placeIsland(group: Group): void {
     this.#dropIsland();
+    enableWorldShadows(group);
     this.#island = group;
     this.#islandPending = false;
     this.#scene.add(group);
@@ -198,6 +210,7 @@ export class Stage {
     if (!world) return;
     if (!this.#island && !this.#islandPending) {
       this.#island = buildIsland((x, z) => world.terrain.height(x, z));
+      enableWorldShadows(this.#island);
       this.#scene.add(this.#island);
     }
 
@@ -284,6 +297,7 @@ export class Stage {
       } else {
         prop = built;
       }
+      enableWorldShadows(prop);
       this.#props.set(entity.id, prop);
       this.#scene.add(prop);
     }
@@ -319,6 +333,7 @@ export class Stage {
     el.removeEventListener('pointermove', this.#onPointerMove);
     el.removeEventListener('wheel', this.#onWheel);
     disposeGeometries(this.#scene);
+    this.#sky.dispose();
     this.#renderer.dispose();
     this.#sound.dispose();
     el.remove();
@@ -453,16 +468,30 @@ export class Stage {
     const dt = Math.min(0.05, (now - this.#last) / 1000);
     this.#last = now;
     if (!this.#held) this.#step?.(dt);
+    this.#syncEcology();
     tickWater(now * 0.001);
     this.#syncWorld();
     this.#feedback();
 
     this.#placeCamera(dt);
+    this.#sky.update(
+      this.#clock,
+      this.#overlook ? this.#focus : this.#spider.root.position,
+      this.#overlook,
+      dt,
+    );
     const world = this.#world?.();
     if (world) this.#observe.sync(this.#overlook, this.#camera, this.#spider, world, this.#view);
     this.#renderer.render(this.#scene, this.#camera);
     this.#onAnchor?.(this.#aboveSpider());
   };
+
+  #syncEcology(): void {
+    const epochSecond = Math.floor(Date.now() / 1000);
+    if (epochSecond === this.#ecologySecond) return;
+    this.#ecologySecond = epochSecond;
+    this.#clock = applyEcologyLighting(this.#renderer, new Date(epochSecond * 1000));
+  }
 
   /** One tick when any foot lands, and one when an apple disappears. */
   #feedback(): void {
