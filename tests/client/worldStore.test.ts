@@ -5,10 +5,13 @@ import {
   flushWorld,
   installWorldStore,
   onRestore,
+  onWorldWritten,
   pendingNow,
   prefer,
+  replaceWorld,
   resetWorldStore,
   restoreWorld,
+  setCloudLock,
   setPending,
   setWorldTerrainSource,
   writesDone,
@@ -1528,5 +1531,120 @@ describe('write cadence and leases', () => {
       configurable: true,
       get: () => 'visible',
     });
+  });
+});
+
+describe('cloud handoff', () => {
+  it('does not write while the cloud holds the spider', async () => {
+    const heard = vi.fn();
+    onWorldWritten(heard);
+    const session = new SimSession(2);
+    await restoreWorld(session);
+    installWorldStore(session);
+    setCloudLock(true);
+    session.spider.root.position.x += 0.4;
+    flushWorld('poke');
+    await writesDone();
+    expect(heard).not.toHaveBeenCalled();
+    expect(localStorage.getItem(KEY)).toBeNull();
+
+    setCloudLock(false);
+    flushWorld('poke');
+    await writesDone();
+    expect(heard).toHaveBeenCalledWith('poke');
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(1);
+  });
+
+  it('notifies a quiet poke and skips a quiet interval', async () => {
+    const heard = vi.fn();
+    const session = new SimSession(2);
+    await restoreWorld(session);
+    installWorldStore(session);
+    onWorldWritten(heard);
+    flushWorld('poke');
+    await writesDone();
+    expect(heard).toHaveBeenCalledWith('poke');
+    heard.mockClear();
+    flushWorld('interval');
+    await writesDone();
+    expect(heard).not.toHaveBeenCalled();
+  });
+
+  it('notifies a deferred hide only when it staged a snapshot', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    store.hangRead = true;
+    const session = new SimSession(2);
+    sessionStorage.setItem('spider.world.owner', 'tab-a');
+    localStorage.setItem(KEY, JSON.stringify(stamp(session, { seq: 1, owner: 'tab-a' })));
+    const pending = restoreWorld(session, new Date(), store);
+    await vi.advanceTimersByTimeAsync(1500);
+    await pending;
+    vi.useRealTimers();
+    store.hangRead = false;
+    const heard = vi.fn();
+    onWorldWritten(heard);
+    installWorldStore(session, store);
+    flushWorld('hide');
+    await writesDone();
+    expect(heard).not.toHaveBeenCalled();
+    session.spider.root.position.x += 0.4;
+    flushWorld('hide');
+    await writesDone();
+    expect(heard).toHaveBeenCalledWith('hide');
+  });
+
+  it('replaces the running world even when the database write fails', async () => {
+    const store = memoryStore();
+    store.failWrite = true;
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    const body = captureBody(new SimSession(9), null);
+    await expect(replaceWorld(body)).resolves.toBe(true);
+    expect(session.world.seed).toBe(9);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').seed).toBe(9);
+  });
+
+  it('tells the page which sentence came back with the world', async () => {
+    const session = new SimSession(2);
+    await restoreWorld(session);
+    installWorldStore(session);
+    const heard = vi.fn();
+    onRestore(heard);
+    const body = captureBody(new SimSession(8), { text: '去水边', tool: null });
+    await expect(replaceWorld(body)).resolves.toBe(true);
+    expect(heard).toHaveBeenCalledWith({
+      restored: true,
+      cause: null,
+      pendingText: '去水边',
+    });
+    heard.mockClear();
+    await expect(replaceWorld(captureBody(new SimSession(7), null))).resolves.toBe(true);
+    expect(heard).toHaveBeenCalledWith({ restored: true, cause: null, pendingText: null });
+  });
+
+  it('refuses a replacement before install, while the save is unreadable, or when the buffer is newer', async () => {
+    const body = captureBody(new SimSession(9), null);
+    await expect(replaceWorld(body)).resolves.toBe(false);
+
+    localStorage.setItem(KEY, JSON.stringify(stamp(new SimSession(2), { format: 9 as 3 })));
+    const blocked = new SimSession(2);
+    await restoreWorld(blocked);
+    installWorldStore(blocked);
+    await expect(replaceWorld(body)).resolves.toBe(false);
+    expect(blocked.world.seed).toBe(2);
+
+    resetWorldStore();
+    localStorage.clear();
+    const session = new SimSession(2);
+    await restoreWorld(session);
+    installWorldStore(session);
+    localStorage.setItem(
+      KEY,
+      JSON.stringify(stamp(session, { seq: 50, savedAt: Date.now() + 10_000 })),
+    );
+    await expect(replaceWorld(captureBody(new SimSession(4), null))).resolves.toBe(false);
+    expect(session.world.seed).toBe(2);
   });
 });

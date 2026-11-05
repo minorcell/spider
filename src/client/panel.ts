@@ -5,6 +5,8 @@ import { enhanceSwitch, reflectSwitch } from '../ui/switch/index.js';
 import { openJournal, type Journal, type OpenedJournal } from './journal/api.js';
 import { flushSoon, flushWorld, onRestore, setPending, type BootNote } from './worldStore.js';
 import type { Trace } from './journal/session.js';
+import { cloudHolds } from './cloud/sync.js';
+import { bindCloud } from './panel/cloud.js';
 import { bindLeave } from './panel/leave.js';
 import { bindMemory } from './panel/memory.js';
 import { bindUsage } from './panel/usage.js';
@@ -36,6 +38,7 @@ export function mountPanel(
   const menuModel = doc.querySelector<HTMLButtonElement>('#menu-model');
   const menuMemory = doc.querySelector<HTMLButtonElement>('#menu-memory');
   const menuUsage = doc.querySelector<HTMLButtonElement>('#menu-usage');
+  const menuCloud = doc.querySelector<HTMLButtonElement>('#menu-cloud');
   const map = doc.querySelector<HTMLButtonElement>('#observe-open');
   const lookHint = doc.querySelector<HTMLElement>('#look-hint');
   const dialog = doc.querySelector<HTMLDialogElement>('#settings');
@@ -49,6 +52,14 @@ export function mountPanel(
   const leaveClose = doc.querySelector<HTMLButtonElement>('#leave-close');
   const leaveSummarize = doc.querySelector<HTMLButtonElement>('#leave-summarize');
   const usagePanel = doc.querySelector<HTMLElement>('#usage');
+  const cloudPanel = doc.querySelector<HTMLElement>('#panel-cloud');
+  const cloudForm = doc.querySelector<HTMLFormElement>('#cloud-form');
+  const cloudStatus = doc.querySelector<HTMLElement>('#cloud-status');
+  const cloudHold = doc.querySelector<HTMLElement>('#cloud-hold');
+  const cloudTakeover = doc.querySelector<HTMLButtonElement>('#cloud-takeover');
+  const cloudChoice = doc.querySelector<HTMLDialogElement>('#cloud-choice');
+  const cloudUseLocal = doc.querySelector<HTMLButtonElement>('#cloud-use-local');
+  const cloudUseRemote = doc.querySelector<HTMLButtonElement>('#cloud-use-remote');
   if (
     !form ||
     !goal ||
@@ -70,7 +81,16 @@ export function mountPanel(
     !leave ||
     !leaveClose ||
     !leaveSummarize ||
-    !usagePanel
+    !usagePanel ||
+    !menuCloud ||
+    !cloudPanel ||
+    !cloudForm ||
+    !cloudStatus ||
+    !cloudHold ||
+    !cloudTakeover ||
+    !cloudChoice ||
+    !cloudUseLocal ||
+    !cloudUseRemote
   ) {
     throw new Error('Missing pilot chrome');
   }
@@ -195,8 +215,18 @@ export function mountPanel(
     shownFields = modelFields();
   };
 
-  const pages = { model: panelModel, memory: memoryPanel, usage: usagePanel } as const;
-  const nav = { model: menuModel, memory: menuMemory, usage: menuUsage } as const;
+  const pages = {
+    model: panelModel,
+    memory: memoryPanel,
+    usage: usagePanel,
+    cloud: cloudPanel,
+  } as const;
+  const nav = {
+    model: menuModel,
+    memory: menuMemory,
+    usage: menuUsage,
+    cloud: menuCloud,
+  } as const;
 
   const showPage = (page: keyof typeof pages): void => {
     for (const name of Object.keys(pages) as Array<keyof typeof pages>) {
@@ -326,6 +356,18 @@ export function mountPanel(
     journalReady,
   });
 
+  bindCloud({
+    menu: menuCloud,
+    form: cloudForm,
+    status: cloudStatus,
+    hold: cloudHold,
+    takeover: cloudTakeover,
+    choice: cloudChoice,
+    useLocal: cloudUseLocal,
+    useRemote: cloudUseRemote,
+    showPage: () => showPage('cloud'),
+  });
+
   bindLeave({
     leave,
     leaveClose,
@@ -453,6 +495,10 @@ export function mountPanel(
       if (!text) return;
     }
 
+    if (cloudHolds()) {
+      show('另一台电脑正在玩', 'note');
+      return;
+    }
     const settings = readPilot();
     if (!pilotReady(settings)) {
       show('还没有填写模型', 'note');

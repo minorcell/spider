@@ -63,6 +63,18 @@ let stagedRevision = 0;
 let cache = worldCache();
 /** Bakes a seed off the page thread. Null keeps the synchronous terrain. */
 let terrainFor: ((seed: number) => Promise<Terrain>) | null = null;
+let cloudLock = false;
+let onWritten: ((reason: Reason) => void) | null = null;
+
+/** Cloud sync sets this while another device holds the world or a choice is open. */
+export function setCloudLock(locked: boolean): void {
+  cloudLock = locked;
+}
+
+/** Fired after a local write attempt that is allowed to reach the cloud. */
+export function onWorldWritten(listen: ((reason: Reason) => void) | null): void {
+  onWritten = listen;
+}
 
 /** The page points this at the world worker. Tests leave it unset. */
 export function setWorldTerrainSource(source: ((seed: number) => Promise<Terrain>) | null): void {
@@ -129,7 +141,7 @@ export function onRestore(listen: (note: BootNote) => void): void {
 }
 
 export function flushWorld(reason: Reason): void {
-  if (!installed || readonly || !sessionRef) return;
+  if (!installed || readonly || !sessionRef || cloudLock) return;
   if (pokeTimer) {
     clearTimeout(pokeTimer);
     pokeTimer = undefined;
@@ -173,6 +185,8 @@ export function resetWorldStore(): void {
   providedStore = null;
   storePromise = null;
   terrainFor = null;
+  cloudLock = false;
+  onWritten = null;
   writeRevision = 0;
   stagedRevision = 0;
   cache = worldCache();
@@ -297,7 +311,10 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
       lastBody = body;
     }
   }
-  if (dbDeferred) return;
+  if (dbDeferred) {
+    if (staged) onWritten?.(reason);
+    return;
+  }
 
   // The local buffer above is deliberately synchronous for pagehide. Only
   // the IndexedDB read/write portion waits behind the preceding operation.
@@ -330,6 +347,7 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
     try {
       await cache.flush();
     } catch {}
+    if (reason !== 'interval') onWritten?.(reason);
     return;
   }
 
@@ -344,6 +362,33 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
   try {
     await cache.flush();
   } catch {}
+  onWritten?.(reason);
+}
+
+/** Replace the running world with a cloud bundle. Does not upload. */
+export async function replaceWorld(body: SimBody): Promise<boolean> {
+  if (!installed || readonly) return false;
+  const session = sessionRef as Restorable;
+  const now = Date.now();
+  const record = stamp(body, seenSeq + 1, now, localDate(new Date(now)));
+  if (!stageRecord(record)) return false;
+  await adoptBody(session, body);
+  pending = body.pending;
+  setLease(record.owner, record.leaseUntil);
+  seenSeq = record.seq;
+  lastBody = captureBody(session, pending);
+  stagedRevision = ++writeRevision;
+  try {
+    await cache.flush();
+  } catch {
+    // The buffer still has the adopted world.
+  }
+  listener?.({
+    restored: true,
+    cause: null,
+    pendingText: pending?.text ?? null,
+  });
+  return true;
 }
 
 async function catchUp(): Promise<void> {

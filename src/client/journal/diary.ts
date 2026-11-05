@@ -27,6 +27,13 @@ import {
 
 const INDEX_DAYS = 60;
 
+let onDiary: (() => void) | null = null;
+
+/** The page registers this so a diary write can schedule a cloud upload. */
+export function onDiaryChange(listen: (() => void) | null): void {
+  onDiary = listen;
+}
+
 export interface MemoryView {
   date: string;
   line: string;
@@ -120,6 +127,7 @@ export class Diary implements Journal {
       updatedAt: Date.now(),
     };
     await this.db.put('memories', next);
+    onDiary?.();
     return viewOf(next);
   }
 
@@ -226,5 +234,6 @@ export class Diary implements Journal {
       summary: note.summary || page.summary,
       updatedAt: Date.now(),
     });
+    onDiary?.();
   }
 }

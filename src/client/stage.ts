@@ -85,6 +85,8 @@ export class Stage {
   #pointerY = 0;
   /** Advance the one simulation, then read its world for the props. */
   #step: ((dt: number) => void) | null = null;
+  /** Cloud hold freezes the spider. The picture keeps drawing. */
+  #held = false;
   #world: (() => WorldState) | null = null;
   /** Screen point just above the body, for the speech bubble. */
   #onAnchor: ((point: { x: number; y: number } | null) => void) | null = null;
@@ -116,6 +118,11 @@ export class Stage {
   bind(step: (dt: number) => void, world: () => WorldState): void {
     this.#step = step;
     this.#world = world;
+  }
+
+  /** Freeze the simulation while another computer holds the spider or a choice is open. */
+  hold(on: boolean): void {
+    this.#held = on;
   }
 
   /** Called after each paint with a point above the spider, in page pixels. */
@@ -445,7 +452,7 @@ export class Stage {
   #frame = (now: number): void => {
     const dt = Math.min(0.05, (now - this.#last) / 1000);
     this.#last = now;
-    this.#step?.(dt);
+    if (!this.#held) this.#step?.(dt);
     tickWater(now * 0.001);
     this.#syncWorld();
     this.#feedback();

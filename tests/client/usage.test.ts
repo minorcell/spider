@@ -609,6 +609,46 @@ function openLegacy(stores: string[]): Promise<void> {
 }
 
 describe('openSpiderDb', () => {
+  it('adds the cloud store to a database created before it', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('spider', 6);
+      request.addEventListener('upgradeneeded', () => {
+        const database = request.result;
+        database.createObjectStore('sessions', { keyPath: 'date' });
+        database.createObjectStore('memories', { keyPath: 'date' });
+        database.createObjectStore('usage', { keyPath: 'date' });
+        database.createObjectStore('usageCalls', { keyPath: 'id' });
+        database.createObjectStore('snapshots', { keyPath: 'id' });
+        database.createObjectStore('preferences', { keyPath: 'id' });
+      });
+      request.addEventListener('success', () => {
+        request.result.close();
+        resolve();
+      });
+      request.addEventListener('error', () => reject(request.error ?? new Error('open failed')));
+    });
+    const db = await openSpiderDb();
+    expect(db.objectStoreNames.contains('cloud')).toBe(true);
+    expect(db.objectStoreNames.contains('preferences')).toBe(true);
+  });
+
+  it('keeps a cloud store that an older database already had', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('spider', 6);
+      request.addEventListener('upgradeneeded', () => {
+        request.result.createObjectStore('cloud', { keyPath: 'id' });
+      });
+      request.addEventListener('success', () => {
+        request.result.close();
+        resolve();
+      });
+      request.addEventListener('error', () => reject(request.error ?? new Error('open failed')));
+    });
+    const db = await openSpiderDb();
+    expect(db.objectStoreNames.contains('cloud')).toBe(true);
+    expect(db.objectStoreNames.contains('memories')).toBe(true);
+  });
+
   it('adds the usage store to a database created before it', async () => {
     await openLegacy(['sessions', 'memories']);
     const db = await openSpiderDb();

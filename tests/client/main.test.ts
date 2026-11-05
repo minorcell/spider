@@ -6,6 +6,8 @@ const control = vi.hoisted(() => ({
   dispose: vi.fn(),
   placeIsland: vi.fn(),
   setIslandSource: vi.fn(),
+  hold: vi.fn(),
+  retile: vi.fn(),
   stageArgs: [] as unknown[][],
   sessionArgs: [] as unknown[][],
   stages: [] as unknown[],
@@ -32,6 +34,12 @@ const settings = vi.hoisted(() => ({ restoreSettings: vi.fn(async () => {}) }));
 
 const stars = vi.hoisted(() => ({ syncStars: vi.fn() }));
 
+const cloud = vi.hoisted(() => ({
+  startCloud: vi.fn(async () => {}),
+  cloudHolds: vi.fn(() => false),
+  keepaliveCloud: vi.fn(),
+}));
+
 vi.mock('../../src/client/journal/api.js', () => ({ openJournal: opening.openJournal }));
 vi.mock('../../src/client/settings.js', () => settings);
 
@@ -41,6 +49,8 @@ vi.mock('../../src/client/stars.js', () => ({
   syncStars: stars.syncStars,
 }));
 
+vi.mock('../../src/client/cloud/sync.js', () => cloud);
+
 vi.mock('../../src/client/stage.js', () => ({
   Stage: class {
     bind = control.bind;
@@ -48,6 +58,8 @@ vi.mock('../../src/client/stage.js', () => ({
     dispose = control.dispose;
     placeIsland = control.placeIsland;
     setIslandSource = control.setIslandSource;
+    hold = control.hold;
+    retile = control.retile;
 
     constructor(...args: unknown[]) {
       control.stageArgs.push(args);
@@ -91,6 +103,8 @@ beforeEach(() => {
   control.dispose.mockReset();
   control.placeIsland.mockReset();
   control.setIslandSource.mockReset();
+  control.hold.mockReset();
+  control.retile.mockReset();
   control.stageArgs = [];
   control.sessionArgs = [];
   control.stages = [];
@@ -110,6 +124,11 @@ beforeEach(() => {
   opening.openJournal.mockResolvedValue({ journal: {}, store: {} });
   stars.syncStars.mockReset();
   settings.restoreSettings.mockClear();
+  cloud.startCloud.mockReset();
+  cloud.cloudHolds.mockReset();
+  cloud.keepaliveCloud.mockReset();
+  cloud.startCloud.mockResolvedValue(undefined);
+  cloud.cloudHolds.mockReturnValue(false);
 });
 
 describe('main', () => {
@@ -138,6 +157,10 @@ describe('main', () => {
     expect(control.setIslandSource).toHaveBeenCalledTimes(1);
     expect(world.setWorldTerrainSource).toHaveBeenCalledTimes(1);
     expect(world.installWorldStore).toHaveBeenCalledTimes(1);
+    expect(cloud.startCloud).toHaveBeenCalledTimes(1);
+    expect(world.installWorldStore.mock.invocationCallOrder[0]).toBeLessThan(
+      cloud.startCloud.mock.invocationCallOrder[0],
+    );
     expect(control.panels[0][0]).toBe(document);
     expect(control.panels[0][1]).toBe(session);
     expect(control.panels[0][2]).toBe(stage);
@@ -154,10 +177,23 @@ describe('main', () => {
     expect((session.frame as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(0.016);
     expect(readWorld()).toBe(session.world);
 
+    const hooks = cloud.startCloud.mock.calls[0][0] as {
+      hold(on: boolean): void;
+      retile(): void;
+    };
+    hooks.hold(true);
+    hooks.retile();
+    expect(control.hold).toHaveBeenCalledWith(true);
+    expect(control.retile).toHaveBeenCalledTimes(1);
+
     window.dispatchEvent(new Event('pagehide'));
     const cancel = (session as unknown as { cancel: ReturnType<typeof vi.fn> }).cancel;
     expect(world.flushWorld).toHaveBeenCalledWith('hide');
+    expect(cloud.keepaliveCloud).toHaveBeenCalled();
     expect(world.flushWorld.mock.invocationCallOrder[0]).toBeLessThan(
+      cloud.keepaliveCloud.mock.invocationCallOrder[0],
+    );
+    expect(cloud.keepaliveCloud.mock.invocationCallOrder[0]).toBeLessThan(
       cancel.mock.invocationCallOrder[0],
     );
     expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(
@@ -210,6 +246,18 @@ describe('main', () => {
     expect(store.sweepSnapshots).toHaveBeenCalledOnce();
     expect(settings.restoreSettings).toHaveBeenCalledOnce();
     expect(world.flushWorld).toHaveBeenCalledWith('poke');
+  });
+
+  it('does not upload a fresh island while the cloud copy is on screen', async () => {
+    const host = document.createElement('div');
+    host.id = 'stage';
+    document.body.append(host);
+    cloud.cloudHolds.mockReturnValue(true);
+
+    await import('../../src/client/main.js');
+
+    expect(cloud.startCloud).toHaveBeenCalledTimes(1);
+    expect(world.flushWorld).not.toHaveBeenCalledWith('poke');
   });
 
   it('bakes the seed stored on this machine', async () => {

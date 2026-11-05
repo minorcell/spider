@@ -7,6 +7,7 @@ import { syncStars } from './stars.js';
 import { restoreSettings } from './settings.js';
 import { dbSnapshotStore, type SnapshotStore } from './journal/store.js';
 import { readBuffer } from './world/storage.js';
+import { cloudHolds, keepaliveCloud, startCloud } from './cloud/sync.js';
 import {
   flushWorld,
   installWorldStore,
@@ -52,6 +53,7 @@ let stage: Stage | undefined;
 
 window.addEventListener('pagehide', () => {
   flushWorld('hide');
+  keepaliveCloud();
   session.cancel();
   stage?.dispose();
 });
@@ -67,4 +69,8 @@ stage.bind(
 stage.start();
 mountPanel(document, session, stage, note, opening);
 installWorldStore(session, store);
-flushWorld('poke');
+await startCloud({
+  hold: (on) => stage.hold(on),
+  retile: () => stage.retile(),
+});
+if (!cloudHolds()) flushWorld('poke');

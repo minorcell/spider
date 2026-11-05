@@ -140,9 +140,14 @@ export function buildChrome(doc: Document): DocumentFragment {
     menuModel,
     button(doc, '记忆', { variant: 'quiet', id: 'menu-memory' }),
     button(doc, '用量', { variant: 'quiet', id: 'menu-usage' }),
+    button(doc, '云端', { variant: 'quiet', id: 'menu-cloud' }),
   );
   const foot = h(doc, 'p', { class: 'rail-foot' });
-  foot.append('请求直接从这台浏览器发出。', h(doc, 'br'), '数据只保存在这里。');
+  foot.append(
+    '请求直接从这台浏览器发出。',
+    h(doc, 'br'),
+    '模型密钥留在这台电脑。进度可以交给你自己的对象存储。',
+  );
   const close = button(doc, '关闭', { id: 'settings-close' });
   paint(close, { marginTop: '12px' });
   rail.append(brand, nav, foot, close);
@@ -215,7 +220,58 @@ export function buildChrome(doc: Document): DocumentFragment {
     h(doc, 'p', { id: 'memory-empty', hidden: true }, '还没有日记。'),
   );
   memory.append(memoryForm);
-  body.append(model, memory, h(doc, 'section', { id: 'usage', hidden: true }));
+
+  const cloud = h(doc, 'section', { id: 'panel-cloud', hidden: true });
+  const cloudForm = h(doc, 'form', { id: 'cloud-form' });
+  cloudForm.append(
+    eyebrow(doc, '设置 / 云端'),
+    pageTitle(doc, '云端'),
+    field(doc, {
+      label: '端点',
+      name: 'endpoint',
+      kind: 'url',
+      autocomplete: 'off',
+      spellcheck: false,
+      placeholder: 'https://s3.amazonaws.com',
+    }),
+    field(doc, {
+      label: '区域',
+      name: 'region',
+      autocomplete: 'off',
+      spellcheck: false,
+      placeholder: 'us-east-1',
+    }),
+    field(doc, {
+      label: '桶',
+      name: 'bucket',
+      autocomplete: 'off',
+      spellcheck: false,
+      placeholder: 'spider',
+    }),
+    field(doc, {
+      label: 'Access Key',
+      name: 'accessKeyId',
+      autocomplete: 'off',
+      spellcheck: false,
+    }),
+    field(doc, {
+      label: 'Secret Key',
+      name: 'secretAccessKey',
+      kind: 'password',
+      autocomplete: 'off',
+      spellcheck: false,
+    }),
+    button(doc, '检查并启用', { id: 'cloud-probe', type: 'submit' }),
+    h(doc, 'p', { id: 'cloud-status' }),
+    note(
+      doc,
+      '填你自己的 S3 兼容端点。密钥只留在这台浏览器里。启用后，世界和日记会同步成一份当前进度。用量和模型密钥不同步。',
+    ),
+  );
+  paint(cloud, { padding: '30px clamp(22px, 4vw, 48px) 36px' });
+  cloud.append(cloudForm);
+
+  body.append(model, memory, h(doc, 'section', { id: 'usage', hidden: true }), cloud);
   shell.append(rail, body);
   settings.append(shell);
 
@@ -232,8 +288,50 @@ export function buildChrome(doc: Document): DocumentFragment {
   );
   leave.append(leaveForm);
 
+  const hold = h(doc, 'div', { id: 'cloud-hold' });
+  const holdText = h(doc, 'p', {}, '另一台电脑正在玩这只蜘蛛。');
+  const takeover = button(doc, '改在这台电脑玩', { id: 'cloud-takeover', type: 'button' });
+  hold.append(holdText, takeover);
+  paint(hold, {
+    display: 'none',
+    position: 'absolute',
+    top: '18px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: '4',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '8px 12px',
+    border: border.ink,
+    background: color.paper,
+    color: color.ink,
+  });
+  paint(holdText, { margin: '0' });
+
+  const useRemote = button(doc, '用云端的', { id: 'cloud-use-remote', type: 'button' });
+  const useLocal = button(doc, '用这台电脑的', { id: 'cloud-use-local', type: 'button' });
+  const choice = dialog(doc, { id: 'cloud-choice', label: '选择存档', kind: 'card' });
+  const choiceForm = h(doc, 'form', { method: 'dialog' });
+  choiceForm.append(
+    dialogTitle(doc, '两份进度不一样'),
+    note(doc, '两边都改过。选一份当作当前进度，另一份会留在云端。'),
+    dialogActions(doc, useRemote, useLocal),
+  );
+  choice.append(choiceForm);
+
   paint(keys, { color: color.ink });
-  fragment.append(keys, githubBadge(doc), corner, trace, tail, pilot, settings, leave);
+  fragment.append(
+    keys,
+    githubBadge(doc),
+    corner,
+    trace,
+    tail,
+    pilot,
+    settings,
+    leave,
+    hold,
+    choice,
+  );
   dressChrome({
     keys,
     corner,

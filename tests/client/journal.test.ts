@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { forceCloseDatabase } from 'fake-indexeddb';
 import { openDB, unwrap } from 'idb';
 import { openSpiderDb, resetSpiderDb } from '../../src/client/journal/db.js';
-import { Diary } from '../../src/client/journal/diary.js';
+import { Diary, onDiaryChange } from '../../src/client/journal/diary.js';
 import { localDate, shiftDate } from '../../src/shared/dates.js';
 import {
   blankSession,
@@ -114,12 +114,12 @@ describe('database connections', () => {
   });
 
   it('retries instead of retaining a rejected open request', async () => {
-    const newer = await openDB('spider', 7);
+    const newer = await openDB('spider', 8);
     newer.close();
     await expect(openSpiderDb()).rejects.toMatchObject({ name: 'VersionError' });
     await resetSpiderDb();
 
-    await expect(openSpiderDb()).resolves.toMatchObject({ version: 6 });
+    await expect(openSpiderDb()).resolves.toMatchObject({ version: 7 });
   });
 });
 
@@ -245,6 +245,19 @@ describe('Diary', () => {
     expect(await today.api().list()).toEqual(
       expect.arrayContaining([expect.objectContaining({ date: '2026-11-01' })]),
     );
+  });
+
+  it('tells the page when a diary page is written or digested', async () => {
+    const heard = vi.fn();
+    onDiaryChange(heard);
+    const diary = await Diary.open(new Date(2026, 10, 2, 9));
+    await diary.write({ date: diary.date, line: '水边' });
+    await diary.record('去水边', '到了。', [], settings);
+    await diary.digest(settings);
+    expect(heard).toHaveBeenCalledTimes(2);
+    onDiaryChange(null);
+    await diary.write({ date: diary.date, noted: '又记一笔' });
+    expect(heard).toHaveBeenCalledTimes(2);
   });
 
   it('digests today and then stays quiet', async () => {

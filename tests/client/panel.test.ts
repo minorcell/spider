@@ -5,6 +5,7 @@ import { localDate, shiftDate } from '../../src/shared/dates.js';
 import * as usageLedger from '../../src/client/journal/usage.js';
 import { summarizeDiary } from '../../src/client/journal/summarize.js';
 import { buildChrome } from '../../src/client/panel/chrome.js';
+import { readCloud, resetCloudSettings } from '../../src/client/cloud/settings.js';
 import { AUTO_MEMORY_IDLE_MS, mountPanel } from '../../src/client/panel.js';
 import { pendingNow, resetWorldStore, type BootNote } from '../../src/client/worldStore.js';
 import {
@@ -18,11 +19,33 @@ import type { Stage } from '../../src/client/stage.js';
 import type { SimSession } from '../../src/shared/sim/session.js';
 
 const loop = vi.hoisted(() => ({ runAgent: vi.fn() }));
+const cloudUi = vi.hoisted(() => ({
+  holds: false,
+  phase: { kind: 'off' } as { kind: string; message?: string; until?: number },
+  listen: null as ((phase: { kind: string; message?: string; until?: number }) => void) | null,
+  chooseLocal: vi.fn(async () => {}),
+  chooseRemote: vi.fn(async () => {}),
+  takeOver: vi.fn(async () => {}),
+  note: vi.fn(),
+}));
 const restoreHook = vi.hoisted(() => ({
   cb: null as ((note: BootNote) => void) | null,
 }));
 
 vi.mock('../../src/client/agent/loop.js', () => ({ runAgent: loop.runAgent }));
+
+vi.mock('../../src/client/cloud/sync.js', () => ({
+  cloudHolds: () => cloudUi.holds,
+  cloudPhase: () => cloudUi.phase,
+  cloudChoice: () => null,
+  onCloudPhase: (cb: (phase: { kind: string; message?: string; until?: number }) => void) => {
+    cloudUi.listen = cb;
+  },
+  chooseCloudLocal: () => cloudUi.chooseLocal(),
+  chooseCloudRemote: () => cloudUi.chooseRemote(),
+  takeOverCloud: () => cloudUi.takeOver(),
+  noteCloud: (reason: string) => cloudUi.note(reason),
+}));
 
 vi.mock('../../src/client/worldStore.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/client/worldStore.js')>();
@@ -110,12 +133,22 @@ async function settle(): Promise<void> {
 beforeEach(async () => {
   await flushSettings().catch(() => undefined);
   resetPilotStore();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   localStorage.clear();
   history.replaceState(null, '', '/');
   loop.runAgent.mockReset();
   stage = { setOverlook: vi.fn(), voice: vi.fn(), follow: vi.fn(), retile: vi.fn() };
   resetWorldStore();
+  resetCloudSettings();
+  cloudUi.holds = false;
+  cloudUi.phase = { kind: 'off' };
+  cloudUi.listen = null;
+  cloudUi.chooseLocal.mockReset();
+  cloudUi.chooseRemote.mockReset();
+  cloudUi.takeOver.mockReset();
+  cloudUi.note.mockReset();
 });
 
 describe('mountPanel chrome', () => {
@@ -1682,5 +1715,130 @@ describe('saved sentence', () => {
 
     restoreHook.cb?.(note(null));
     expect(stage.retile).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('cloud panel', () => {
+  function cloudField(name: string): HTMLInputElement {
+    return document.querySelector<HTMLInputElement>(`#cloud-form [name="${name}"]`)!;
+  }
+
+  it('throws when a cloud control is missing', () => {
+    for (const selector of [
+      '#menu-cloud',
+      '#panel-cloud',
+      '#cloud-form',
+      '#cloud-status',
+      '#cloud-hold',
+      '#cloud-takeover',
+      '#cloud-choice',
+      '#cloud-use-local',
+      '#cloud-use-remote',
+    ]) {
+      installChrome();
+      document.querySelector(selector)!.remove();
+      expect(() => mountPanel(document, fakeSession(), fakeStage())).toThrow(
+        'Missing pilot chrome',
+      );
+    }
+  });
+
+  it('throws when a cloud field is missing', () => {
+    installChrome();
+    document.querySelector('#cloud-form [name="endpoint"]')!.remove();
+    expect(() => mountPanel(document, fakeSession(), fakeStage())).toThrow(
+      'Missing settings field endpoint',
+    );
+  });
+
+  it('opens the cloud page from the rail', () => {
+    mount();
+    clickButton('#menu-cloud');
+    expect(document.querySelector('#menu-cloud')!.getAttribute('aria-current')).toBe('page');
+    expect(document.querySelector<HTMLElement>('#panel-cloud')!.hidden).toBe(false);
+    expect(document.querySelector<HTMLElement>('#panel-model')!.hidden).toBe(true);
+    expect(document.querySelector('.rail-foot')!.textContent).toContain('对象存储');
+  });
+
+  it('asks for every field before it probes', () => {
+    mount();
+    document
+      .querySelector('#cloud-form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(document.querySelector('#cloud-status')!.textContent).toBe('五项都要填');
+  });
+
+  it('stores a failed probe and a successful one', async () => {
+    mount();
+    clickButton('#menu-cloud');
+    cloudField('endpoint').value = 'https://s3.example.com/';
+    cloudField('region').value = 'us-east-1';
+    cloudField('bucket').value = 'spider';
+    cloudField('accessKeyId').value = 'AKIA';
+    cloudField('secretAccessKey').value = 'secret';
+    document.querySelector('#cloud-form')!.dispatchEvent(new Event('input', { bubbles: true }));
+    const fetchMock = vi.fn(async () => ({
+      status: 403,
+      ok: false,
+      headers: { get: () => null },
+      body: { cancel: async () => undefined },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    document
+      .querySelector('#cloud-form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    expect(document.querySelector('#cloud-status')!.textContent).toBe('密钥不对');
+    expect(readCloud()).toMatchObject({ endpoint: 'https://s3.example.com', ready: false });
+
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      if (headers.get('if-match') === '"deadbeef"') {
+        return new Response(null, { status: 412, headers: { etag: '"p"' } });
+      }
+      return new Response('ok', { status: 200, headers: { etag: '"p"' } });
+    });
+    document
+      .querySelector('#cloud-form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    expect(document.querySelector('#cloud-status')!.textContent).toBe(
+      '已启用。这台电脑上的进度会交给云端。',
+    );
+    expect(readCloud().ready).toBe(true);
+    expect(cloudUi.note).toHaveBeenCalledWith('poke');
+  });
+
+  it('paints each cloud phase and the choice buttons', () => {
+    mount();
+    const listen = cloudUi.listen!;
+    listen({ kind: 'ready' });
+    expect(document.querySelector('#cloud-status')!.textContent).toBe('云端已接上。');
+    expect(document.querySelector<HTMLElement>('#cloud-hold')!.style.display).toBe('none');
+    listen({ kind: 'error', message: '云端密钥被拒绝' });
+    expect(document.querySelector('#cloud-status')!.textContent).toBe('云端密钥被拒绝');
+    listen({ kind: 'locked', until: 10 });
+    expect(document.querySelector<HTMLElement>('#cloud-hold')!.style.display).toBe('flex');
+    listen({ kind: 'choose' });
+    expect(document.querySelector<HTMLDialogElement>('#cloud-choice')!.open).toBe(true);
+    listen({ kind: 'choose' });
+    listen({ kind: 'off' });
+    expect(document.querySelector<HTMLDialogElement>('#cloud-choice')!.open).toBe(false);
+    clickButton('#cloud-use-local');
+    clickButton('#cloud-use-remote');
+    clickButton('#cloud-takeover');
+    expect(cloudUi.chooseLocal).toHaveBeenCalledOnce();
+    expect(cloudUi.chooseRemote).toHaveBeenCalledOnce();
+    expect(cloudUi.takeOver).toHaveBeenCalledOnce();
+  });
+
+  it('refuses a new sentence while another computer is playing', () => {
+    ready();
+    cloudUi.holds = true;
+    mount();
+    document.querySelector<HTMLInputElement>('#goal')!.value = '走';
+    submit();
+    expect(document.querySelector('#trace')!.textContent).toBe('另一台电脑正在玩');
+    expect(loop.runAgent).not.toHaveBeenCalled();
   });
 });

@@ -182,6 +182,20 @@ describe('Stage setup', () => {
     stage.voice();
     expect(sound.voice).toHaveBeenCalled();
   });
+
+  it('keeps drawing while a cloud hold skips the simulation step', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const step = vi.fn();
+    stage.bind(step, () => makeWorld());
+    stage.start();
+    stage.hold(true);
+    frame();
+    expect(step).not.toHaveBeenCalled();
+    expect(renderer().render).toHaveBeenCalled();
+    stage.hold(false);
+    frame();
+    expect(step).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('world sync', () => {

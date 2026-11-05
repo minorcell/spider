@@ -1,4 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import type { CloudCursor } from '../cloud/engine.js';
 import type { WorldRecord } from '../../shared/sim/snapshot.js';
 import type { ChatSession } from './session.js';
 
@@ -72,10 +73,11 @@ interface SpiderDB extends DBSchema {
   usageCalls: { key: string; value: UsageCall; indexes: { date: string } };
   snapshots: { key: string; value: WorldRecord };
   preferences: { key: string; value: PreferenceRecord };
+  cloud: { key: string; value: CloudCursor };
 }
 
 const DB_NAME = 'spider';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 let opening: Promise<IDBPDatabase<SpiderDB>> | null = null;
 
@@ -104,6 +106,9 @@ export function openSpiderDb(): Promise<IDBPDatabase<SpiderDB>> {
       }
       if (!db.objectStoreNames.contains('preferences')) {
         db.createObjectStore('preferences', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('cloud')) {
+        db.createObjectStore('cloud', { keyPath: 'id' });
       }
     },
     blocking() {
