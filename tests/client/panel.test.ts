@@ -125,6 +125,13 @@ async function flush(): Promise<void> {
   }
 }
 
+async function waitForStatus(text: string): Promise<void> {
+  for (let i = 0; i < 40; i++) {
+    if (document.querySelector('#cloud-status')?.textContent === text) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 /** Let promises started by a timer callback settle while the clock is fake. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 50; i++) await vi.advanceTimersByTimeAsync(1);
@@ -1787,7 +1794,7 @@ describe('cloud panel', () => {
     document
       .querySelector('#cloud-form')!
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await flush();
+    await waitForStatus('密钥不对');
     expect(document.querySelector('#cloud-status')!.textContent).toBe('密钥不对');
     expect(readCloud()).toMatchObject({ endpoint: 'https://s3.example.com', ready: false });
 
@@ -1801,7 +1808,7 @@ describe('cloud panel', () => {
     document
       .querySelector('#cloud-form')!
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await flush();
+    await waitForStatus('已启用。这台电脑上的进度会交给云端。');
     expect(document.querySelector('#cloud-status')!.textContent).toBe(
       '已启用。这台电脑上的进度会交给云端。',
     );
