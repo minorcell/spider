@@ -255,6 +255,21 @@ describe('settings dialog', () => {
     expect(document.querySelector('#settings-open')!.getAttribute('aria-expanded')).toBe('false');
   });
 
+  it('persists the thinking switch and shows it again when reopened', () => {
+    ready();
+    mount();
+    clickButton('#settings-open');
+    expect(field('thinking').checked).toBe(true);
+
+    field('thinking').checked = false;
+    field('thinking').dispatchEvent(new Event('change', { bubbles: true }));
+    expect(readPilot().thinking).toBe(false);
+
+    clickButton('#settings-close');
+    clickButton('#settings-open');
+    expect(field('thinking').checked).toBe(false);
+  });
+
   it('preserves settings changed after the model form was filled', () => {
     ready();
     mount();
@@ -662,6 +677,7 @@ const PILOT: PilotSettings = {
   apiKey: 'key',
   contextTokens: null,
   autoMemory: false,
+  thinking: true,
 };
 
 describe('diary panel', () => {

@@ -15,6 +15,7 @@ const settings: PilotSettings = {
   apiKey: 'key',
   contextTokens: null,
   autoMemory: false,
+  thinking: true,
 };
 
 beforeEach(() => {
@@ -46,6 +47,20 @@ describe('summarizeDiary', () => {
     expect(prompt).toContain('用户：拿苹果');
     expect(prompt).toContain('不要吃红的');
     expect(prompt).toContain('更早的摘要');
+    expect(ai.generateText.mock.calls[0]?.[0]?.reasoning).toBe('provider-default');
+  });
+
+  it('turns reasoning off for a summary when thinking is off', async () => {
+    compat.create.mockReturnValue(vi.fn(() => 'model-1'));
+
+    await summarizeDiary({
+      settings: { ...settings, thinking: false },
+      transcript: '对话',
+      noted: '',
+      prior: '',
+    });
+
+    expect(ai.generateText.mock.calls[0]?.[0]?.reasoning).toBe('none');
   });
 
   it('leaves empty fields blank in the prompt', async () => {

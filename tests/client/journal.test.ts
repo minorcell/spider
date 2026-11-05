@@ -36,6 +36,7 @@ const settings: PilotSettings = {
   apiKey: 'key',
   contextTokens: null,
   autoMemory: false,
+  thinking: true,
 };
 
 /** Long enough that 1k tokens (80% of a 1k window) is already full. */

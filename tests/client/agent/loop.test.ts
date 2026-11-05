@@ -43,7 +43,12 @@ function fakeSession(): SimSession {
   return { cancel: vi.fn() } as unknown as SimSession;
 }
 
-const settings = { baseURL: 'https://example.com', model: 'model-1', apiKey: 'secret' };
+const settings = {
+  baseURL: 'https://example.com',
+  model: 'model-1',
+  apiKey: 'secret',
+  thinking: true,
+};
 
 beforeEach(() => {
   aiControl.streamText.mockReset();
@@ -154,7 +159,18 @@ describe('runAgent', () => {
     expect(String(options.system)).toContain('你是一个蜘蛛');
     expect(options.toolCallConcurrency).toBe(1);
     expect(options.stopWhen).toEqual({ until: 'finished' });
+    expect(options.reasoning).toBe('provider-default');
     expect(options.tools).toBeTypeOf('object');
+  });
+
+  it('asks the model not to reason when thinking is off', async () => {
+    stream([]);
+    await runAgent({
+      goal: 'go',
+      session: fakeSession(),
+      settings: { ...settings, thinking: false },
+    });
+    expect(aiControl.streamText.mock.calls[0][0].reasoning).toBe('none');
   });
 
   it('adds the diary and an earlier summary to the system prompt', async () => {

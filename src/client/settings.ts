@@ -14,6 +14,8 @@ export interface PilotSettings {
   contextTokens: number | null;
   /** When on, a long idle stretch may write the day's conversation into the diary. */
   autoMemory: boolean;
+  /** When off, the request asks the model not to reason before answering. */
+  thinking: boolean;
 }
 
 export type PilotInput = {
@@ -22,6 +24,7 @@ export type PilotInput = {
   apiKey: string;
   contextTokens?: number | null;
   autoMemory?: boolean;
+  thinking?: boolean;
 };
 
 const EMPTY: PilotSettings = {
@@ -30,6 +33,7 @@ const EMPTY: PilotSettings = {
   apiKey: '',
   contextTokens: null,
   autoMemory: false,
+  thinking: true,
 };
 
 interface PilotRecord extends PreferenceRecord {
@@ -79,6 +83,7 @@ function parsePilot(raw: unknown): PilotSettings | null {
     apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
     contextTokens: positiveInt(parsed.contextTokens),
     autoMemory: parsed.autoMemory === true,
+    thinking: typeof parsed.thinking === 'boolean' ? parsed.thinking : true,
   };
 }
 
@@ -120,6 +125,7 @@ export function writePilot(settings: PilotInput): void {
         ? previous.contextTokens
         : positiveInt(settings.contextTokens),
     autoMemory: settings.autoMemory ?? previous.autoMemory,
+    thinking: settings.thinking ?? previous.thinking,
   };
   const store = pilotCache();
   edits += 1;
@@ -165,6 +171,11 @@ export function resetPilotStore(): void {
 /** All three fields are required before the page will call a model. */
 export function pilotReady(settings: PilotInput): boolean {
   return settings.baseURL !== '' && settings.model !== '' && settings.apiKey !== '';
+}
+
+/** Off asks the provider to skip reasoning; on leaves the model's default alone. */
+export function reasoningOf(settings: PilotInput): 'provider-default' | 'none' {
+  return settings.thinking === false ? 'none' : 'provider-default';
 }
 
 /** Stored k token → tokens. Vendors count 8k as 8000, 128k as 128000. */

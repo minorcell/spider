@@ -18,6 +18,7 @@ const SETTINGS: PilotSettings = {
   apiKey: 'key',
   contextTokens: null,
   autoMemory: false,
+  thinking: true,
 };
 
 function record(seq = 1, over: Partial<WorldRecord> = {}): WorldRecord {

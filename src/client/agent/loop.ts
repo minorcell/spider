@@ -6,7 +6,7 @@ import type { MemoryApi } from '../journal/diary.js';
 import { toMessages, type ChatSession } from '../journal/session.js';
 import { byteSize, usageCallFromStep, type UsageCall, type UsageTool } from '../journal/usage.js';
 import { localDate } from '../../shared/dates.js';
-import type { PilotSettings } from '../settings.js';
+import { reasoningOf, type PilotSettings } from '../settings.js';
 import { withInlineCalls } from './inline.js';
 import { spiderTools } from './tools.js';
 
@@ -109,6 +109,7 @@ export async function runAgent({
     ),
     tools,
     stopWhen: isLoopFinished(),
+    reasoning: reasoningOf(settings),
     abortSignal: signal,
     // One body. A second call started early would cancel the goal still running.
     toolCallConcurrency: 1,

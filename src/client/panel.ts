@@ -1,7 +1,7 @@
 import { closeDialog, showDialog } from '../ui/dialog/index.js';
 import { placeTail } from '../ui/dress.js';
 import type { MenuSelect } from '../ui/select/index.js';
-import { enhanceSwitch } from '../ui/switch/index.js';
+import { enhanceSwitch, reflectSwitch } from '../ui/switch/index.js';
 import { openJournal, type Journal, type OpenedJournal } from './journal/api.js';
 import { flushSoon, flushWorld, onRestore, setPending, type BootNote } from './worldStore.js';
 import type { Trace } from './journal/session.js';
@@ -169,11 +169,18 @@ export function mountPanel(
     return element;
   };
 
-  const modelFields = (): Record<'baseURL' | 'model' | 'apiKey' | 'contextTokens', string> => ({
+  const modelFields = (): {
+    baseURL: string;
+    model: string;
+    apiKey: string;
+    contextTokens: string;
+    thinking: boolean;
+  } => ({
     baseURL: field('baseURL').value,
     model: field('model').value,
     apiKey: field('apiKey').value,
     contextTokens: field('contextTokens').value,
+    thinking: field('thinking').checked,
   });
   let shownFields: ReturnType<typeof modelFields> | null = null;
 
@@ -183,6 +190,8 @@ export function mountPanel(
     field('apiKey').value = settings.apiKey;
     field('contextTokens').value =
       settings.contextTokens == null ? '' : String(settings.contextTokens);
+    field('thinking').checked = settings.thinking;
+    reflectSwitch(field('thinking'));
     shownFields = modelFields();
   };
 
@@ -228,6 +237,10 @@ export function mountPanel(
       next.contextTokens = numberOrNull(values.contextTokens);
       changed = true;
     }
+    if (values.thinking !== shownFields.thinking) {
+      next.thinking = values.thinking;
+      changed = true;
+    }
     if (!changed) return;
     writePilot(next);
     shownFields = values;
@@ -235,6 +248,7 @@ export function mountPanel(
   };
 
   settingsForm.addEventListener('input', persist);
+  settingsForm.addEventListener('change', persist);
   settingsForm.addEventListener('submit', (event) => {
     event.preventDefault();
     persist();

@@ -83,6 +83,7 @@ describe('WorkerJournal', () => {
           apiKey: 'k',
           contextTokens: null,
           autoMemory: false,
+          thinking: true,
         }),
       { ...STATE, behind: true },
     );
@@ -96,6 +97,7 @@ describe('WorkerJournal', () => {
       apiKey: 'k',
       contextTokens: null,
       autoMemory: false,
+      thinking: true,
     };
     expect(await call(port, () => journal.digest(settings), STATE)).toBeUndefined();
     expect(await call(port, () => journal.backfill(settings), STATE)).toBeUndefined();

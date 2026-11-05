@@ -4,6 +4,7 @@ import {
   flushSettings,
   pilotReady,
   readPilot,
+  reasoningOf,
   resetPilotStore,
   restoreSettings,
   writePilot,
@@ -23,6 +24,7 @@ const EMPTY = {
   apiKey: '',
   contextTokens: null,
   autoMemory: false,
+  thinking: true,
 };
 
 describe('pilot settings', () => {
@@ -69,6 +71,16 @@ describe('pilot settings', () => {
     expect(readPilot().autoMemory).toBe(true);
     writePilot({ ...readPilot(), autoMemory: false });
     expect(readPilot().autoMemory).toBe(false);
+  });
+
+  it('keeps thinking on by default and stores turning it off', () => {
+    expect(readPilot().thinking).toBe(true);
+    writePilot({ baseURL: 'https://example.com', model: 'gpt', apiKey: 'key', thinking: false });
+    expect(readPilot().thinking).toBe(false);
+    writePilot({ baseURL: 'https://example.com', model: 'gpt', apiKey: 'key' });
+    expect(readPilot().thinking).toBe(false);
+    writePilot({ ...readPilot(), thinking: true });
+    expect(readPilot().thinking).toBe(true);
   });
 
   it('reads integers written as strings', () => {
@@ -133,6 +145,12 @@ describe('pilot settings', () => {
     expect(contextTokensOf(null)).toBeNull();
     expect(contextTokensOf(8)).toBe(8000);
     expect(contextTokensOf(128)).toBe(128_000);
+  });
+
+  it('maps the thinking switch to the provider reasoning option', () => {
+    expect(reasoningOf({ ...EMPTY, thinking: true })).toBe('provider-default');
+    expect(reasoningOf({ ...EMPTY, thinking: false })).toBe('none');
+    expect(reasoningOf({ baseURL: 'a', model: 'b', apiKey: 'c' })).toBe('provider-default');
   });
 });
 
