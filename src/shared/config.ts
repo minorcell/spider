@@ -116,8 +116,8 @@ export const GAIT = {
   headEase: 8,
   pitch: 0.04,
   roll: 0.08,
-  liftRate: 0.5,
-  liftEase: 5,
+  liftRate: 1.2,
+  liftEase: 8,
   /** Rise over run at 85 degrees. The body sticks to slopes and stops only on a near-vertical face. */
   maxSlope: Math.tan((85 * Math.PI) / 180),
   fallAccel: 14,
