@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
+import { islandGroup } from '../../src/client/groundView.js';
 import {
   blankSession,
   dropOldest,
@@ -23,16 +24,19 @@ import { EYE_HEIGHT, sightOutline } from '../../src/shared/sight.js';
 import { toObservation } from '../../src/shared/state.js';
 import { surfaceOf, Terrain } from '../../src/shared/terrain.js';
 import { createWorld, REACH, REACH_Y, VIEW_DISTANCE } from '../../src/shared/world.js';
+import { bakeWorkerIsland, dressIsland, planAroundNest, SEED, stepDriven } from './scenarios.js';
 
 /**
  * The budgets are deliberately loose: these run on shared CI machines. They
  * catch a path that suddenly becomes quadratic or starts cloning the world on
  * every keystroke, not a few percent of engine noise.
  */
-function bestOf(runs: number, work: () => void): number {
+function bestOf(runs: number, work: () => void, reset?: () => void): number {
+  reset?.();
   work();
   let best = Number.POSITIVE_INFINITY;
   for (let i = 0; i < runs; i++) {
+    reset?.();
     const start = performance.now();
     work();
     best = Math.min(best, performance.now() - start);
@@ -78,11 +82,70 @@ describe('frame and boot budgets', () => {
     expect(bestOf(3, () => void new SimSession(1234))).toBeLessThan(120);
   });
 
-  it('steps 120 frames in under 30 ms', () => {
+  it('steps 120 idle frames in under 120 ms', () => {
     const session = new SimSession(1234);
     expect(
       bestOf(3, () => {
         for (let i = 0; i < 120; i++) session.frame(1 / 60);
+      }),
+    ).toBeLessThan(120);
+  });
+});
+
+describe('driven frames', () => {
+  // Node 24, coverage on, median 11.8 ms, 2026-11-05.
+  it('steps 120 driven frames in under 120 ms', () => {
+    const session = new SimSession(SEED);
+    const home = session.spider.capture();
+    expect(
+      bestOf(
+        3,
+        () => stepDriven(session),
+        () => session.spider.settle(home),
+      ),
+    ).toBeLessThan(120);
+
+    session.spider.settle(home);
+    stepDriven(session);
+    const moved = Math.hypot(
+      session.spider.root.position.x - home.position.x,
+      session.spider.root.position.z - home.position.z,
+    );
+    expect(moved).toBeGreaterThan(1);
+    expect(session.spider.halt).toBe('clear');
+  });
+});
+
+describe('route around the nest', () => {
+  // Node 24, coverage on, median 2.3 ms, 2026-11-05.
+  it('routes around the nest in under 15 ms', () => {
+    const world = createWorld(SEED);
+    const height = (x: number, z: number): number => surfaceOf(world.terrain, x, z);
+    const plan = planAroundNest(world.blocks, height);
+    expect(plan !== null && plan.direct === false && plan.points.length > 2).toBe(true);
+    expect(bestOf(5, () => void planAroundNest(world.blocks, height))).toBeLessThan(15);
+  });
+});
+
+describe('worker boot', () => {
+  // Node 24, coverage on, median 38.3 ms, 2026-11-05.
+  it('bakes a worker island in under 120 ms', () => {
+    expect(bestOf(3, () => void bakeWorkerIsland())).toBeLessThan(120);
+  });
+});
+
+describe('main-thread dress', () => {
+  // Node 24, coverage on, median 45.6 ms, 2026-11-05.
+  it('dresses the island on the main thread in under 120 ms', async () => {
+    const world = createWorld(SEED);
+    const prepared = await bakeWorkerIsland();
+    expect(world.entities.some((entity) => entity.kind === 'nest')).toBe(true);
+    expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(true);
+    expect(world.entities.some((entity) => entity.kind === 'grass')).toBe(true);
+    expect(
+      bestOf(3, () => {
+        islandGroup(prepared.island);
+        dressIsland(world);
       }),
     ).toBeLessThan(120);
   });
@@ -152,11 +215,11 @@ describe('persistence budgets', () => {
 });
 
 describe('journal budgets', () => {
-  it('estimates 400 turns in under 5 ms', () => {
+  it('estimates 400 turns in under 25 ms', () => {
     expect(bestOf(5, () => void estimateTokens(day))).toBeLessThan(25);
   });
 
-  it('fits 400 turns in under 10 ms', () => {
+  it('fits 400 turns in under 25 ms', () => {
     expect(bestOf(5, () => void fit(day, limits))).toBeLessThan(25);
   });
 
@@ -164,7 +227,7 @@ describe('journal budgets', () => {
     expect(bestOf(5, () => void dropOldest(day, limits))).toBeLessThan(25);
   });
 
-  it('prints 400 turns in under 10 ms', () => {
+  it('prints 400 turns in under 25 ms', () => {
     expect(bestOf(5, () => void transcript(day))).toBeLessThan(25);
   });
 });
