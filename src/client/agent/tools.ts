@@ -131,7 +131,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
 
   const tools = {
     observe: tool({
-      description: `停下观察远处。默认最多看 ${VIEW_DISTANCE}；草丛会把范围缩到 ${GRASS_VIEW}，抬高身体可以恢复。结果给出可见对象、距离和遮挡；inReach 表示不超过 ${REACH} 且没有被挡住。${WORLD}`,
+      description: `停下观察远处。默认最多看 ${VIEW_DISTANCE}；草丛会把范围缩到 ${GRASS_VIEW}，抬高身体可以恢复。可以观察到可见对象、距离和遮挡；inReach 表示不超过 ${REACH} 且没有被挡住。${WORLD}`,
       inputSchema: call({
         distance: z
           .number()
@@ -174,7 +174,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
     }),
     walk: tool({
       description:
-        '沿当前朝向走；walk 不会绕障碍，失败后按 hint 或 self.ways 换方向。距离较长时设置 fast。',
+        '沿当前朝向走直线；失败后按 hint 或 self.ways 换方向。当然距离较远时，你可以 fast！',
       inputSchema: call({
         distance: z.number().describe('顺着朝向走多少单位。正数向前。'),
         fast: z.boolean().optional().describe('为真就跑。距离大约超过 2 个单位时用。'),
