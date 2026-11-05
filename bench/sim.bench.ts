@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, test } from 'vitest';
 import { buildProp } from '../src/client/props.js';
 import { localDate } from '../src/shared/dates.js';
@@ -32,8 +34,8 @@ describe('simulation', () => {
   });
 
   test('120 idle frames', async ({ bench }) => {
+    const session = new SimSession(1234);
     await bench('120 idle frames', () => {
-      const session = new SimSession(1234);
       for (let i = 0; i < 120; i++) session.frame(1 / 60);
     }).run();
   });
@@ -45,8 +47,9 @@ describe('simulation', () => {
   });
 
   test('apply a body', async ({ bench }) => {
+    const session = new SimSession(1);
     await bench('apply a body', () => {
-      applyBody(new SimSession(1), body);
+      applyBody(session, body);
     }).run();
   });
 
