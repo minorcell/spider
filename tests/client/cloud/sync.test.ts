@@ -198,8 +198,7 @@ describe('cloud sync', () => {
     const session = await boot(2);
     enable();
     installCloud(worldBundle(8, []));
-    noteCloud('poke');
-    await drain();
+    await noteCloud('poke');
     expect(session.world.seed).toBe(8);
     const retile = vi.fn();
     await startCloud({ hold: vi.fn(), retile });

@@ -80,7 +80,7 @@ export async function startCloud(hooks: {
 }
 
 /** World checkpoints call this. A quiet ten-second tick only schedules the idle upload. */
-export function noteCloud(reason: 'interval' | 'hide' | 'poke'): void {
+export function noteCloud(reason: 'interval' | 'hide' | 'poke'): Promise<void> | undefined {
   if (!cloudReady()) return;
   if (reason === 'interval') {
     clearTimeout(idleTimer);
@@ -89,7 +89,7 @@ export function noteCloud(reason: 'interval' | 'hide' | 'poke'): void {
     }, IDLE_MS);
     return;
   }
-  void run(() => reconcile(io, engine));
+  return run(() => reconcile(io, engine));
 }
 
 export function chooseCloudLocal(): Promise<void> {
