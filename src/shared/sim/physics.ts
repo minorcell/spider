@@ -34,6 +34,8 @@ interface Mover {
   slope: number;
   x0: number;
   z0: number;
+  /** 这一步开始做竖直积分时的高度。落点被接住时用来丢掉下落速度。 */
+  y0: number;
 }
 
 const spinQ = new Quaternion();
@@ -92,6 +94,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       slope: 0,
       x0: entity.x,
       z0: entity.z,
+      y0: entity.y,
     });
   }
   if (movers.length === 0) return;
@@ -169,77 +172,8 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
     entity.vz = vz;
   }
 
-  for (let i = 0; i < movers.length; i++) {
-    for (let j = i + 1; j < movers.length; j++) {
-      const a = movers[i];
-      const b = movers[j];
-      const dx = b.entity.x - a.entity.x;
-      const dz = b.entity.z - a.entity.z;
-      const distance = Math.hypot(dx, dz);
-      const min = a.radius + b.radius;
-      if (distance >= min || distance < 1e-6) continue;
-      const nx = dx / distance;
-      const nz = dz / distance;
-      const shift = (min - distance) / 2;
-      const edgeA = !insideLand(world.terrain, a.entity.x, a.entity.z, a.radius + 0.05);
-      const edgeB = !insideLand(world.terrain, b.entity.x, b.entity.z, b.radius + 0.05);
-      if (edgeA && !edgeB) {
-        const bxEdge = b.entity.x - nx * shift * 2;
-        const bzEdge = b.entity.z - nz * shift * 2;
-        /* v8 ignore next */
-        if (
-          !blockedAt(bxEdge, bzEdge, world.blocks, b.radius) &&
-          insideLand(world.terrain, bxEdge, bzEdge, b.radius)
-        ) {
-          b.entity.x = bxEdge;
-          b.entity.z = bzEdge;
-          a.vx = a.vz = 0;
-          b.vx = b.vz = 0;
-          continue;
-        }
-      }
-      if (edgeB && !edgeA) {
-        const axEdge = a.entity.x + nx * shift * 2;
-        const azEdge = a.entity.z + nz * shift * 2;
-        /* v8 ignore next */
-        if (
-          !blockedAt(axEdge, azEdge, world.blocks, a.radius) &&
-          insideLand(world.terrain, axEdge, azEdge, a.radius)
-        ) {
-          a.entity.x = axEdge;
-          a.entity.z = azEdge;
-          a.vx = a.vz = 0;
-          b.vx = b.vz = 0;
-          continue;
-        }
-      }
-      const ax = a.entity.x - nx * shift;
-      const az = a.entity.z - nz * shift;
-      const bx = b.entity.x + nx * shift;
-      const bz = b.entity.z + nz * shift;
-      const aCanMove =
-        !blockedAt(ax, az, world.blocks, a.radius) && insideLand(world.terrain, ax, az, a.radius);
-      const bCanMove =
-        !blockedAt(bx, bz, world.blocks, b.radius) && insideLand(world.terrain, bx, bz, b.radius);
-      if (aCanMove && bCanMove) {
-        a.entity.x = ax;
-        a.entity.z = az;
-        b.entity.x = bx;
-        b.entity.z = bz;
-      }
-      a.vx -= nx * 0.4;
-      a.vz -= nz * 0.4;
-      b.vx += nx * 0.4;
-      b.vz += nz * 0.4;
-      a.entity.vx = a.vx;
-      a.entity.vz = a.vz;
-      b.entity.vx = b.vx;
-      b.entity.vz = b.vz;
-    }
-  }
-
-  // Gravity and buoyancy own the vertical axis. Sleep only when the slope will
-  // not wake the body.
+  // Gravity and buoyancy own the vertical axis. Contacts run after, so a body
+  // that has landed can still be lifted onto another body.
   for (const mover of movers) {
     if (!insideLand(world.terrain, mover.entity.x, mover.entity.z, mover.radius)) {
       mover.entity.x = mover.x0;
@@ -249,6 +183,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       mover.vz = 0;
     }
     const entity = mover.entity;
+    mover.y0 = entity.y;
     const ground = world.terrain.height(entity.x, entity.z);
     const water = waterAt(world.terrain, entity.x, entity.z);
     const fraction = submergedFraction(entity.y, water.surface, mover.radius);
@@ -264,13 +199,190 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
     }
     entity.y = y;
     entity.vy = vy;
-    if (mover.rolls) {
-      roll(entity, mover.radius, entity.x - mover.x0, entity.z - mover.z0);
-    }
-    if (mover.slope <= rules.sleepSlope && Math.hypot(mover.vx, mover.vz) < rules.sleepSpeed) {
-      entity.vx = 0;
-      entity.vz = 0;
-    }
     mover.vy = vy;
   }
+
+  // 接触只改位置。叠在一起时沿三维法线分开，不再每帧加一截水平速度，
+  // 否则堆着的苹果会一直抖，也永远睡不着。
+  resolveContacts(movers, world);
+
+  for (const mover of movers) {
+    // 这一步没有真正下落，说明地面或别的东西把落点接住了。
+    // 留下向下的速度的话，下一步会再扎进去，堆在一起就会抖。
+    if (mover.vy < 0 && mover.entity.y >= mover.y0 - 1e-4) {
+      mover.vy = 0;
+      mover.entity.vy = 0;
+    }
+  }
+
+  for (const mover of movers) {
+    if (mover.rolls) {
+      roll(mover.entity, mover.radius, mover.entity.x - mover.x0, mover.entity.z - mover.z0);
+    }
+    if (mover.slope <= rules.sleepSlope && Math.hypot(mover.vx, mover.vz) < rules.sleepSpeed) {
+      mover.entity.vx = 0;
+      mover.entity.vz = 0;
+      mover.vx = 0;
+      mover.vz = 0;
+    }
+  }
+}
+
+const CONTACT_STEPS = 6;
+
+/** 把重叠的球分开。被挡住的那一段位移交给另一只。 */
+function resolveContacts(movers: Mover[], world: WorldState): void {
+  for (let step = 0; step < CONTACT_STEPS; step++) {
+    let overlapped = false;
+    for (let i = 0; i < movers.length; i++) {
+      for (let j = i + 1; j < movers.length; j++) {
+        if (separatePair(movers[i], movers[j], world)) overlapped = true;
+      }
+    }
+    if (!overlapped) break;
+  }
+  for (let i = 0; i < movers.length; i++) {
+    for (let j = i + 1; j < movers.length; j++) calmPair(movers[i], movers[j], world);
+  }
+}
+
+/** 法线比这更陡，就是一只歇在另一只上面，不是并排挤开。 */
+const SUPPORT = 0.45;
+
+function separatePair(a: Mover, b: Mover, world: WorldState): boolean {
+  const normal = contactNormal(a, b);
+  if (!normal) return false;
+  let { nx, ny, nz, depth } = normal;
+  // 叠在一起时只沿竖直方向分开。斜着推会把上面那只慢慢挪走。
+  // 球已经重叠时，竖直间距一定小于 needed，所以 depth 为正。
+  if (Math.abs(ny) >= SUPPORT) {
+    const horizontal = Math.hypot(b.entity.x - a.entity.x, b.entity.z - a.entity.z);
+    const min = a.radius + b.radius;
+    const needed = Math.sqrt(Math.max(0, min * min - horizontal * horizontal));
+    const have = Math.abs(b.entity.y + b.radius - (a.entity.y + a.radius));
+    nx = 0;
+    nz = 0;
+    ny = ny >= 0 ? 1 : -1;
+    depth = needed - have;
+  }
+  const half = depth / 2;
+  const wantAx = -nx * half;
+  const wantAy = -ny * half;
+  const wantAz = -nz * half;
+  const wantBx = nx * half;
+  const wantBy = ny * half;
+  const wantBz = nz * half;
+  const gotA = moveBy(a, world, wantAx, wantAy, wantAz);
+  const gotB = moveBy(b, world, wantBx, wantBy, wantBz);
+  const leftAx = wantAx - gotA.dx;
+  const leftAy = wantAy - gotA.dy;
+  const leftAz = wantAz - gotA.dz;
+  const leftBx = wantBx - gotB.dx;
+  const leftBy = wantBy - gotB.dy;
+  const leftBz = wantBz - gotB.dz;
+  if (leftBx !== 0 || leftBy !== 0 || leftBz !== 0) moveBy(a, world, -leftBx, -leftBy, -leftBz);
+  if (leftAx !== 0 || leftAy !== 0 || leftAz !== 0) moveBy(b, world, -leftAx, -leftAy, -leftAz);
+  return true;
+}
+
+/** 消掉仍在相互靠近的速度。已经分开或贴着不动的，不再加一截速度。 */
+function calmPair(a: Mover, b: Mover, world: WorldState): void {
+  const normal = contactNormal(a, b, 1e-4);
+  if (!normal) return;
+  let { nx, ny, nz } = normal;
+  if (Math.abs(ny) >= SUPPORT) {
+    const mass = a.mass + b.mass;
+    const vx = (a.vx * a.mass + b.vx * b.mass) / mass;
+    const vz = (a.vz * a.mass + b.vz * b.mass) / mass;
+    a.vx = b.vx = vx;
+    a.vz = b.vz = vz;
+    nx = 0;
+    nz = 0;
+    ny = ny >= 0 ? 1 : -1;
+  }
+  const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny + (b.vz - a.vz) * nz;
+  if (rel >= 0) {
+    syncVelocity(a);
+    syncVelocity(b);
+    return;
+  }
+  let invA = 1 / a.mass;
+  let invB = 1 / b.mass;
+  // 地面已经接住了这一只。它不该再分走一半下落速度，然后又交回去。
+  if (ny > 0 && onGround(a, world)) invA = 0;
+  if (ny < 0 && onGround(b, world)) invB = 0;
+  const inv = invA + invB;
+  const impulse = -rel / inv;
+  a.vx -= nx * impulse * invA;
+  a.vy -= ny * impulse * invA;
+  a.vz -= nz * impulse * invA;
+  b.vx += nx * impulse * invB;
+  b.vy += ny * impulse * invB;
+  b.vz += nz * impulse * invB;
+  syncVelocity(a);
+  syncVelocity(b);
+}
+
+function onGround(mover: Mover, world: WorldState): boolean {
+  return mover.entity.y <= world.terrain.height(mover.entity.x, mover.entity.z) + CLEARANCE + 1e-4;
+}
+
+function syncVelocity(mover: Mover): void {
+  mover.entity.vx = mover.vx;
+  mover.entity.vy = mover.vy;
+  mover.entity.vz = mover.vz;
+}
+
+function contactNormal(
+  a: Mover,
+  b: Mover,
+  slop = 0,
+): { nx: number; ny: number; nz: number; depth: number } | null {
+  const dx = b.entity.x - a.entity.x;
+  const dy = b.entity.y + b.radius - (a.entity.y + a.radius);
+  const dz = b.entity.z - a.entity.z;
+  const dist = Math.hypot(dx, dy, dz);
+  const min = a.radius + b.radius;
+  if (dist >= min + slop) return null;
+  if (dist < 1e-8) return { nx: 1, ny: 0, nz: 0, depth: min - dist };
+  return { nx: dx / dist, ny: dy / dist, nz: dz / dist, depth: min - dist };
+}
+
+function moveBy(
+  mover: Mover,
+  world: WorldState,
+  dx: number,
+  dy: number,
+  dz: number,
+): { dx: number; dy: number; dz: number } {
+  const entity = mover.entity;
+  let x = entity.x;
+  let z = entity.z;
+  let appliedX = 0;
+  let appliedZ = 0;
+  if (dx !== 0 || dz !== 0) {
+    const nextX = entity.x + dx;
+    const nextZ = entity.z + dz;
+    if (
+      !blockedAt(nextX, nextZ, world.blocks, mover.radius) &&
+      insideLand(world.terrain, nextX, nextZ, mover.radius)
+    ) {
+      x = nextX;
+      z = nextZ;
+      appliedX = dx;
+      appliedZ = dz;
+    }
+  }
+  const nextY = entity.y + dy;
+  const floor = world.terrain.height(x, z) + CLEARANCE;
+  let y = nextY;
+  let appliedY = dy;
+  if (nextY < floor) {
+    y = floor;
+    appliedY = floor - entity.y;
+  }
+  entity.x = x;
+  entity.y = y;
+  entity.z = z;
+  return { dx: appliedX, dy: appliedY, dz: appliedZ };
 }

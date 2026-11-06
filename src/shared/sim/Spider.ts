@@ -5,6 +5,7 @@ import type { SpiderState } from '../state.js';
 import { IDLE_CONTROLS, type Controls } from '../types.js';
 import { floatHeight, WATER, waterPace, type Water } from '../water.js';
 import { Leg } from './Leg.js';
+import { solveLeg, supportY, type LegSphere } from './legPose.js';
 import { ballGeo, ballShell, inkSolidMat, spiderMat } from './parts.js';
 import { buildSpiderBody } from './spiderBody.js';
 
@@ -19,11 +20,6 @@ const NO_WATER: Water = Object.freeze({ surface: Number.NEGATIVE_INFINITY, depth
 const worldFwd = new Vector3();
 const worldRight = new Vector3();
 const shoulderW = new Vector3();
-const dirW = new Vector3();
-const coxaW = new Vector3();
-const kneeW = new Vector3();
-const ankleW = new Vector3();
-const poleW = new Vector3();
 const reachW = new Vector3();
 const axisX = new Vector3();
 const axisY = new Vector3();
@@ -86,6 +82,13 @@ export class Spider {
   #shellZ = Number.NaN;
   #shellYaw = Number.NaN;
   #shellGround = 0;
+  /** Loose bodies the legs must not pass through. Filled once per pose. */
+  #spheres: LegSphere[] = [];
+  #fillLegs: (into: LegSphere[]) => void = (into) => {
+    into.length = 0;
+  };
+  #mound: (x: number, z: number) => number = () => Number.NEGATIVE_INFINITY;
+  readonly #chain = [0, 1, 2, 3, 4].map(() => new Vector3());
 
   constructor() {
     this.root.add(this.chassis);
@@ -107,6 +110,15 @@ export class Spider {
   /** Solids you cannot walk through. */
   bindBlocked(blocked: (x: number, z: number) => boolean): void {
     this.#blocked = blocked;
+  }
+
+  /**
+   * What a leg may not pass through. `fill` lists sphere centers (apples).
+   * `mound` is extra ground, or −∞ where there is none (the nest).
+   */
+  bindLegs(fill: (into: LegSphere[]) => void, mound: (x: number, z: number) => number): void {
+    this.#fillLegs = fill;
+    this.#mound = mound;
   }
 
   /** The water column the body floats or wades through. */
@@ -134,6 +146,7 @@ export class Spider {
     this.root.rotation.y = this.yaw;
     this.#readAxes();
     this.#refreshWater();
+    this.#refreshLegs();
     if (!this.#seeded) this.#seedFeet();
 
     if (dt <= 0) {
@@ -480,36 +493,44 @@ export class Spider {
       return;
     }
     const airborne = this.root.position.y - this.#support() > GAIT.drop;
-    out.y = (airborne ? this.root.position.y : this.#ground(out.x, out.z)) + GAIT.footY;
+    const y = airborne
+      ? this.root.position.y
+      : supportY(out.x, out.z, this.#ground, this.#mound, this.#spheres);
+    out.y = y + GAIT.footY;
+  }
+
+  #refreshLegs(): void {
+    this.#fillLegs(this.#spheres);
   }
 
   #pose(): void {
+    this.#refreshLegs();
     this.root.updateMatrixWorld(true);
     for (const leg of this.legs) this.#poseLeg(leg);
   }
 
   #poseLeg(leg: Leg): void {
     shoulderW.setFromMatrixPosition(leg.mount.matrixWorld);
-    dirW.subVectors(leg.foot, shoulderW);
-    dirW.y = 0;
-    if (dirW.lengthSq() < 1e-6) dirW.set(leg.spec.x, 0, leg.spec.z);
-    dirW.normalize();
-
-    coxaW.copy(shoulderW).addScaledVector(dirW, BONES[0].len);
-    ankleW.copy(leg.foot).addScaledVector(dirW, -BONES[3].len * 0.75);
-    ankleW.y = leg.foot.y + 0.08;
-    poleW.copy(UP).addScaledVector(dirW, 0.45);
-    bendJoint(coxaW, ankleW, BONES[1].len, BONES[2].len, poleW, kneeW);
-
-    placeBone(leg.bones[0], shoulderW, coxaW, BONES[0].radius, leg.spec.side);
-    placeBone(leg.bones[1], coxaW, kneeW, BONES[1].radius, leg.spec.side);
-    placeBone(leg.bones[2], kneeW, ankleW, BONES[2].radius, leg.spec.side);
-    placeBone(leg.bones[3], ankleW, leg.foot, BONES[3].radius, leg.spec.side);
-    leg.joints[0].position.copy(shoulderW);
-    leg.joints[1].position.copy(coxaW);
-    leg.joints[2].position.copy(kneeW);
-    leg.joints[3].position.copy(ankleW);
-    leg.claw.position.copy(leg.foot);
+    solveLeg(
+      shoulderW,
+      leg.foot,
+      leg.spec.x,
+      leg.spec.z,
+      this.#ground,
+      this.#mound,
+      this.#spheres,
+      this.#chain,
+    );
+    const chain = this.#chain;
+    placeBone(leg.bones[0], chain[0], chain[1], BONES[0].radius, leg.spec.side);
+    placeBone(leg.bones[1], chain[1], chain[2], BONES[1].radius, leg.spec.side);
+    placeBone(leg.bones[2], chain[2], chain[3], BONES[2].radius, leg.spec.side);
+    placeBone(leg.bones[3], chain[3], chain[4], BONES[3].radius, leg.spec.side);
+    leg.joints[0].position.copy(chain[0]);
+    leg.joints[1].position.copy(chain[1]);
+    leg.joints[2].position.copy(chain[2]);
+    leg.joints[3].position.copy(chain[3]);
+    leg.claw.position.copy(chain[4]);
     leg.claw.quaternion.copy(leg.bones[3].quaternion);
   }
 }
@@ -520,35 +541,6 @@ function clampToRadius(x: number, z: number, limit: number): { x: number; z: num
   if (radius <= limit) return { x, z };
   const scale = limit / radius;
   return { x: x * scale, z: z * scale };
-}
-
-/** Two-bone IK: the knee sits at len1 along the reach, lifted toward the pole. */
-function bendJoint(
-  a: Vector3,
-  b: Vector3,
-  len1: number,
-  len2: number,
-  pole: Vector3,
-  out: Vector3,
-): void {
-  reachW.subVectors(b, a);
-  const raw = reachW.length();
-  const dist = MathUtils.clamp(raw, Math.abs(len1 - len2) + 0.04, len1 + len2 - 0.04);
-  if (raw > 1e-5) reachW.multiplyScalar(1 / raw);
-  else reachW.set(0, 0, -1);
-  const cosA = MathUtils.clamp(
-    (len1 * len1 + dist * dist - len2 * len2) / (2 * len1 * dist),
-    -1,
-    1,
-  );
-  const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
-  axisX.copy(pole).addScaledVector(reachW, -pole.dot(reachW));
-  if (axisX.lengthSq() < 1e-8) axisX.set(1, 0, 0);
-  axisX.normalize();
-  out
-    .copy(a)
-    .addScaledVector(reachW, cosA * len1)
-    .addScaledVector(axisX, sinA * len1);
 }
 
 function placeBone(group: Group, a: Vector3, b: Vector3, radius: number, side: number): void {

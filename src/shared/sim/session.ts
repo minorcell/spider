@@ -41,6 +41,7 @@ import { waterAt } from '../water.js';
 import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal, type Goal } from './goals.js';
 import { planRoute } from '../route.js';
 import { applyBody, type SimBody } from './snapshot.js';
+import { bindLegWorld } from './bindWorld.js';
 import { stepPhysics } from './physics.js';
 import { Spider } from './Spider.js';
 import { localDate } from '../dates.js';
@@ -88,6 +89,7 @@ export class SimSession {
 
   constructor(seed?: number, terrain?: Terrain) {
     this.world = terrain ? createWorld(terrain.seed, terrain) : createWorld(seed);
+    bindLegWorld(this.spider, this.world);
     this.spider.bindGround((x, z) => this.world.terrain.height(x, z));
     this.spider.bindWater((x, z) => waterAt(this.world.terrain, x, z));
     this.spider.bindBlocked(

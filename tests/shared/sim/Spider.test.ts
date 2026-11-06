@@ -2,8 +2,11 @@
 
 import { describe, expect, it } from 'vitest';
 import { Matrix4, Vector3 } from 'three';
-import { GAIT } from '../../../src/shared/config.js';
+import { BONES, GAIT } from '../../../src/shared/config.js';
+import { nestSurface } from '../../../src/shared/nestShape.js';
+import { bindLegWorld } from '../../../src/shared/sim/bindWorld.js';
 import { Spider } from '../../../src/shared/sim/Spider.js';
+import { createWorld } from '../../../src/shared/world.js';
 import { Terrain, TERRAIN } from '../../../src/shared/terrain.js';
 import { floatHeight, WATER, waterAt } from '../../../src/shared/water.js';
 
@@ -356,6 +359,53 @@ describe('Spider', () => {
     leg.foot.y = shoulder.y - 0.08;
     spider.update(0);
     expect(Number.isFinite(leg.foot.x)).toBe(true);
+  });
+
+  it('does not stretch a bone when the body stands up', () => {
+    const spider = new Spider();
+    spider.bindGround(() => 0);
+    for (let i = 0; i < 40; i++) spider.update(0.1, { ...IDLE, lift: 1 });
+    expect(spider.heightSet).toBeCloseTo(GAIT.heightMax);
+    for (const leg of spider.legs) {
+      for (let bone = 0; bone < BONES.length; bone++) {
+        expect(leg.bones[bone].scale.z).toBeLessThanOrEqual(BONES[bone].len + 1e-3);
+      }
+      expect(leg.claw.position.distanceTo(leg.joints[3].position)).toBeLessThan(
+        BONES[3].len + 1e-3,
+      );
+    }
+  });
+
+  it('plants on the nest mound without growing a bone', () => {
+    const world = createWorld(1);
+    const spider = new Spider();
+    bindLegWorld(spider, world);
+    spider.bindGround((x, z) => world.terrain.height(x, z));
+    for (let i = 0; i < 8; i++) spider.update(1 / 30);
+    const nest = world.entities.find((entity) => entity.kind === 'nest');
+    expect(nest).toBeTruthy();
+    for (const leg of spider.legs) {
+      const support = Math.max(
+        world.terrain.height(leg.foot.x, leg.foot.z),
+        nestSurface(nest!, leg.foot.x, leg.foot.z),
+      );
+      expect(leg.foot.y).toBeGreaterThanOrEqual(support + GAIT.footY - 1e-3);
+      for (let bone = 0; bone < BONES.length; bone++) {
+        expect(leg.bones[bone].scale.z).toBeLessThanOrEqual(BONES[bone].len + 1e-3);
+      }
+    }
+  });
+
+  it('ignores a missing nest and a body with no physics', () => {
+    const world = createWorld(1);
+    world.entities = world.entities.filter((entity) => entity.kind !== 'nest');
+    world.entities.push({ id: 'odd', kind: 'nope', x: 3, y: 0, z: 3, stage: 0 });
+    const spider = new Spider();
+    bindLegWorld(spider, world);
+    spider.bindGround(() => 0);
+    spider.update(1 / 30);
+    spider.update(1 / 30);
+    expect(spider.legs[0].foot.y).toBeCloseTo(GAIT.footY);
   });
 
   it('twists a bone toward the body when it points along the body side', () => {

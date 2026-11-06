@@ -5,6 +5,7 @@ import { blockedAt, BODY_RADIUS } from '../sight.js';
 import { APPLE_EVERY, nestBlocks, restingY } from '../world.js';
 import { insideLand, Terrain } from '../terrain.js';
 import { waterAt } from '../water.js';
+import { bindLegWorld } from './bindWorld.js';
 import type { Spider } from './Spider.js';
 
 export const FORMAT = 3;
@@ -89,6 +90,7 @@ export function applyBody(
   world.carrying = structuredClone(body.carrying);
   world.appleIn = body.appleIn;
   world.sprouts = body.sprouts;
+  bindLegWorld(session.spider, world);
   session.spider.bindGround((x, z) => world.terrain.height(x, z));
   session.spider.bindWater((x, z) => waterAt(world.terrain, x, z));
   session.spider.bindBlocked(

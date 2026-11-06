@@ -21,40 +21,26 @@ import {
   stoneMat,
 } from '../shared/sim/parts.js';
 import { buildGrass } from './grassMesh.js';
+import {
+  NEST_DOOR as DOOR,
+  NEST_DOOR_HALF as DOOR_HALF,
+  NEST_FLOOR as FLOOR,
+  NEST_RI as RI,
+  NEST_RO as RO,
+  NEST_SCALE_XZ as SCALE,
+  NEST_SCALE_Y,
+  nestDoor as door,
+  nestLocalHeight as height,
+  nestRimRadius as rimRadius,
+  nestWrap as wrap,
+} from '../shared/nestShape.js';
 
 // 巢穴是一圈土丘：背后堆得高、门口压得低，中间是一个浅坑。
 // 土、石和木桩用薄墨壳勾边，丝和抓痕走曲线，跟蜘蛛的形体线同一套。
-// 土丘整体放大到 1.35 倍，好让蜘蛛的八条腿在坑里站得开。
+// 土丘的高度写在 nestShape 里，腿的碰撞读同一份。整体放大到 1.35 倍，
+// 好让蜘蛛的八条腿在坑里站得开。
 
 const TAU = Math.PI * 2;
-const SCALE = 1.35;
-
-/** 0 在门口，1 在背后。 */
-function back(a: number): number {
-  return 0.5 + 0.5 * Math.sin(a);
-}
-
-/** 把角度收进 -π..π。 */
-function wrap(a: number): number {
-  return Math.atan2(Math.sin(a), Math.cos(a));
-}
-
-/** 丘顶离圆心多远。背后堆得更开。 */
-function rimRadius(a: number): number {
-  return (
-    1.98 + 0.5 * Math.pow(back(a), 1.4) + 0.1 * Math.sin(3 * a + 0.6) + 0.05 * Math.sin(7 * a + 2.1)
-  );
-}
-
-/** 丘顶多高。门口放低，背后垒高。 */
-function rimHeight(a: number): number {
-  return (
-    0.4 +
-    1.22 * Math.pow(back(a), 1.5) +
-    0.06 * Math.sin(2 * a + 1.2) +
-    0.035 * Math.sin(5 * a + 0.3)
-  );
-}
 
 function segment(out: number[], a: Vector3, b: Vector3): void {
   out.push(a.x, a.y, a.z, b.x, b.y, b.z);
@@ -117,34 +103,6 @@ function buildNest(): Group {
   const rand = mulberry32(71);
   const ANGLES = 128;
   const RINGS = 26;
-  const RO = 3.1;
-  const RI = 1.4;
-  const DOOR = -Math.PI / 2;
-  const DOOR_HALF = 0.42;
-  const FLOOR = 0.16;
-
-  // 背后高、门口低：像在坡脚掏出来的洞。
-  const door = (a: number): number => {
-    const d = Math.abs(wrap(a - DOOR));
-    return smoothstep(DOOR_HALF + 0.16, DOOR_HALF - 0.03, d);
-  };
-
-  const height = (r: number, a: number): number => {
-    const rr = rimRadius(a);
-    const hh = rimHeight(a);
-    let y: number;
-    if (r <= RI) {
-      y = FLOOR + 0.03 * (r / RI) ** 2;
-    } else if (r <= rr) {
-      const t = (r - RI) / (rr - RI);
-      y = FLOOR + (hh - FLOOR) * Math.pow(t, 1.3);
-    } else {
-      const t = (r - rr) / (RO - rr);
-      y = hh * Math.pow(1 - t, 1.2);
-    }
-    const open = door(a) * smoothstep(1.02, 1.5, r);
-    return y * (1 - open) + (0.055 + 0.012 * (r / RO)) * open;
-  };
 
   for (let i = 0; i <= RINGS; i++) {
     const r = 0.04 + (i / RINGS) * (RO - 0.04);
@@ -369,11 +327,6 @@ function buildNest(): Group {
 
   group.add(lineFrom(ink));
   group.add(lineFrom(silk, silkMat));
-  group.scale.set(SCALE, 1.15, SCALE);
+  group.scale.set(SCALE, NEST_SCALE_Y, SCALE);
   return group;
-}
-
-function smoothstep(a: number, b: number, x: number): number {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
 }

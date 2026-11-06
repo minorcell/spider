@@ -260,7 +260,11 @@ describe('stepPhysics', () => {
       entities: [apple({ id: 'a', x: 5.2 }), apple({ id: 'b', x: 5.7 })],
     });
     stepPhysics(shore, body, 1 / 60);
-    expect(shore.entities[0].x).toBeGreaterThan(5.2);
+    const [inner, outer] = shore.entities;
+    expect(inner.x).toBeLessThan(5.2);
+    expect(outer.x).toBeLessThanOrEqual(5.7);
+    expect(Math.hypot(inner.x - outer.x, inner.z - outer.z)).toBeGreaterThanOrEqual(0.72 - 1e-6);
+    expect(land(inner.x, inner.z, 0.36)).toBe(true);
   });
 
   it('ignores two apples at one exact point', () => {
@@ -268,6 +272,121 @@ describe('stepPhysics', () => {
     stepPhysics(pair, body, 1 / 60);
     expect(Number.isFinite(pair.entities[0].x)).toBe(true);
     expect(Number.isFinite(pair.entities[1].x)).toBe(true);
+  });
+
+  it('lets a stack of apples rest instead of shaking', () => {
+    const pile = world({
+      entities: [
+        apple({ id: 'a', x: 0, z: 0, y: 0.08 }),
+        apple({ id: 'b', x: 0, z: 0, y: 2 }),
+        apple({ id: 'c', x: 0.02, z: -0.01, y: 3.4 }),
+      ],
+    });
+    for (let i = 0; i < 240; i++) stepPhysics(pile, body, 1 / 60);
+    const samples: number[][] = [[], [], []];
+    for (let i = 0; i < 60; i++) {
+      stepPhysics(pile, body, 1 / 60);
+      pile.entities.forEach((entity, index) => samples[index].push(entity.y));
+    }
+    for (const column of samples) {
+      const span = Math.max(...column) - Math.min(...column);
+      expect(span).toBeLessThan(0.01);
+    }
+    for (const entity of pile.entities) {
+      expect(Math.hypot(entity.vx ?? 0, entity.vy ?? 0, entity.vz ?? 0)).toBeLessThan(0.05);
+    }
+    const centers = pile.entities.map((entity) => ({
+      x: entity.x,
+      y: entity.y + 0.36,
+      z: entity.z,
+    }));
+    for (let i = 0; i < centers.length; i++) {
+      for (let j = i + 1; j < centers.length; j++) {
+        const a = centers[i];
+        const b = centers[j];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+        expect(dist).toBeGreaterThanOrEqual(0.72 - 1e-4);
+      }
+    }
+    const ys = pile.entities.map((entity) => entity.y);
+    expect(Math.max(...ys)).toBeGreaterThan(Math.min(...ys) + 0.5);
+  });
+
+  it('lets the lower apple be second in the list', () => {
+    const pile = world({
+      entities: [
+        apple({ id: 'top', x: 0, z: 0, y: 2 }),
+        apple({ id: 'low', x: 0.04, z: 0, y: 0.08 }),
+      ],
+    });
+    for (let i = 0; i < 180; i++) stepPhysics(pile, body, 1 / 60);
+    const [top, low] = pile.entities;
+    expect(top.y).toBeGreaterThan(low.y + 0.5);
+    expect(Math.hypot(top.vx ?? 0, top.vy ?? 0, top.vz ?? 0)).toBeLessThan(0.05);
+  });
+
+  it('shares a fall between two apples that are both in the air', () => {
+    const pair = world({
+      entities: [
+        apple({ id: 'a', y: 1, vy: -0.4 }),
+        apple({ id: 'b', x: 0.05, y: 1.15, vy: -0.2 }),
+      ],
+    });
+    stepPhysics(pair, body, 1 / 60);
+    expect(Number.isFinite(pair.entities[0].vy)).toBe(true);
+    expect(Number.isFinite(pair.entities[1].vy)).toBe(true);
+  });
+
+  it('settles a cluster of apples on the ground', () => {
+    const cluster = world({
+      entities: [
+        apple({ id: 'a', x: 0, z: 0 }),
+        apple({ id: 'b', x: 0.15, z: 0.05 }),
+        apple({ id: 'c', x: -0.1, z: 0.12 }),
+        apple({ id: 'd', x: 0.05, z: -0.14 }),
+      ],
+    });
+    for (let i = 0; i < 120; i++) stepPhysics(cluster, body, 1 / 60);
+    const marks = cluster.entities.map((entity) => ({ x: entity.x, z: entity.z }));
+    for (let i = 0; i < 30; i++) stepPhysics(cluster, body, 1 / 60);
+    for (let i = 0; i < marks.length; i++) {
+      const entity = cluster.entities[i];
+      expect(Math.hypot(entity.x - marks[i].x, entity.z - marks[i].z)).toBeLessThan(0.01);
+      expect(Math.hypot(entity.vx ?? 0, entity.vz ?? 0)).toBeLessThan(0.02);
+    }
+  });
+
+  it('does not push two apples through a wall that pens them in', () => {
+    const pen = world({
+      blocks: [
+        { id: 'left', minX: -2, maxX: -0.05, minZ: -1, maxZ: 1, height: 1 },
+        { id: 'right', minX: 0.55, maxX: 2, minZ: -1, maxZ: 1, height: 1 },
+      ],
+      entities: [apple({ id: 'a', x: 0.05 }), apple({ id: 'b', x: 0.3 })],
+    });
+    stepPhysics(pen, body, 1 / 60);
+    expect(pen.entities[0].x).toBeGreaterThan(-0.05);
+    expect(pen.entities[1].x).toBeLessThan(0.55);
+    expect(Number.isFinite(pen.entities[0].y)).toBe(true);
+  });
+
+  it('stops two apples that are still moving into each other', () => {
+    const closing = world({
+      entities: [apple({ id: 'a', x: 0, vx: 1 }), apple({ id: 'b', x: 0.2, vx: -1 })],
+    });
+    stepPhysics(closing, body, 1 / 60);
+    const [a, b] = closing.entities;
+    const rel = (b.vx ?? 0) - (a.vx ?? 0);
+    expect(rel).toBeGreaterThanOrEqual(-1e-6);
+  });
+
+  it('leaves apples alone when they are already moving apart', () => {
+    const opening = world({
+      entities: [apple({ id: 'a', x: 0, vx: -1 }), apple({ id: 'b', x: 0.2, vx: 1 })],
+    });
+    stepPhysics(opening, body, 1 / 60);
+    expect(opening.entities[0].vx).toBeLessThan(0);
+    expect(opening.entities[1].vx).toBeGreaterThan(0);
   });
 
   it('uses the default rules on a hand-built world', () => {

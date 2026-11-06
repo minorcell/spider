@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { Group, LineSegments, Mesh } from 'three';
+import { Group, LineSegments, Mesh, Vector3 } from 'three';
 import { buildProp, drapeGrass } from '../../src/client/props.js';
+import { nestSurface } from '../../src/shared/nestShape.js';
 
 describe('buildProp', () => {
   it('builds an apple at each bite stage', () => {
@@ -39,6 +40,21 @@ describe('buildProp', () => {
     expect(lines).toHaveLength(2);
     expect(meshes[0].geometry.getAttribute('position').count).toBeGreaterThan(0);
     expect(lines[0].geometry.getAttribute('position').count).toBeGreaterThan(0);
+  });
+
+  it('builds the nest mound from the same height the legs stand on', () => {
+    const nest = buildProp('nest', 0)!;
+    nest.position.set(0, 0.02, 0);
+    nest.updateMatrixWorld(true);
+    const soil = nest.children.find((child) => child instanceof Mesh) as Mesh;
+    const position = soil.geometry.getAttribute('position');
+    const point = new Vector3();
+    const origin = { x: 0, y: 0.02, z: 0 };
+    for (let i = 0; i < position.count; i += 80) {
+      point.set(position.getX(i), position.getY(i), position.getZ(i));
+      point.applyMatrix4(soil.matrixWorld);
+      expect(point.y).toBeCloseTo(nestSurface(origin, point.x, point.z), 4);
+    }
   });
 
   it('builds grass as one paper mesh and one ink line set', () => {
