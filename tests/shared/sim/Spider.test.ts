@@ -489,6 +489,47 @@ describe('Spider', () => {
     expect(spider.legs[0].foot.y).toBeLessThan(0.08);
   });
 
+  it('re-solves a planted leg when a loose body moves', () => {
+    const spider = new Spider();
+    spider.bindGround(FLAT);
+    const sphere = { x: 40, y: 1, z: 40, radius: 0.2 };
+    let count = 1;
+    spider.bindLegs(
+      (into) => {
+        into.length = count;
+        if (count > 0) into[0] = sphere;
+      },
+      () => Number.NEGATIVE_INFINITY,
+    );
+    for (let i = 0; i < 90; i++) spider.update(1 / 60, IDLE);
+    const foot = spider.legs[0].foot.clone();
+    // Each component has to differ on its own. A change to x hides y, z, and radius.
+    sphere.x += 1;
+    spider.update(0);
+    sphere.y += 1;
+    spider.update(0);
+    sphere.z += 1;
+    spider.update(0);
+    sphere.radius += 0.1;
+    spider.update(0);
+    expect(spider.legs[0].foot.distanceTo(foot)).toBeLessThan(1e-6);
+
+    const leg = spider.legs[0];
+    const shin = leg.joints[2].position;
+    const ankle = leg.joints[3].position;
+    sphere.x = (shin.x + ankle.x) / 2;
+    sphere.y = (shin.y + ankle.y) / 2;
+    sphere.z = (shin.z + ankle.z) / 2;
+    sphere.radius = 0.45;
+    const knee = shin.clone();
+    spider.update(0);
+    expect(leg.joints[2].position.distanceTo(knee)).toBeGreaterThan(1e-3);
+    const shoved = leg.joints[2].position.clone();
+    count = 0;
+    spider.update(0);
+    expect(leg.joints[2].position.distanceTo(shoved)).toBeGreaterThan(1e-3);
+  });
+
   it('twists a bone toward the body when it points along the body side', () => {
     const spider = new Spider();
     spider.update(0);
