@@ -1,4 +1,5 @@
 import { Quaternion, Vector3 } from 'three';
+import { groundSupport } from '../contact.js';
 import { PHYSICS } from '../config.js';
 import { kindOf } from '../kinds.js';
 import { BODY_RADIUS, blockedAt } from '../sight.js';
@@ -19,8 +20,12 @@ export interface Body {
 }
 
 const EPS = 0.6;
-const CLEARANCE = 0.08;
 const MAX_FALL = 12;
+
+/** Bottom of this mover on the ground under it. Same rule props are spawned with. */
+function floorAt(world: WorldState, x: number, z: number, radius: number): number {
+  return groundSupport((px, pz) => world.terrain.height(px, pz), x, z, radius);
+}
 
 interface Mover {
   entity: EntityState;
@@ -32,6 +37,8 @@ interface Mover {
   vy: number;
   vz: number;
   slope: number;
+  /** Ground under `x0`/`z0`, reused when this step does not slide. */
+  floor: number;
   x0: number;
   z0: number;
   /** 这一步开始做竖直积分时的高度。落点被接住时用来丢掉下落速度。 */
@@ -108,6 +115,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       vy,
       vz,
       slope: 0,
+      floor: 0,
       x0: entity.x,
       z0: entity.z,
       y0: entity.y,
@@ -120,12 +128,13 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
     if (mover.asleep) continue;
     const { entity, radius, mass, volume } = mover;
     let { vx, vy, vz } = mover;
-    const ground = world.terrain.height(entity.x, entity.z);
     const water = waterAt(world.terrain, entity.x, entity.z);
     const fraction = submergedFraction(entity.y, water.surface, radius);
     // How much of the body's weight the water carries: >1 means it is pushed up.
     const buoyancy = (fraction * WATER.density * volume) / mass;
-    const grounded = entity.y <= ground + CLEARANCE + 1e-4;
+    const floor = floorAt(world, entity.x, entity.z, radius);
+    mover.floor = floor;
+    const grounded = entity.y <= floor + 1e-4;
     const floating = fraction > 0 && !grounded;
     const gx =
       (world.terrain.height(entity.x + EPS, entity.z) -
@@ -203,7 +212,6 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
     }
     const entity = mover.entity;
     mover.y0 = entity.y;
-    const ground = world.terrain.height(entity.x, entity.z);
     const water = waterAt(world.terrain, entity.x, entity.z);
     const fraction = submergedFraction(entity.y, water.surface, mover.radius);
     const buoyancy = (fraction * WATER.density * mover.volume) / mover.mass;
@@ -211,7 +219,12 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
     vy *= Math.exp(-WATER.drag * fraction * dt);
     vy = Math.max(-MAX_FALL, Math.min(MAX_FALL, vy));
     let y = entity.y + vy * dt;
-    const floor = ground + CLEARANCE;
+    let floor = mover.floor;
+    const slid = (entity.x - mover.x0) ** 2 + (entity.z - mover.z0) ** 2 > 0;
+    if (slid) {
+      floor = floorAt(world, entity.x, entity.z, mover.radius);
+      mover.floor = floor;
+    }
     if (y <= floor) {
       y = floor;
       if (vy < 0) vy = 0;
@@ -271,7 +284,7 @@ function resolveContacts(movers: Mover[], world: WorldState): void {
     if (!overlapped) break;
   }
   for (let i = 0; i < movers.length; i++) {
-    for (let j = i + 1; j < movers.length; j++) calmPair(movers[i], movers[j], world);
+    for (let j = i + 1; j < movers.length; j++) calmPair(movers[i], movers[j]);
   }
 }
 
@@ -315,7 +328,7 @@ function separatePair(a: Mover, b: Mover, world: WorldState): boolean {
 }
 
 /** 消掉仍在相互靠近的速度。已经分开或贴着不动的，不再加一截速度。 */
-function calmPair(a: Mover, b: Mover, world: WorldState): void {
+function calmPair(a: Mover, b: Mover): void {
   const normal = contactNormal(a, b, 1e-4);
   if (!normal) return;
   let { nx, ny, nz } = normal;
@@ -338,8 +351,8 @@ function calmPair(a: Mover, b: Mover, world: WorldState): void {
   let invA = 1 / a.mass;
   let invB = 1 / b.mass;
   // 地面已经接住了这一只。它不该再分走一半下落速度，然后又交回去。
-  if (ny > 0 && onGround(a, world)) invA = 0;
-  if (ny < 0 && onGround(b, world)) invB = 0;
+  if (ny > 0 && onGround(a)) invA = 0;
+  if (ny < 0 && onGround(b)) invB = 0;
   const inv = invA + invB;
   const impulse = -rel / inv;
   a.vx -= nx * impulse * invA;
@@ -352,8 +365,8 @@ function calmPair(a: Mover, b: Mover, world: WorldState): void {
   syncVelocity(b);
 }
 
-function onGround(mover: Mover, world: WorldState): boolean {
-  return mover.entity.y <= world.terrain.height(mover.entity.x, mover.entity.z) + CLEARANCE + 1e-4;
+function onGround(mover: Mover): boolean {
+  return mover.entity.y <= mover.floor + 1e-4;
 }
 
 function syncVelocity(mover: Mover): void {
@@ -403,7 +416,8 @@ function moveBy(
     }
   }
   const nextY = entity.y + dy;
-  const floor = world.terrain.height(x, z) + CLEARANCE;
+  const floor = floorAt(world, x, z, mover.radius);
+  mover.floor = floor;
   let y = nextY;
   let appliedY = dy;
   if (nextY < floor) {

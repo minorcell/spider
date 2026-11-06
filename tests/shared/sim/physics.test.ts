@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { Quaternion, Vector3 } from 'three';
-import { PHYSICS } from '../../../src/shared/config.js';
+import { groundSupport } from '../../../src/shared/contact.js';
+import { CONTACT, PHYSICS } from '../../../src/shared/config.js';
 import { KINDS } from '../../../src/shared/kinds.js';
 import { stepPhysics } from '../../../src/shared/sim/physics.js';
 import type { Block, EntityState, WorldState } from '../../../src/shared/state.js';
@@ -85,7 +86,7 @@ describe('stepPhysics', () => {
   it('rests an apple on flat ground', () => {
     const flat = world({ entities: [apple({ x: 2, z: 3 })] });
     stepPhysics(flat, body, 1 / 60);
-    expect(flat.entities[0]).toMatchObject({ x: 2, z: 3, y: 0.08, vx: 0, vz: 0 });
+    expect(flat.entities[0]).toMatchObject({ x: 2, z: 3, y: CONTACT, vx: 0, vz: 0 });
   });
 
   it('floats a loose body with most of it underwater', () => {
@@ -178,7 +179,7 @@ describe('stepPhysics', () => {
     const moved = slope.entities[0];
     expect(moved.x).toBeLessThan(5);
     expect(moved.vx).toBeLessThan(0);
-    expect(moved.y).toBeCloseTo(slope.terrain.height(moved.x, moved.z) + 0.08);
+    expect(moved.y).toBeCloseTo(groundSupport(slope.terrain.height, moved.x, moved.z, 0.36));
   });
 
   it('builds speed down a gentle slope instead of cancelling the first shove', () => {

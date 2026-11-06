@@ -19,7 +19,7 @@ export interface PhysicsSpec {
   solid: boolean;
   /**
    * Horizontal contact radius. 0 sits on the ground sample at its anchor.
-   * A positive radius is lifted to the highest ground under that disc.
+   * A positive radius rests as a sphere on the heightfield.
    */
   radius: number;
   /** The shared solver moves it: slope, contact, and neighbors. */

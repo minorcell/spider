@@ -1,3 +1,4 @@
+import { groundSupport } from './contact.js';
 import { PHYSICS } from './config.js';
 import { kindOf } from './kinds.js';
 import { mulberry32 } from './noise.js';
@@ -35,12 +36,9 @@ const quantize = (value: number): number => {
   return rounded === 0 ? 0 : rounded;
 };
 
-/** A hair above the ground triangle, so the contact edge does not z-fight into the fill. */
-const CLEARANCE = 0.03;
-
 /**
  * Height to sit a prop on. A kind with no contact radius anchors at the center
- * sample. Anything with a radius is lifted to the highest ground under that disc.
+ * sample. A round body uses the same sphere-on-ground rule as the solver.
  */
 export function restingY(
   terrain: { height(x: number, z: number): number },
@@ -59,14 +57,7 @@ export function restingY(
       : footprint?.kind === 'box'
         ? Math.hypot(footprint.hx, footprint.hz)
         : body;
-  let top = terrain.height(x, z);
-  for (const ring of [radius * 0.5, radius]) {
-    for (let i = 0; i < 12; i++) {
-      const angle = (i / 12) * Math.PI * 2;
-      top = Math.max(top, terrain.height(x + Math.cos(angle) * ring, z + Math.sin(angle) * ring));
-    }
-  }
-  return top + rest + CLEARANCE;
+  return groundSupport((px, pz) => terrain.height(px, pz), x, z, radius) + rest;
 }
 
 /**
