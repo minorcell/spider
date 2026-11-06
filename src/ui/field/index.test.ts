@@ -16,7 +16,7 @@ describe('field', () => {
     expect(input?.id).toBe('model');
     expect(input?.getAttribute('placeholder')).toBe('deepseek-chat');
     expect(input?.hasAttribute('min')).toBe(false);
-    expect(input?.style.border).toBe('1px solid rgb(27, 23, 20)');
+    expect(input?.style.border).toBe('1px solid var(--ui-ink)');
 
     const number = field(document, {
       label: '上下文长度 k token',

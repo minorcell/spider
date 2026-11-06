@@ -1,9 +1,11 @@
 import { onMedia, paint } from './style.js';
-import { border, color, font, media, typeface } from './token.js';
+import { installTheme } from './theme.js';
+import { border, color, font, media, typeface, type ThemeName } from './token.js';
 
 const serif = { color: color.ink, font: font.body, letterSpacing: '0.04em' };
 
-export function paintDocument(doc: Document): void {
+export function paintDocument(doc: Document, theme: ThemeName = 'day'): void {
+  installTheme(doc, theme);
   const fill = { margin: '0', height: '100%', overflow: 'hidden', background: color.paper };
   paint(doc.documentElement, fill);
   paint(doc.body, { ...fill, ...serif });

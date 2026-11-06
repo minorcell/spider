@@ -38,7 +38,7 @@ describe('donutChart', () => {
         { name: '缓存写入', value: '0', amount: 0, tone: 'write' },
       ],
     });
-    expect(filled.querySelector('.donut')?.style.backgroundImage).toContain('conic-gradient');
+    expect(filled.querySelector('.donut')?.style.background).toContain('conic-gradient');
     expect(filled.querySelector('.donut-center strong')?.textContent).toBe('12');
     const rows = [...filled.querySelectorAll('.break-row strong')].map((node) => node.textContent);
     expect(rows).toEqual(['6', '4', '0']);
@@ -51,7 +51,7 @@ describe('donutChart', () => {
       caption: '总 token',
       parts: [{ name: '新输入', value: '0', amount: 0, tone: '' }],
     });
-    expect(empty.querySelector('.donut')?.style.backgroundColor).toBe('rgb(233, 228, 218)');
+    expect(empty.querySelector('.donut')?.style.background).toBe('var(--ui-paper-deep)');
     expect(empty.querySelector('.fill')?.getAttribute('style')).toContain('0%');
   });
 });

@@ -46,7 +46,7 @@ describe('style', () => {
     document.body.append(node);
     bindFocus(node);
     node.dispatchEvent(new FocusEvent('focus'));
-    expect(node.style.outline).toBe('1px solid #1b1714');
+    expect(node.style.outline).toBe('1px solid var(--ui-ink)');
     node.dispatchEvent(new FocusEvent('blur'));
     expect(node.style.outline).toBe('');
     node.remove();

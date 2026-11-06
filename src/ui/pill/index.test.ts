@@ -7,6 +7,6 @@ describe('pill', () => {
     expect(node.className).toBe('pill');
     expect(node.textContent).toBe('没有工具调用');
     expect(node.style.display).toBe('inline-block');
-    expect(node.style.borderTop).not.toBe('');
+    expect(node.style.border).toContain('var(--ui-hairline)');
   });
 });

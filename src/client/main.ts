@@ -2,6 +2,7 @@ import { openJournal } from './journal/api.js';
 import { buildChrome } from './panel/chrome.js';
 import { paintDocument, paintStage } from '../ui/dress.js';
 import { mountPanel } from './panel.js';
+import { startThemeClock } from './themeClock.js';
 import { Stage } from './stage.js';
 import { syncStars } from './stars.js';
 import { restoreSettings } from './settings.js';
@@ -23,6 +24,7 @@ const host = document.querySelector<HTMLElement>('#stage');
 if (!host) throw new Error('Missing #stage host element');
 const parent = host.parentElement!;
 paintDocument(document);
+const stopThemeClock = startThemeClock(document);
 paintStage(parent, host);
 parent.append(buildChrome(document));
 syncStars(document);
@@ -52,6 +54,7 @@ setWorldTerrainSource(async (seed) => {
 let stage: Stage | undefined;
 
 window.addEventListener('pagehide', () => {
+  stopThemeClock();
   flushWorld('hide');
   keepaliveCloud();
   session.cancel();

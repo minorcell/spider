@@ -227,16 +227,16 @@ describe('GitHub badge', () => {
     installChrome();
     const badge = document.querySelector<HTMLAnchorElement>('#github')!;
     const star = badge.querySelectorAll('svg')[1] as SVGElement;
-    expect(badge.style.backgroundColor).toBe('rgb(243, 239, 230)');
+    expect(badge.style.background).toBe('var(--ui-paper)');
 
     badge.dispatchEvent(new MouseEvent('mouseenter'));
-    expect(badge.style.backgroundColor).toBe('rgb(27, 23, 20)');
-    expect(badge.style.color).toBe('rgb(243, 239, 230)');
+    expect(badge.style.background).toBe('var(--ui-ink)');
+    expect(badge.style.color).toBe('var(--ui-paper)');
     expect(star.style.opacity).toBe('1');
 
     badge.dispatchEvent(new MouseEvent('mouseleave'));
-    expect(badge.style.backgroundColor).toBe('rgb(243, 239, 230)');
-    expect(badge.style.color).toBe('rgb(27, 23, 20)');
+    expect(badge.style.background).toBe('var(--ui-paper)');
+    expect(badge.style.color).toBe('var(--ui-ink)');
     expect(star.style.opacity).toBe('0.85');
 
     badge.dispatchEvent(new Event('focus'));
@@ -824,9 +824,8 @@ describe('diary panel', () => {
     const box = document.querySelector<HTMLInputElement>('[name="autoMemory"]')!;
     expect(box.checked).toBe(true);
     expect(
-      box.closest('label')!.querySelector<HTMLElement>('.ui-switch-track span')!.style
-        .backgroundColor,
-    ).toBe('rgb(27, 23, 20)');
+      box.closest('label')!.querySelector<HTMLElement>('.ui-switch-track span')!.style.background,
+    ).toBe('var(--ui-ink)');
     box.checked = false;
     box.dispatchEvent(new Event('change', { bubbles: true }));
     expect(readPilot().autoMemory).toBe(false);

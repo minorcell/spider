@@ -14,6 +14,6 @@ describe('card', () => {
     const spaced = card(document, { title: '请求明细', hint: '点击展开', spaced: true });
     expect(spaced.className).toBe('card section');
     expect(spaced.style.marginTop).toBe('16px');
-    expect(spaced.style.borderTop).not.toBe('');
+    expect(spaced.style.border).toContain('var(--ui-hairline)');
   });
 });
