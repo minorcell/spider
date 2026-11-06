@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { groundSupport } from '../../src/shared/contact.js';
 import { blockedAt } from '../../src/shared/sight.js';
 import { Terrain, TERRAIN } from '../../src/shared/terrain.js';
 import {
@@ -105,18 +106,22 @@ describe('restingY', () => {
     expect(restingY(terrain, 'nest', 2, 1)).toBeCloseTo(terrain.height(2, 1));
   });
 
-  it('lifts solid props to the highest ground under the footprint', () => {
-    const center = terrain.height(2, 1) + 0.03;
+  it('rests a round prop on the slope instead of hovering over it', () => {
+    const height = terrain.height.bind(terrain);
     const apple = restingY(terrain, 'apple', 2, 1);
-    expect(apple).toBeGreaterThan(center);
-    expect(restingY(terrain, 'apple', 2, 1, { kind: 'circle', r: 0.9 })).toBeGreaterThan(apple);
-    expect(restingY(terrain, 'apple', 2, 1, { kind: 'box', hx: 0.9, hz: 0.9 })).toBeGreaterThan(
+    expect(apple).toBeCloseTo(groundSupport(height, 2, 1, 0.36));
+    expect(apple - terrain.height(2, 1)).toBeLessThan(0.05);
+    expect(restingY(terrain, 'apple', 2, 1, { kind: 'circle', r: 0.9 })).toBeGreaterThanOrEqual(
       apple,
     );
+    expect(
+      restingY(terrain, 'apple', 2, 1, { kind: 'box', hx: 0.9, hz: 0.9 }),
+    ).toBeGreaterThanOrEqual(apple);
   });
 
   it('uses a small default radius for unknown props', () => {
-    expect(restingY(terrain, 'rock', 2, 1)).toBeGreaterThan(terrain.height(2, 1) + 0.03);
+    const height = terrain.height.bind(terrain);
+    expect(restingY(terrain, 'rock', 2, 1)).toBeCloseTo(groundSupport(height, 2, 1, 0.2));
   });
 });
 

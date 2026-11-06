@@ -1,5 +1,5 @@
-import { Euler, Group, MathUtils, Matrix4, Mesh, Vector3 } from 'three';
-import { BONES, GAIT, MOUNTS } from '../config.js';
+import { BufferGeometry, Euler, Group, MathUtils, Matrix4, Mesh, Object3D, Vector3 } from 'three';
+import { BONES, CONTACT, GAIT, MOUNTS } from '../config.js';
 import { WORLD_RADIUS } from '../terrain.js';
 import type { SpiderState } from '../state.js';
 import { IDLE_CONTROLS, type Controls } from '../types.js';
@@ -43,6 +43,7 @@ const SHELL_PHI = [-1.35, -0.9, -0.45, 0, 0.45, 0.9, 1.35];
 const SHELL_THETA = 12;
 const shellEuler = new Euler(0, 0, 0, 'XYZ');
 const shellPoint = new Vector3();
+const boxCorner = new Vector3();
 
 export class Spider {
   readonly root = new Group();
@@ -386,8 +387,8 @@ export class Spider {
     this.#shellX = x;
     this.#shellZ = z;
     this.#shellYaw = this.yaw;
-    // A hair of pad so the ink shell does not z-fight a face between samples.
-    this.#shellGround = center + (lift > 0 ? lift + 0.04 : 0);
+    // The shared contact skin, so a slope does not grow its own hover.
+    this.#shellGround = center + (lift > 0 ? lift + CONTACT : 0);
     return this.#shellGround;
   }
 
@@ -496,7 +497,7 @@ export class Spider {
     const y = airborne
       ? this.root.position.y
       : supportY(out.x, out.z, this.#ground, this.#mound, this.#spheres);
-    out.y = y + GAIT.footY;
+    out.y = y + CONTACT;
   }
 
   #refreshLegs(): void {
@@ -510,6 +511,20 @@ export class Spider {
   }
 
   #poseLeg(leg: Leg): void {
+    // The claw is parented to the tarsus, so its tip is not straight under the
+    // anchor. Raise the planted foot until the posed claw meets the skin.
+    this.#solveAndPlace(leg);
+    for (let pass = 0; pass < 2; pass++) {
+      const floor =
+        supportY(leg.foot.x, leg.foot.z, this.#ground, this.#mound, this.#spheres) + CONTACT;
+      const low = Math.min(meshLowest(leg.claw), meshLowest(leg.bones[3]));
+      if (!Number.isFinite(low) || low >= floor - 1e-4) break;
+      leg.foot.y += floor - low;
+      this.#solveAndPlace(leg);
+    }
+  }
+
+  #solveAndPlace(leg: Leg): void {
     shoulderW.setFromMatrixPosition(leg.mount.matrixWorld);
     solveLeg(
       shoulderW,
@@ -533,6 +548,31 @@ export class Spider {
     leg.claw.position.copy(chain[4]);
     leg.claw.quaternion.copy(leg.bones[3].quaternion);
   }
+}
+
+/** Lowest world height of a mesh's bounding box. Shared geometries cache the box. */
+function meshLowest(object: Object3D): number {
+  object.updateWorldMatrix(true, true);
+  let lowest = Infinity;
+  object.traverse((node) => {
+    const geometry = (node as Mesh).geometry as BufferGeometry | undefined;
+    if (!geometry) return;
+    if (!geometry.boundingBox) geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    if (!box) return;
+    const world = node.matrixWorld;
+    for (let i = 0; i < 8; i++) {
+      boxCorner
+        .set(
+          i & 1 ? box.max.x : box.min.x,
+          i & 2 ? box.max.y : box.min.y,
+          i & 4 ? box.max.z : box.min.z,
+        )
+        .applyMatrix4(world);
+      if (boxCorner.y < lowest) lowest = boxCorner.y;
+    }
+  });
+  return lowest;
 }
 
 /** Keep a step inside the round island instead of the old square corners. */

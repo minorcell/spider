@@ -25,6 +25,12 @@ export const PALETTE = {
 
 export const DECK_Y = 0.78;
 
+/**
+ * How far a resting contact sits off the surface.
+ * Claws and loose props share this one skin, so neither keeps its own hover.
+ */
+export const CONTACT = 0.01;
+
 /** How many things can sit on the spider's back at once. */
 export const CARRY_LIMIT = 7;
 
@@ -97,7 +103,6 @@ export const BONES: readonly BoneSpec[] = [
 ];
 
 export const GAIT = {
-  footY: 0.16,
   heightMin: -0.35,
   /** A spider can rear up almost its leg length to look over a bank. */
   heightMax: 1.6,

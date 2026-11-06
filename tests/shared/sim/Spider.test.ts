@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { Matrix4, Vector3 } from 'three';
-import { BONES, GAIT } from '../../../src/shared/config.js';
+import { BONES, CONTACT, GAIT } from '../../../src/shared/config.js';
 import { nestSurface } from '../../../src/shared/nestShape.js';
 import { bindLegWorld } from '../../../src/shared/sim/bindWorld.js';
 import { Spider } from '../../../src/shared/sim/Spider.js';
@@ -307,7 +307,10 @@ describe('Spider', () => {
     expect(Math.max(...height) - Math.min(...height)).toBeGreaterThan(0.03);
     expect(Math.max(...height)).toBeLessThan(0.05);
     expect(spider.legs.every((leg) => !leg.lifted)).toBe(true);
-    for (const leg of spider.legs) expect(leg.foot.y).toBeCloseTo(GAIT.footY);
+    for (const leg of spider.legs) {
+      expect(leg.foot.y).toBeGreaterThan(CONTACT);
+      expect(leg.foot.y).toBeLessThan(0.08);
+    }
     expect(Math.abs(spider.headYaw)).toBeLessThan(0.02);
 
     spider.update(0.05, { ...IDLE, throttle: 1 });
@@ -376,6 +379,49 @@ describe('Spider', () => {
     }
   });
 
+  it('plants the claw tip on the ground', () => {
+    const spider = new Spider();
+    spider.bindGround(() => 0);
+    spider.update(1 / 30);
+    const point = new Vector3();
+    let lowest = Infinity;
+    let where = '';
+    const parts = spider.legs.flatMap((leg, index) => [
+      ...leg.bones.map((bone, boneIndex) => ({
+        part: bone,
+        label: `leg${index}-bone${boneIndex}`,
+      })),
+      ...leg.joints.map((joint, jointIndex) => ({
+        part: joint,
+        label: `leg${index}-joint${jointIndex}`,
+      })),
+      { part: leg.claw, label: `leg${index}-claw` },
+    ]);
+    for (const { part, label } of parts) {
+      part.updateWorldMatrix(true, true);
+      part.traverse((node) => {
+        const geometry = (
+          node as { geometry?: { getAttribute(name: string): MatrixAttr | undefined } }
+        ).geometry;
+        const position = geometry?.getAttribute('position');
+        if (!position) return;
+        const world = (node as { matrixWorld: Matrix4 }).matrixWorld;
+        for (let i = 0; i < position.count; i++) {
+          point.set(position.getX(i), position.getY(i), position.getZ(i)).applyMatrix4(world);
+          if (point.y < lowest) {
+            lowest = point.y;
+            where = label;
+          }
+        }
+      });
+    }
+    expect(lowest, where).toBeGreaterThan(CONTACT - 0.02);
+    expect(lowest).toBeLessThan(CONTACT + 0.03);
+    const saved = spider.capture();
+    spider.applyState(saved);
+    expect(spider.legs[0].foot.y).toBeCloseTo(saved.feet[0].y);
+  });
+
   it('plants on the nest mound without growing a bone', () => {
     const world = createWorld(1);
     const spider = new Spider();
@@ -389,7 +435,7 @@ describe('Spider', () => {
         world.terrain.height(leg.foot.x, leg.foot.z),
         nestSurface(nest!, leg.foot.x, leg.foot.z),
       );
-      expect(leg.foot.y).toBeGreaterThanOrEqual(support + GAIT.footY - 1e-3);
+      expect(leg.foot.y).toBeGreaterThanOrEqual(support + CONTACT - 1e-3);
       for (let bone = 0; bone < BONES.length; bone++) {
         expect(leg.bones[bone].scale.z).toBeLessThanOrEqual(BONES[bone].len + 1e-3);
       }
@@ -405,7 +451,8 @@ describe('Spider', () => {
     spider.bindGround(() => 0);
     spider.update(1 / 30);
     spider.update(1 / 30);
-    expect(spider.legs[0].foot.y).toBeCloseTo(GAIT.footY);
+    expect(spider.legs[0].foot.y).toBeGreaterThan(CONTACT);
+    expect(spider.legs[0].foot.y).toBeLessThan(0.08);
   });
 
   it('twists a bone toward the body when it points along the body side', () => {
