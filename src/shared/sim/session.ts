@@ -288,10 +288,6 @@ export class SimSession {
     });
   }
 
-  wait(seconds: number): Promise<GoalOutcome> {
-    return this.drive(seconds, {});
-  }
-
   /**
    * Go to a point. Solids and steep ground on the straight line are routed
    * around here; the caller does not steer the detour.

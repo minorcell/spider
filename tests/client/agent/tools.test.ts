@@ -84,7 +84,6 @@ beforeEach(() => {
     store: vi.fn(() => outcome()),
     sleep: vi.fn(async () => outcome()),
     setHeight: vi.fn(async () => outcome()),
-    wait: vi.fn(async () => outcome()),
     near: vi.fn(() => [
       {
         id: 'apple-1',
@@ -113,7 +112,6 @@ describe('spiderTools', () => {
       'sleep',
       'store',
       'turn',
-      'wait',
       'walk',
     ]);
   });
@@ -255,7 +253,6 @@ describe('spiderTools', () => {
       ['turn', { heading: 0 }],
       ['drink', {}],
       ['set_height', { level: 0 }],
-      ['wait', { seconds: 1 }],
       ['sleep', {}],
       ['observe', {}],
     ] as const;
@@ -391,12 +388,6 @@ describe('spiderTools', () => {
     expect(session.store).toHaveBeenNthCalledWith(2, undefined);
     expect(session.sleep).toHaveBeenCalled();
     expect(session.setHeight).toHaveBeenCalledWith(0.3);
-  });
-
-  it('passes wait through', async () => {
-    const tools = spiderTools(session as unknown as SimSession);
-    await execute(tools.wait, { seconds: 0.5 });
-    expect(session.wait).toHaveBeenCalledWith(0.5);
   });
 
   it('reads and writes the diary without touching the body', async () => {

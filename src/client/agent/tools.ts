@@ -299,13 +299,6 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       }),
       execute: async ({ level }) => finish(await session.setHeight(level)),
     }),
-    wait: tool({
-      description: '停在原地推进模拟时间，最多等待 10 秒；真实客户端时间由 world.clock 提供。',
-      inputSchema: call({
-        seconds: z.number().min(0).max(10).describe('等多久，秒。'),
-      }),
-      execute: async ({ seconds }) => finish(await session.wait(seconds)),
-    }),
     ...(memory
       ? {
           memory: tool({

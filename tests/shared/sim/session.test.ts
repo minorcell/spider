@@ -274,7 +274,7 @@ describe('goals', () => {
   it('preempts the previous goal', async () => {
     const session = new SimSession(4);
     const first = session.walk(5);
-    const second = session.wait(0.1);
+    const second = session.drive(0.1, {});
     await expect(first).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
     await expect(settle(second, session)).resolves.toMatchObject({ ok: true });
   });
@@ -328,7 +328,7 @@ describe('goals', () => {
     await expect(settle(session.drive(0.1, { turn: 1 }), session)).resolves.toMatchObject({
       ok: true,
     });
-    await expect(settle(session.wait(0.1), session)).resolves.toMatchObject({ ok: true });
+    await expect(settle(session.drive(0.1, {}), session)).resolves.toMatchObject({ ok: true });
   });
 
   it('runs an arbitrary goal to its timeout', async () => {
