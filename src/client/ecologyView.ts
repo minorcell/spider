@@ -30,7 +30,7 @@ const nightFill = Math.PI * 0.012;
 const nightMoon = Math.PI * 0.02;
 
 /** Daylight is sun elevation; paper brightness should settle well before noon. */
-function dayBrightness(clock: WorldClock): number {
+export function dayBrightness(clock: WorldClock): number {
   return MathUtils.smoothstep(clock.daylight, 0, 0.35);
 }
 
