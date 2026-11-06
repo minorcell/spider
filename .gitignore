@@ -7,3 +7,4 @@ config.yaml
 coverage/
 coverage-json/
 prototype/
+.vitest/
