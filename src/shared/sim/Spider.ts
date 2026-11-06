@@ -163,7 +163,7 @@ export class Spider {
     if (!this.#seeded) this.#seedFeet();
 
     if (dt <= 0) {
-      this.#pose();
+      this.#pose(true);
       return;
     }
 
@@ -188,7 +188,13 @@ export class Spider {
 
     this.#stepGait(dt, throttle, turn, boost);
     this.#applySlope();
-    this.#pose();
+    // A moving body never reuses the last pose, so don't spend the frame recording one.
+    const reuse =
+      Math.abs(throttle) < 0.05 &&
+      Math.abs(turn) < 0.5 &&
+      Math.abs(this.speed) < 0.05 &&
+      Math.abs(this.yawRate) < 0.25;
+    this.#pose(reuse);
   }
 
   /** Snapshot for the wire: everything a viewer needs to rebuild the pose. */
@@ -221,7 +227,7 @@ export class Spider {
       const foot = state.feet[i];
       this.legs[i].foot.set(foot.x, foot.y, foot.z);
     }
-    this.#pose();
+    this.#pose(true);
   }
 
   /** Put a saved pose back and stop. The saved speed is not resumed. */
@@ -243,7 +249,7 @@ export class Spider {
     this.#stepping = false;
     this.#stillFor = 0;
     this.chassis.position.y = 0;
-    this.#pose();
+    this.#pose(true);
   }
 
   #buildBody(): Mesh[] {
@@ -519,12 +525,13 @@ export class Spider {
     this.#fillLegs(this.#spheres);
   }
 
-  #pose(): void {
+  #pose(reuse: boolean): void {
     this.#refreshLegs();
-    if (this.#poseHeld()) return;
+    if (reuse && this.#poseHeld()) return;
     this.root.updateMatrixWorld(true);
     for (const leg of this.legs) this.#poseLeg(leg);
-    this.#holdPose();
+    if (reuse) this.#holdPose();
+    else this.#held = null;
   }
 
   /** True when the body, feet, and nearby loose bodies match the pose already drawn. */

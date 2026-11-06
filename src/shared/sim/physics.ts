@@ -89,6 +89,8 @@ function roll(entity: EntityState, radius: number, dx: number, dz: number): void
 export function stepPhysics(world: WorldState, body: Body, dt: number): void {
   if (dt <= 0) return;
   const rules = world.physics ?? PHYSICS;
+  // Recording rest is only worth it once the spider has stopped. A walk still solves every body.
+  const resting = Math.abs(body.speed) < 0.05;
   const movers: Mover[] = [];
   for (const entity of world.entities) {
     const loose = looseOf(entity);
@@ -100,6 +102,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
     const dz = entity.z - body.z;
     const reach = BODY_RADIUS + loose.radius;
     const asleep =
+      resting &&
       asleepBodies.has(entity) &&
       vx === 0 &&
       vy === 0 &&
@@ -257,6 +260,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       mover.vx = 0;
       mover.vz = 0;
     }
+    if (!resting) continue;
     const stayed =
       mover.entity.x === mover.x0 &&
       mover.entity.y === mover.y0 &&
