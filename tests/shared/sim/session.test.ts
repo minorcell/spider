@@ -79,10 +79,9 @@ describe('SimSession basics', () => {
     expect(snapshot.state.feet).toHaveLength(8);
   });
 
-  it('reports simulation time and client-local world time', () => {
+  it('reports client-local world time', () => {
     const session = new SimSession(3);
     expect(session.worldInfo(new Date(2026, 10, 5, 12, 34, 56))).toMatchObject({
-      simulationTime: 0,
       clock: {
         localDate: '2026-11-05',
         localTime: '12:34:56',

@@ -116,7 +116,6 @@ export class SimSession {
     const clock = worldClock(now);
     const pad = (value: number): string => String(value).padStart(2, '0');
     return {
-      simulationTime: round3(this.spider.time),
       clock: {
         localDate: localDate(now),
         localTime: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,

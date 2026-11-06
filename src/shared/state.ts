@@ -139,8 +139,6 @@ export interface ActionHint {
 
 /** Model-facing world context. It deliberately omits terrain functions and render details. */
 export interface WorldInfo {
-  /** Seconds advanced by the local spider simulation. */
-  simulationTime: number;
   clock: {
     /** Client-local calendar date, YYYY-MM-DD. */
     localDate: string;

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { spiderTools } from '../../../src/client/agent/tools.js';
 import type { GoalOutcome, SimSession } from '../../../src/shared/sim/session.js';
 import type { Observation } from '../../../src/shared/state.js';
-import { GRASS_VIEW, REACH, VIEW_DISTANCE } from '../../../src/shared/world.js';
+import { VIEW_DISTANCE } from '../../../src/shared/world.js';
 import { MARK_LIMIT } from '../../../src/shared/config.js';
 
 const observation: Observation = {
@@ -36,7 +36,6 @@ const observation: Observation = {
 let session: Record<string, ReturnType<typeof vi.fn>>;
 
 const world = {
-  simulationTime: 0,
   clock: {
     localDate: '2026-11-05',
     localTime: '12:00:00',
@@ -436,11 +435,10 @@ describe('spiderTools', () => {
     expect(session.sense).not.toHaveBeenCalled();
   });
 
-  it('advertises the sense limits in the observe description', () => {
+  it('explains the observe limits in plain words', () => {
     const tools = spiderTools(session as unknown as SimSession);
-    expect(tools.observe.description).toContain(String(VIEW_DISTANCE));
-    expect(tools.observe.description).toContain(String(GRASS_VIEW));
-    expect(tools.observe.description).toContain(String(REACH));
+    expect(tools.observe.description).toContain('草丛');
+    expect(tools.observe.description).toContain('抬高身体');
   });
 
   it('advertises the place limit in the mark description', () => {
