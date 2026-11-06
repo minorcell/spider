@@ -60,16 +60,10 @@ const ABDOMEN: readonly (readonly [number, number])[] = [
   [0.004, 1.22],
 ];
 
-/** The two large front eyes, in head space. Forward is −z. */
-export const FRONT_EYES: readonly (readonly [number, number, number])[] = [
-  [-0.064, 0.02, -0.04],
-  [0.064, 0.02, -0.04],
-];
-
 const EYES: readonly (readonly [number, number, number, number])[] = [
   [-0.15, 0.04, -0.01, 0.016],
-  [...FRONT_EYES[0], 0.03],
-  [...FRONT_EYES[1], 0.03],
+  [-0.064, 0.02, -0.04, 0.03],
+  [0.064, 0.02, -0.04, 0.03],
   [0.15, 0.04, -0.01, 0.016],
   [-0.12, 0.078, 0.02, 0.013],
   [-0.04, 0.086, 0.0, 0.015],

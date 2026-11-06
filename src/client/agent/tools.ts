@@ -259,7 +259,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
     }),
     lamp: tool({
       description:
-        '开关眼睛和背上的灯。天越暗视野越短，开灯能补回一部分，但到不了白天。晚上看不清就打开。',
+        '开关背上的灯。灯在八条腿连着的背上。天越暗视野越短，开灯能补回一部分，但到不了白天。晚上看不清就打开。',
       inputSchema: call({
         on: z.boolean().describe('true 开灯，false 关灯。'),
       }),
