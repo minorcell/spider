@@ -48,8 +48,10 @@ describe('buildIsland', () => {
     const material = water.material as MeshBasicNodeMaterial;
     expect(material.colorNode).toBeTruthy();
     expect(material.opacityNode).toBeTruthy();
+    expect(material.positionNode).toBeTruthy();
     expect(material.transparent).toBe(true);
     expect(material.depthWrite).toBe(false);
+    expect(water.geometry.getAttribute('position').count).toBeGreaterThan(1000);
   });
 
   it('advances the water highlight clock', () => {
@@ -57,6 +59,10 @@ describe('buildIsland', () => {
     const material = water.material as MeshBasicNodeMaterial;
     tickWater(12.5);
     expect(material.userData.uTime.value).toBe(12.5);
+    tickWater(12.55);
+    expect(material.userData.uTime.value).toBe(12.55);
+    tickWater(1);
+    expect(material.userData.uTime.value).toBe(1);
   });
 
   it('lays the same curves on flat ground', () => {

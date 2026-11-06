@@ -16,6 +16,7 @@ import type { EntityState, WorldState } from '../shared/state.js';
 import type { Spider } from '../shared/sim/Spider.js';
 import { paintCanvas } from '../ui/dress.js';
 import { buildIsland, tickWater } from './groundView.js';
+import { waterContact, waterSplashes } from './waterMotion.js';
 import { applyEcologyLighting, EcologySky, enableWorldShadows } from './ecologyView.js';
 import { worldClock } from '../shared/ecology.js';
 import { ObserveOverlay } from './observeView.js';
@@ -124,7 +125,13 @@ export class Stage {
     this.#observe = new ObserveOverlay(host);
     enableWorldShadows(this.#spider.root);
     enableWorldShadows(this.#spider.rig);
-    this.#scene.add(this.#spider.root, this.#spider.rig, this.#observe.object, this.#sky.object);
+    this.#scene.add(
+      this.#spider.root,
+      this.#spider.rig,
+      this.#observe.object,
+      this.#sky.object,
+      waterSplashes,
+    );
 
     this.#bindEvents();
     this.#resize();
@@ -474,7 +481,7 @@ export class Stage {
     this.#last = now;
     if (!this.#held) this.#step?.(dt);
     this.#syncEcology();
-    tickWater(now * 0.001);
+    tickWater(now * 0.001, waterContact(this.#spider, this.#wasLifted, this.#world?.() ?? null));
     this.#syncWorld();
     this.#feedback();
 
@@ -532,12 +539,20 @@ export class Stage {
   }
 }
 
-/** Release geometry owned by a scene subtree without touching shared materials. */
+/** Release geometry owned by a scene subtree. Pooled splash geometry is kept. */
 function disposeGeometries(root: Object3D): void {
   const geometries = new Set<BufferGeometry>();
   root.traverse((node) => {
+    if (keepsGeometry(node)) return;
     const geometry = (node as Object3D & { geometry?: BufferGeometry }).geometry;
     if (geometry) geometries.add(geometry);
   });
   for (const geometry of geometries) geometry.dispose();
+}
+
+function keepsGeometry(node: Object3D): boolean {
+  for (let current: Object3D | null = node; current; current = current.parent) {
+    if (current.userData.retainGeometry === true) return true;
+  }
+  return false;
 }

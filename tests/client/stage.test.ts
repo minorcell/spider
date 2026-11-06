@@ -386,7 +386,10 @@ describe('world sync', () => {
     expect(scene.children.map((child) => (child as { name: string }).name)).toContain(
       'ecology-sky',
     );
-    expect(scene.children).toHaveLength(4);
+    expect(scene.children.map((child) => (child as { name: string }).name)).toContain(
+      'water-splash',
+    );
+    expect(scene.children).toHaveLength(5);
     resolveFresh(fresh);
     await Promise.resolve();
     frame();
