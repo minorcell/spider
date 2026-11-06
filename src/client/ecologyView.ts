@@ -3,6 +3,7 @@ import {
   DirectionalLight,
   Group,
   HemisphereLight,
+  MathUtils,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
@@ -18,8 +19,13 @@ import { setGroundLight } from './groundView.js';
 const daySky = new Color(PALETTE.paper);
 const nightSky = new Color(0x172235);
 const sky = new Color();
-const cloudDay = new Color(0xe7f0ef);
+const cloudDay = new Color(0xf3f1eb);
 const cloudNight = new Color(0x536277);
+
+/** Daylight is sun elevation; paper brightness should settle well before noon. */
+function dayBrightness(clock: WorldClock): number {
+  return MathUtils.smoothstep(clock.daylight, 0, 0.35);
+}
 
 const CLOUD_STYLES = [
   [
@@ -100,14 +106,11 @@ export function applyEcologyLighting(
   at = new Date(),
 ): WorldClock {
   const clock = worldClock(at);
-  sky.copy(nightSky).lerp(daySky, 0.18 + clock.daylight * 0.82);
+  const brightness = dayBrightness(clock);
+  sky.copy(nightSky).lerp(daySky, 0.18 + brightness * 0.82);
   renderer.setClearColor(sky, 1);
-  const light = 0.42 + clock.daylight * 0.58;
-  setGroundLight(
-    light * (0.84 + clock.daylight * 0.16),
-    light * (0.89 + clock.daylight * 0.11),
-    light,
-  );
+  const light = 0.42 + brightness * 0.58;
+  setGroundLight(light * (0.84 + brightness * 0.16), light * (0.89 + brightness * 0.11), light);
   return clock;
 }
 
@@ -145,7 +148,7 @@ export class EcologySky {
     new MeshBasicMaterial({ color: 0xe1eafa, fog: false, toneMapped: false }),
   );
   readonly light = new DirectionalLight();
-  readonly ambient = new HemisphereLight(0xe5edff, 0x827767, 1);
+  readonly ambient = new HemisphereLight(0xffffff, 0xe8e1d4, Math.PI * 0.8);
   readonly #sunDirection = new Vector3();
   readonly #lightDirection = new Vector3();
   #cloudTime = 0;
@@ -182,6 +185,7 @@ export class EcologySky {
 
   /** Move the shadow window with the viewed ground; the sky has no nearby parallax. */
   update(clock: WorldClock, focus: Vector3, overlook: boolean, dt = 0): void {
+    const brightness = dayBrightness(clock);
     const angle = clock.dayFraction * Math.PI * 2 - Math.PI / 2;
     this.#sunDirection.set(Math.cos(angle), Math.sin(angle), Math.cos(angle) * 0.35).normalize();
     const isDay = clock.period !== 'night';
@@ -197,15 +201,17 @@ export class EcologySky {
       cloud.position.z = seed.z + Math.sin(this.#cloudTime * 0.025 + seed.phase) * 1.5;
     }
     for (const [index, material] of this.#cloudMaterials.entries()) {
-      material.color.copy(cloudNight).lerp(cloudDay, 0.22 + clock.daylight * 0.78);
-      material.opacity = (0.18 + clock.daylight * 0.4) * (1 - index * 0.12);
+      material.color.copy(cloudNight).lerp(cloudDay, 0.22 + brightness * 0.78);
+      material.opacity = (0.18 + brightness * 0.4) * (1 - index * 0.12);
     }
     this.#lightDirection.copy(this.#sunDirection).multiplyScalar(isDay ? 1 : -1);
     // Fade at the horizon so a light switch cannot flip a long dark shadow.
     const altitude = Math.max(0, this.#lightDirection.y);
-    this.light.intensity = (isDay ? 1.15 : 0.32) * Math.min(1, altitude * 5);
-    this.light.color.setHex(isDay ? 0xffebce : 0xaecbff);
-    this.ambient.intensity = 0.5 + clock.daylight * 0.65;
+    // Lambert divides diffuse light by PI. Keep a bright neutral paper base,
+    // with a smaller directional contribution for shape and cast shadows.
+    this.light.intensity = (isDay ? Math.PI * 0.22 : 0.32) * Math.min(1, altitude * 5);
+    this.light.color.setHex(isDay ? 0xfff6e8 : 0xaecbff);
+    this.ambient.intensity = 0.5 + brightness * (Math.PI * 0.8 - 0.5);
     this.light.position.copy(focus).addScaledVector(this.#lightDirection, 100);
     this.light.target.position.copy(focus);
     const extent = overlook ? 60 : 24;
