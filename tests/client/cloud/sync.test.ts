@@ -22,6 +22,7 @@ import {
   installWorldStore,
   resetWorldStore,
   restoreWorld,
+  writesDone,
 } from '../../../src/client/worldStore.js';
 import { captureBody } from '../../../src/shared/sim/snapshot.js';
 import { SimSession } from '../../../src/shared/sim/session.js';
@@ -211,17 +212,19 @@ describe('cloud sync', () => {
     enable();
     const cloud = installCloud(null, 404);
     await startCloud({ hold: vi.fn(), retile: vi.fn() });
-    const started = cloud.calls.length;
+    const uploads = () =>
+      cloud.calls.filter(({ url, init }) => url.includes('world.json') && init.method === 'PUT');
+    const started = uploads().length;
     session.spider.root.position.x += 1;
     flushWorld('poke');
-    await quiet(cloud);
-    expect(cloud.calls.length).toBeGreaterThan(started);
+    await writesDone();
+    await vi.waitFor(() => expect(uploads().length).toBeGreaterThan(started));
 
-    const moved = cloud.calls.length;
+    const moved = uploads().length;
     const diary = await Diary.open(new Date('2026-11-06T00:00:00.000Z'));
     await diary.write({ date: '2026-11-06', line: '水边' });
+    await vi.waitFor(() => expect(uploads().length).toBeGreaterThan(moved));
     await quiet(cloud);
-    expect(cloud.calls.length).toBeGreaterThan(moved);
   });
 
   it('asks when both sides already have progress', async () => {
