@@ -1,6 +1,6 @@
 /**
  * Some models write a tool call into the text channel instead of the tool-call
- * channel: `move_to {"x": 1, "z": 2}`. The SDK has already run its own tool
+ * channel: `go {"mode": "point", "x": 1, "z": 2}`. The SDK has already run its own tool
  * loop by the time the text reaches the page, so these would end the turn as
  * prose. Parse them at the model stream and hand the SDK real tool calls.
  */

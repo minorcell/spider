@@ -1,5 +1,12 @@
 import { propertiesOf } from './kinds.js';
-import { aheadAt, senseBody, waysAt, type Ahead, type NearbySolid } from './sense.js';
+import {
+  aheadAt,
+  senseBody,
+  waysAt,
+  type Ahead,
+  type NearbySolid,
+  type Waypoint,
+} from './sense.js';
 import { EYE_HEIGHT, grassHere, groundOccluded, insideHome, occluded, SIGHT_TOP } from './sight.js';
 
 import { surfaceOf } from './terrain.js';
@@ -234,8 +241,8 @@ export interface Observation {
     ahead: Ahead;
     /** Solids within a few meters, nearest first. */
     nearby: NearbySolid[];
-    /** Computed sentences: which relative turn is walkable, and for how far. */
-    ways: string[];
+    /** Clear places you can pass to go. */
+    ways: Waypoint[];
   };
   entities: SeenEntity[];
 }
@@ -261,7 +268,7 @@ export type Sense = Pick<
   | 'ahead'
 > & {
   /** Present when the outcome was blocked, steep, or no-path. */
-  ways?: string[];
+  ways?: Waypoint[];
 };
 
 /** Compass-style degrees from a three.js yaw. */
@@ -292,7 +299,7 @@ function canAct(kind: string): boolean {
 
 /**
  * The body alone. One heading probe. `withWays` also scans 24 headings for
- * turn sentences, which a blocked action attaches so the next turn needs no observe.
+ * clear places, which a blocked action attaches so the next go needs no observe.
  */
 export function toSense(state: SpiderState, world: WorldState, withWays = false): Sense {
   const heading = toHeading(state.yaw);

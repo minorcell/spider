@@ -14,9 +14,8 @@ import type { MemoryApi } from '../journal/diary.js';
 
 /**
  * Built-in tools. Each one is a function call on the local simulation.
- * `observe` returns the full look. A move, and handling something on the
- * ground, also returns `near`: what you can eat or carry within reach.
- * Other actions return only the body's own state.
+ * `observe` returns the full look. Every action also returns `near`:
+ * what you can eat or carry within reach, and the body's own state.
  */
 export interface ToolResult extends GoalOutcome {
   observation?: Observation;
@@ -44,27 +43,27 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         return {
           code: 'blocked',
           message: self.ways?.length
-            ? '前方被固体挡住了。按 self.ways 里的转向换一条路，不要继续顶同一个方向。'
-            : '前方被固体挡住了，换一个方向或使用 move_to 绕路。',
-          next: self.ways?.length ? 'turn' : 'move_to',
+            ? '前方被固体挡住了。self.ways 是可走的坐标，用 go 的 point 走过去，不要顶同一个方向。'
+            : '前方被固体挡住了。换一个 x、z，用 go 绕开。',
+          next: 'go',
         };
       case 'steep':
         return {
           code: 'steep',
-          message: '这段坡太陡。先用 self.ways 找可走方向，或抬高身体后重新观察。',
-          next: 'observe',
+          message: '这段坡太陡。用 self.ways 里的坐标换一条路，或先 set_height 再走。',
+          next: self.ways?.length ? 'go' : 'set_height',
         };
       case 'no-path':
         return {
           code: 'no-path',
-          message: '目标没有找到可走的路线，换一个目标点或先观察环境。',
+          message: '没有可走的路线。换一个目标，或先 observe。',
           next: 'observe',
         };
       case 'out-of-reach':
         return {
           code: 'out-of-reach',
-          message: '目标还不在够得着的范围内，先 approach 到它旁边。',
-          next: 'approach',
+          message: '目标还不在够得着的范围内。用 go，mode 填 id，走到它旁边。',
+          next: 'go',
         };
       case 'not-found':
         return {
@@ -82,15 +81,21 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       case 'full':
         return {
           code: 'carry-full',
-          message: '背包已经满了，先 drop 或 store 一件再继续搬。',
-          next: 'drop',
+          message: '背包已经满了。先用 act 的 drop 或 store 放下一件。',
+          next: 'act',
         };
       case 'no-water':
-        return {
-          code: 'no-water',
-          message: '附近没有够得着的水，先根据 self.water 找到水边。',
-          next: 'observe',
-        };
+        return self.water
+          ? {
+              code: 'no-water',
+              message: '附近没有够得着的水。按 self.water 的 x、z 用 go 走过去。',
+              next: 'go',
+            }
+          : {
+              code: 'no-water',
+              message: '附近没有水。先 observe，再按看见的水走过去。',
+              next: 'observe',
+            };
       case 'cancelled':
       case 'timeout':
         return {
@@ -143,14 +148,14 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
             : world.clock.phase !== 'day' && observation.view < VIEW_DISTANCE
               ? {
                   code: 'view-limited-by-light',
-                  message: `现在是${world.clock.phase}，光线把视野缩短到了 ${observation.view}。靠近、换方向或等到更亮时再 observe。`,
-                  next: 'observe',
+                  message: `现在是${world.clock.phase}，光线把视野缩短到了 ${observation.view}。靠近后再 observe。`,
+                  next: 'go',
                 }
               : observation.beyond > 0 || observation.hidden > 0
                 ? {
                     code: 'partial-observation',
-                    message: `这次只看到了视野内的对象，还有 ${observation.beyond} 个在视野外、${observation.hidden} 个被遮挡。移动、抬高身体或换方向后再 observe。`,
-                    next: 'observe',
+                    message: `这次只看到了视野内的对象，还有 ${observation.beyond} 个在视野外、${observation.hidden} 个被遮挡。移动或抬高身体后再 observe。`,
+                    next: 'go',
                   }
                 : undefined;
         return {
@@ -162,110 +167,89 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         };
       },
     }),
-    walk: tool({
-      description: '沿当前朝向走直线。距离远时用 fast。',
-      inputSchema: call({
-        distance: z.number().describe('走多少单位。正数向前。'),
-        fast: z.boolean().optional().describe('跑起来。'),
-      }),
-      execute: async ({ distance, fast }) => finish(await session.walk(distance, fast ?? false)),
-    }),
-    turn: tool({
-      description: '原地转向。degrees 相对，heading 绝对，只填一个。',
-      inputSchema: call({
-        degrees: z.number().optional().describe('相对角度，顺时针为正。'),
-        heading: z
-          .number()
-          .min(-180)
-          .max(180)
-          .optional()
-          .describe('绝对朝向，0 是 -Z，范围 -180..180。'),
-      }),
-      execute: async ({ degrees, heading }) => {
-        if (degrees === undefined) {
-          if (heading === undefined) return finish({ ok: false, reason: 'need-turn' });
-          return { ...finish(await session.turnTo(heading)), heading };
-        }
-        if (heading !== undefined) return finish({ ok: false, reason: 'ambiguous-turn' });
-        return finish(await session.turn(degrees));
+    go: tool({
+      description:
+        '移动或转身，一次只做一件事。point 走到 x、z，自动绕开固体，陡坡仍需自己爬。id 走到对象旁边并面向它。heading 或 degrees 只转身。',
+      inputSchema: z.discriminatedUnion('mode', [
+        call({
+          mode: z.literal('point').describe('走到一个坐标。'),
+          x: z.number().describe('目标 x。'),
+          z: z.number().describe('目标 z。'),
+          fast: z.boolean().optional().describe('跑起来。'),
+        }),
+        call({
+          mode: z.literal('id').describe('走到一个对象旁边。'),
+          id: z.string().describe('对象 id。'),
+          standoff: z.number().min(0).optional().describe('停在多远。不填就贴近。'),
+          fast: z.boolean().optional().describe('跑起来。'),
+        }),
+        call({
+          mode: z.literal('heading').describe('转到一个绝对朝向。'),
+          heading: z.number().min(-180).max(180).describe('绝对朝向，0 是 -Z，范围 -180..180。'),
+        }),
+        call({
+          mode: z.literal('degrees').describe('相对现在转身。'),
+          degrees: z.number().describe('相对角度，顺时针为正。'),
+        }),
+      ]),
+      execute: async (input) => {
+        if (input.mode === 'point')
+          return finish(await session.moveTo(input.x, input.z, input.fast ?? false));
+        if (input.mode === 'id')
+          return finish(await session.approach(input.id, input.standoff, input.fast ?? false));
+        if (input.mode === 'heading')
+          return { ...finish(await session.turnTo(input.heading)), heading: input.heading };
+        return finish(await session.turn(input.degrees));
       },
     }),
-    move_to: tool({
-      description: '走到 x、z，自动绕开固体；陡坡仍需自己爬。',
-      inputSchema: call({
-        x: z.number().describe('目标 x。'),
-        z: z.number().describe('目标 z。'),
-        fast: z.boolean().optional().describe('跑起来。'),
-      }),
-      execute: async ({ x, z: zPos, fast }) => finish(await session.moveTo(x, zPos, fast ?? false)),
-    }),
     mark: tool({
-      description: `记录、查看、删除或走回有名字的地点，最多 ${MARK_LIMIT} 个。`,
+      description: `记录、查看或删除有名字的地点，最多 ${MARK_LIMIT} 个。`,
       inputSchema: call({
-        command: z.enum(['add', 'list', 'remove', 'go']).describe('add、list、remove 或 go。'),
-        name: z
-          .string()
-          .optional()
-          .describe(`地点名，${MARK_NAME_MAX} 字以内。add、remove、go 要填。`),
+        command: z.enum(['add', 'list', 'remove']).describe('add、list 或 remove。'),
+        name: z.string().optional().describe(`地点名，${MARK_NAME_MAX} 字以内。add、remove 要填。`),
         note: z.string().optional().describe(`备注，${MARK_NOTE_MAX} 字以内。`),
-        fast: z.boolean().optional().describe('走回去时跑起来。'),
       }),
-      execute: async ({ command, name, note, fast }) => {
+      execute: async ({ command, name, note }) => {
         if (command === 'list') return { ...finish({ ok: true }), marks: session.marks() };
         if (!name) return finish({ ok: false, reason: 'need-name' });
         if (command === 'add') return finish(session.mark(name, note));
-        if (command === 'remove') return finish(session.forgetMark(name));
-        const outcome = await session.goToMark(name, fast ?? false);
-        return { ...finish(outcome), name };
+        return finish(session.forgetMark(name));
       },
     }),
-    approach: tool({
-      description: '走到对象旁边并面向它，自动绕开固体。',
-      inputSchema: call({
-        id: z.string().describe('对象 id。'),
-        standoff: z.number().min(0).optional().describe('停在多远。不填就贴近。'),
-        fast: z.boolean().optional().describe('跑起来。'),
-      }),
-      execute: async ({ id, standoff, fast }) =>
-        finish(await session.approach(id, standoff, fast ?? false)),
-    }),
-    eat: tool({
-      description: '吃附近或背上的食物。',
-      inputSchema: call({
-        id: z.string().optional().describe('对象 id。不填就吃最近的。'),
-      }),
-      execute: async ({ id }) => finish(await session.eat(id)),
-    }),
-    drink: tool({
-      description: '在水边喝水。',
-      inputSchema: call({}),
-      execute: async () => finish(session.drink()),
-    }),
-    pick_up: tool({
-      description: `搬起附近能搬的东西，最多 ${CARRY_LIMIT} 件。`,
-      inputSchema: call({
-        id: z.string().optional().describe('对象 id。不填就搬最近的。'),
-      }),
-      execute: async ({ id }) => finish(await session.pickUp(id)),
-    }),
-    drop: tool({
-      description: '把背上的东西放在面前。',
-      inputSchema: call({
-        id: z.string().optional().describe('物品 id。不填就放最后一件。'),
-      }),
-      execute: async ({ id }) => finish(session.drop(id)),
-    }),
-    store: tool({
-      description: '把背上的东西放进巢里。',
-      inputSchema: call({
-        id: z.string().optional().describe('物品 id。不填就放最后一件。'),
-      }),
-      execute: async ({ id }) => finish(session.store(id)),
-    }),
-    sleep: tool({
-      description: '在巢里睡觉，醒来还在原地。',
-      inputSchema: call({}),
-      execute: async () => finish(await session.sleep()),
+    act: tool({
+      description: `吃、搬、放下、存进巢、喝水或睡觉。eat、pick_up、drop、store 要带 id，背上最多 ${CARRY_LIMIT} 件。`,
+      inputSchema: z.discriminatedUnion('verb', [
+        call({
+          verb: z.literal('eat').describe('吃附近或背上的食物。'),
+          id: z.string().describe('对象 id。'),
+        }),
+        call({
+          verb: z.literal('pick_up').describe('搬起附近能搬的东西。'),
+          id: z.string().describe('对象 id。'),
+        }),
+        call({
+          verb: z.literal('drop').describe('把背上的东西放在面前。'),
+          id: z.string().describe('物品 id。'),
+        }),
+        call({
+          verb: z.literal('store').describe('把背上的东西放进巢里。'),
+          id: z.string().describe('物品 id。'),
+        }),
+        call({
+          verb: z.literal('drink').describe('在水边喝水。'),
+        }),
+        call({
+          verb: z.literal('sleep').describe('在巢里睡觉，醒来还在原地。'),
+        }),
+      ]),
+      execute: async (input) => {
+        if (input.verb === 'eat') return finish(await session.eat(input.id));
+        if (input.verb === 'pick_up') return finish(await session.pickUp(input.id));
+        if (input.verb === 'drop') return finish(session.drop(input.id));
+        if (input.verb === 'store') return finish(session.store(input.id));
+        if (input.verb === 'drink') return finish(session.drink());
+        return finish(await session.sleep());
+      },
     }),
     set_height: tool({
       description: '抬高或放低身体，改变视线和越坡能力，不移动位置。',

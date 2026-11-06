@@ -9,24 +9,30 @@ describe('senseBody', () => {
     const felt = senseBody(0, 0, 0, 0, flat, []);
     expect(felt.ahead).toEqual({ open: 8, by: 'clear', id: null, kind: null });
     expect(felt.nearby).toEqual([]);
-    expect(felt.ways).toEqual(['正前方可以走 8 米。']);
+    expect(felt.ways).toEqual([{ x: 0, z: -8, open: 8 }]);
   });
 
-  it('reports the wall it faces and the turns that clear it', () => {
+  it('places a clear waypoint along +x when the heading is 90', () => {
+    const felt = senseBody(0, 0, 0, 90, flat, []);
+    expect(felt.ways).toEqual([{ x: 8, z: 0, open: 8 }]);
+  });
+
+  it('reports the wall it faces and the points that clear it', () => {
     const wall = block('nest-n', -1, 1, -4, -2);
     const felt = senseBody(0, 0, 0, 0, flat, [wall]);
     expect(felt.ahead.by).toBe('wall');
     expect(felt.ahead.id).toBe('nest-n');
     expect(felt.ahead.kind).toBe('nest');
     expect(felt.ahead.open).toBe(1.75);
-    expect(felt.ways.length).toBe(2);
-    expect(felt.ways[0]).toBe('相对朝向转 45 度（正数顺时针）后，可以走 8 米。');
-    expect(felt.ways[1]).toBe('相对朝向转 -45 度（正数顺时针）后，可以走 8 米。');
+    expect(felt.ways).toEqual([
+      { x: 5.66, z: -5.66, open: 8 },
+      { x: -5.66, z: -5.66, open: 8 },
+    ]);
   });
 
-  it('rounds bearings through 180 without a -180', () => {
+  it('places the forward waypoint on +z when the heading is 180', () => {
     const felt = senseBody(0, 0, 0, 180, flat, []);
-    expect(felt.ways).toEqual(['正前方可以走 8 米。']);
+    expect(felt.ways).toEqual([{ x: 0, z: 8, open: 8 }]);
   });
 
   it('reports a slope that cannot be climbed', () => {
@@ -40,7 +46,7 @@ describe('senseBody', () => {
     const inside = (x: number, z: number, margin = 0): boolean => Math.hypot(x, z) < 3 - margin;
     const felt = senseBody(2, 0, 0, 90, flat, [], inside);
     expect(felt.ahead).toEqual({ open: 0.5, by: 'edge', id: null, kind: null });
-    expect(felt.ways.some((line) => line.includes('8 米'))).toBe(false);
+    expect(felt.ways.every((way) => way.open < 8)).toBe(true);
   });
 
   it('overrides everything when the body stands inside a solid', () => {
@@ -68,7 +74,7 @@ describe('senseBody', () => {
     expect(felt.nearby.every((solid) => solid.distance <= 6)).toBe(true);
   });
 
-  it('uses absolute turn lines when nothing ahead is open', () => {
+  it('returns the longest short point when nothing ahead is open', () => {
     const blocks = [
       block('n', -1, 1, 1.5, 2.5),
       block('s', -1, 1, -2.5, -1.5),
@@ -77,10 +83,11 @@ describe('senseBody', () => {
     ];
     const felt = senseBody(0, 0, 0, 0, flat, blocks);
     expect(felt.ahead.open).toBeLessThan(2.5);
-    expect(felt.ways[0].startsWith('周围都不远。')).toBe(true);
+    expect(felt.ways).toHaveLength(1);
+    expect(felt.ways[0].open).toBeLessThan(2.5);
   });
 
-  it('uses only the side lines when the front is short but a turn is open', () => {
+  it('uses only the open sides when the front is short', () => {
     const blocks = [
       block('nest-n', -1, 1, -4, -2),
       block('building-w', -4, -2.2, -6, 6),
@@ -89,7 +96,7 @@ describe('senseBody', () => {
     const felt = senseBody(0, 0, 0, 0, flat, blocks);
     expect(felt.ahead.open).toBeLessThan(2.5);
     expect(felt.ways.length).toBeGreaterThan(0);
-    expect(felt.ways[0]).toContain('相对朝向转');
+    expect(felt.ways.every((way) => way.open >= 2.5)).toBe(true);
   });
 
   it('measures nearby solids at their nearest corner', () => {

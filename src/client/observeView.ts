@@ -310,7 +310,7 @@ export class ObserveOverlay {
       `看见 ${observation.view}　够得着 ${REACH}　${front}`,
       `背上 ${carrying}　超出视线 ${observation.beyond}　被挡住 ${observation.hidden}`,
       pool,
-      ...observation.self.ways,
+      ...observation.self.ways.map((way) => `可走到 ${way.x}, ${way.z}（${meters(way.open)} 米）`),
     ].join('\n');
   }
 }

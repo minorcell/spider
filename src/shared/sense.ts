@@ -29,7 +29,8 @@ export interface NearbySolid {
 
 const round = (value: number, places = 2): number => {
   const scale = 10 ** places;
-  return Math.round(value * scale) / scale;
+  const rounded = Math.round(value * scale) / scale;
+  return rounded === 0 ? 0 : rounded;
 };
 
 function kindOfBlock(id: string): 'nest' | 'solid' {
@@ -62,6 +63,11 @@ export function aheadAt(
 }
 
 /** Heading 0 faces world -Z. Clockwise is positive, matching the body's turn. */
+function headingStep(heading: number): { x: number; z: number } {
+  const rad = (heading * Math.PI) / 180;
+  return { x: Math.sin(rad), z: -Math.cos(rad) };
+}
+
 function probe(
   x: number,
   z: number,
@@ -70,13 +76,11 @@ function probe(
   blocks: readonly Block[],
   inside?: (x: number, z: number, margin?: number) => boolean,
 ): Probe {
-  const rad = (heading * Math.PI) / 180;
-  const fx = Math.sin(rad);
-  const fz = -Math.cos(rad);
+  const step = headingStep(heading);
   let previous = height(x, z);
   for (let traveled = STEP; traveled <= AHEAD + 1e-6; traveled += STEP) {
-    const nx = x + fx * traveled;
-    const nz = z + fz * traveled;
+    const nx = x + step.x * traveled;
+    const nz = z + step.z * traveled;
     if (inside && !inside(nx, nz, BODY_RADIUS))
       return { open: round(traveled - STEP), by: 'edge', id: null, kind: null };
     const ground = height(nx, nz);
@@ -94,18 +98,32 @@ function wrap(degrees: number): number {
   return wrapped === -180 ? 180 : wrapped;
 }
 
-function meters(value: number): string {
-  const text = round(value, 1).toFixed(1);
-  return text.endsWith('.0') ? text.slice(0, -2) : text;
+/** A clear place the body can pass to `go`. Heading 0 is world -Z. */
+export interface Waypoint {
+  x: number;
+  z: number;
+  /** Clear meters from where you stand to this point. */
+  open: number;
 }
 
-function lineOf(sample: { bearing: number; open: number }): string {
-  return Math.abs(sample.bearing) < 12
-    ? `正前方可以走 ${meters(sample.open)} 米。`
-    : `相对朝向转 ${Math.round(sample.bearing)} 度（正数顺时针）后，可以走 ${meters(sample.open)} 米。`;
+interface WaySample {
+  absolute: number;
+  bearing: number;
+  open: number;
+  clear: boolean;
 }
 
-/** Turn sentences for the current heading. Used when a walk is blocked. */
+function waypoint(x: number, z: number, sample: WaySample): Waypoint {
+  const reach = sample.clear ? sample.open : Math.max(STEP, sample.open - 0.5);
+  const step = headingStep(sample.absolute);
+  return {
+    x: round(x + step.x * reach),
+    z: round(z + step.z * reach),
+    open: round(reach, 1),
+  };
+}
+
+/** Clear places around the body. Used when a move is blocked. */
 export function waysAt(
   x: number,
   z: number,
@@ -113,11 +131,11 @@ export function waysAt(
   height: (x: number, z: number) => number,
   blocks: readonly Block[],
   inside?: (x: number, z: number, margin?: number) => boolean,
-): string[] {
+): Waypoint[] {
   return waysFrom(x, z, heading, height, blocks, inside);
 }
 
-/** Sentences the agent can follow: which way is walkable, and how far. */
+/** Points the agent can pass to `go`: which way is walkable, and how far. */
 function waysFrom(
   x: number,
   z: number,
@@ -125,12 +143,17 @@ function waysFrom(
   height: (x: number, z: number) => number,
   blocks: readonly Block[],
   inside?: (x: number, z: number, margin?: number) => boolean,
-): string[] {
-  const samples = [];
+): Waypoint[] {
+  const samples: WaySample[] = [];
   for (let step = 0; step < 24; step++) {
     const absolute = step * 15;
     const seen = probe(x, z, absolute, height, blocks, inside);
-    samples.push({ bearing: wrap(absolute - heading), open: seen.open });
+    samples.push({
+      absolute,
+      bearing: wrap(absolute - heading),
+      open: seen.open,
+      clear: seen.by === 'clear',
+    });
   }
   const forward = samples.reduce((a, b) => (Math.abs(a.bearing) < Math.abs(b.bearing) ? a : b));
   const alternatives = samples
@@ -139,21 +162,24 @@ function waysFrom(
         sample.open >= Math.max(2.5, forward.open + 1.5) && Math.abs(sample.bearing) >= 40,
     )
     .toSorted((a, b) => b.open - a.open || Math.abs(a.bearing) - Math.abs(b.bearing));
-  const picked: { bearing: number; open: number }[] = [];
+  const picked: WaySample[] = [];
   for (const sample of alternatives) {
     if (picked.every((other) => Math.abs(wrap(sample.bearing - other.bearing)) >= 40))
       picked.push(sample);
     if (picked.length === 2) break;
   }
-  if (forward.open >= 2.5) return [lineOf(forward), ...picked.map(lineOf)];
-  if (picked.length > 0) return picked.map(lineOf);
-  const best = samples.reduce((a, b) => (b.open > a.open ? b : a));
-  return [`周围都不远。${lineOf(best)}`];
+  const chosen =
+    forward.open >= 2.5
+      ? [forward, ...picked]
+      : picked.length > 0
+        ? picked
+        : [samples.reduce((a, b) => (b.open > a.open ? b : a))];
+  return chosen.map((sample) => waypoint(x, z, sample));
 }
 
 /**
  * What is in front of the body, which solids stand nearby, and which
- * headings are walkable. The same probe covers every solid. Forward matches
+ * places are walkable. The same probe covers every solid. Forward matches
  * the spider: yaw 0 faces world -Z.
  */
 export function senseBody(
@@ -164,7 +190,7 @@ export function senseBody(
   height: (x: number, z: number) => number,
   blocks: readonly Block[],
   inside?: (x: number, z: number, margin?: number) => boolean,
-): { ahead: Ahead; nearby: NearbySolid[]; ways: string[] } {
+): { ahead: Ahead; nearby: NearbySolid[]; ways: Waypoint[] } {
   const ahead = aheadAt(x, z, heading, height, blocks, inside);
 
   const nearby: NearbySolid[] = [];
