@@ -5,10 +5,10 @@ import {
   PCFShadowMap,
   Scene,
   Vector3,
-  WebGLRenderer,
   type BufferGeometry,
   type Object3D,
 } from 'three';
+import { WebGPURenderer } from 'three/webgpu';
 import { PALETTE } from '../shared/config.js';
 import { kindOf } from '../shared/kinds.js';
 import { WORLD_RADIUS } from '../shared/terrain.js';
@@ -49,7 +49,7 @@ const bubbleAt = new Vector3();
 /** Renderer and camera. It steps the one spider, then paints that same spider. */
 export class Stage {
   readonly #host: HTMLElement;
-  readonly #renderer: WebGLRenderer;
+  readonly #renderer: WebGPURenderer;
   readonly #scene = new Scene();
   readonly #camera: PerspectiveCamera;
   readonly #spider: Spider;
@@ -106,7 +106,12 @@ export class Stage {
     this.#host = host;
     this.#spider = spider;
 
-    this.#renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // WebGPURenderer defaults to a transparent canvas. The paper sky is opaque.
+    this.#renderer = new WebGPURenderer({
+      alpha: false,
+      antialias: true,
+      powerPreference: 'high-performance',
+    });
     this.#renderer.shadowMap.enabled = true;
     this.#renderer.shadowMap.type = PCFShadowMap;
     // Draw at the screen's own pixels, capped at 2, so the ink stays sharp.

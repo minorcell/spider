@@ -18,8 +18,9 @@ export default defineConfig({
     emptyOutDir: true,
     minify: 'oxc',
     cssMinify: true,
-    // three is one tightly coupled graph; keep the warning above its size.
-    chunkSizeWarningLimit: 600,
+    // three/webgpu carries the core plus the node-material graph.
+    // Keep the warning above that chunk.
+    chunkSizeWarningLimit: 900,
     rolldownOptions: {
       output: {
         codeSplitting: {

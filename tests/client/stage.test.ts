@@ -27,9 +27,9 @@ interface FakeRenderer {
   dispose: ReturnType<typeof vi.fn>;
 }
 
-vi.mock('three', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('three')>();
-  class WebGLRenderer implements FakeRenderer {
+vi.mock('three/webgpu', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('three/webgpu')>();
+  class WebGPURenderer implements FakeRenderer {
     domElement = document.createElement('canvas');
     loop: ((time: number) => void) | null = null;
     shadowMap = { enabled: false, type: 0 };
@@ -72,7 +72,7 @@ vi.mock('three', async (importOriginal) => {
       threeControl.renderers.push(this);
     }
   }
-  return { ...actual, WebGLRenderer };
+  return { ...actual, WebGPURenderer };
 });
 
 const sound = {

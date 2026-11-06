@@ -9,8 +9,9 @@ import {
   LineSegments,
   Mesh,
   PlaneGeometry,
-  ShaderMaterial,
 } from 'three';
+import { clamp, mix, positionWorld, sin, uniform } from 'three/tsl';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { PALETTE } from '../shared/config.js';
 import { groundAttributes, islandBuffers, type IslandBuffers } from '../shared/island.js';
 import { groundMat } from '../shared/sim/parts.js';
@@ -23,43 +24,28 @@ const contourMajor = new LineBasicMaterial({
   opacity: 0.34,
 });
 
-const waterTime = { value: 0 };
-const waterUniforms = {
-  uTime: waterTime,
-  uShallow: { value: new Color(PALETTE.water) },
-  uDeep: { value: new Color(PALETTE.water).multiplyScalar(0.78) },
-  uOpacity: { value: 0.74 },
-};
+const waterTime = uniform(0);
+const waterShallow = uniform(new Color(PALETTE.water));
+const waterDeep = uniform(new Color(PALETTE.water).multiplyScalar(0.78));
+const waterOpacity = uniform(0.74);
 
-const waterMaterial = new ShaderMaterial({
-  uniforms: waterUniforms,
+// Two crossing waves plus a diagonal drift, so the sheet reads as water.
+const surface = positionWorld.xz;
+const crossing = sin(surface.x.mul(1.35).add(waterTime.mul(1.15))).mul(
+  sin(surface.y.mul(1.7).sub(waterTime.mul(0.85))),
+);
+const drift = sin(surface.x.add(surface.y).mul(1.9).add(waterTime.mul(1.7)));
+const ripple = crossing.mul(0.55).add(drift.mul(0.45));
+
+const waterMaterial = new MeshBasicNodeMaterial({
   transparent: true,
   depthWrite: false,
+  fog: false,
   side: DoubleSide,
-  vertexShader: /* glsl */ `
-    varying vec3 vWorld;
-    void main() {
-      vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: /* glsl */ `
-    uniform float uTime;
-    uniform vec3 uShallow;
-    uniform vec3 uDeep;
-    uniform float uOpacity;
-    varying vec3 vWorld;
-
-    void main() {
-      vec2 p = vWorld.xz;
-      float cross = sin(p.x * 1.35 + uTime * 1.15) * sin(p.y * 1.7 - uTime * 0.85);
-      float drift = sin((p.x + p.y) * 1.9 + uTime * 1.7);
-      float ripple = cross * 0.55 + drift * 0.45;
-      vec3 color = mix(uDeep, uShallow, clamp(0.58 + ripple * 0.28, 0.0, 1.0));
-      gl_FragColor = vec4(color, clamp(uOpacity + ripple * 0.06, 0.0, 1.0));
-    }
-  `,
+  colorNode: mix(waterDeep, waterShallow, clamp(ripple.mul(0.28).add(0.58), 0, 1)),
+  opacityNode: clamp(waterOpacity.add(ripple.mul(0.06)), 0, 1),
 });
+waterMaterial.userData.uTime = waterTime;
 
 const contourBase = new Color(PALETTE.ink);
 const waterBase = new Color(PALETTE.water);
@@ -68,10 +54,10 @@ const waterBase = new Color(PALETTE.water);
 export function setGroundLight(red: number, green: number, blue: number): void {
   contourInk.color.copy(contourBase);
   contourMajor.color.copy(contourBase);
-  waterUniforms.uShallow.value
+  waterShallow.value
     .copy(waterBase)
     .setRGB(waterBase.r * red, waterBase.g * green, waterBase.b * blue);
-  waterUniforms.uDeep.value
+  waterDeep.value
     .copy(waterBase)
     .setRGB(waterBase.r * red * 0.78, waterBase.g * green * 0.78, waterBase.b * blue * 0.78);
 }

@@ -9,8 +9,8 @@ import {
   MeshLambertMaterial,
   SphereGeometry,
   Vector3,
+  type ColorRepresentation,
   type Object3D,
-  type WebGLRenderer,
 } from 'three';
 import { PALETTE } from '../shared/config.js';
 import { worldClock, type WorldClock } from '../shared/ecology.js';
@@ -102,7 +102,7 @@ const CLOUDS = makeClouds();
 
 /** Sky and unlit water follow the same clock as the directional light. */
 export function applyEcologyLighting(
-  renderer: Pick<WebGLRenderer, 'setClearColor'>,
+  renderer: { setClearColor(color: ColorRepresentation, alpha?: number): void },
   at = new Date(),
 ): WorldClock {
   const clock = worldClock(at);
