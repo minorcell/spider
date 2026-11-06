@@ -154,7 +154,7 @@ describe('runAgent', () => {
     expect(aiControl.provider!).toHaveBeenCalledWith('model-1');
     const options = aiControl.streamText.mock.calls[0][0] as Record<string, unknown>;
     expect(options.messages).toEqual([{ role: 'user', content: 'go' }]);
-    expect(String(options.system)).toContain('你是一只生活在这片岛上的蜘蛛');
+    expect(String(options.system)).toContain('你是用户养在这座片岛上的活跃的蜘蛛');
     expect(options.toolCallConcurrency).toBe(1);
     expect(options.stopWhen).toEqual({ until: 'finished' });
     expect(options.reasoning).toBe('provider-default');
