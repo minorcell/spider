@@ -121,6 +121,7 @@ describe('SimSession basics', () => {
   });
 
   it('observes at the asked distance, clamped', () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 0, 1, 12) });
     const session = new SimSession(3);
     expect(session.observe().view).toBe(16);
     expect(session.observe(-1).view).toBe(0);
@@ -128,6 +129,7 @@ describe('SimSession basics', () => {
   });
 
   it('shortens the view inside grass, until the body is raised over it', () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 0, 1, 12) });
     const session = new SimSession(3);
     const grass = session.world.entities.find((entity) => entity.kind === 'grass')!;
     session.spider.root.position.set(grass.x, 0, grass.z);
