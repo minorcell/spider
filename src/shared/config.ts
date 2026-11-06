@@ -99,8 +99,12 @@ export const BONES: readonly BoneSpec[] = [
 export const GAIT = {
   footY: 0.16,
   heightMin: -0.35,
-  /** A spider can rear up almost its leg length to look over a bank. */
-  heightMax: 1.6,
+  /**
+   * Highest the deck can rise before a claw leaves the ground.
+   * The chain is longer than this, but the first segment lies flat and the
+   * feet stand wide of the shoulders, so 1.6 left the body hanging.
+   */
+  heightMax: 1,
   swing: 0.42,
   swingLift: 0.28,
   strideScale: 0.7,
