@@ -43,7 +43,7 @@ const SHELL_PHI = [-1.35, -0.9, -0.45, 0, 0.45, 0.9, 1.35];
 const SHELL_THETA = 12;
 const shellEuler = new Euler(0, 0, 0, 'XYZ');
 const shellPoint = new Vector3();
-const boxCorner = new Vector3();
+const partWorld = new Matrix4();
 
 export class Spider {
   readonly root = new Group();
@@ -514,11 +514,15 @@ export class Spider {
     // The claw is parented to the tarsus, so its tip is not straight under the
     // anchor. Raise the planted foot until the posed claw meets the skin.
     this.#solveAndPlace(leg);
+    const parts = footParts(leg);
     for (let pass = 0; pass < 2; pass++) {
       const floor =
         supportY(leg.foot.x, leg.foot.z, this.#ground, this.#mound, this.#spheres) + CONTACT;
-      const low = Math.min(meshLowest(leg.claw), meshLowest(leg.bones[3]));
-      if (!Number.isFinite(low) || low >= floor - 1e-4) break;
+      const low = Math.min(
+        partLowest(leg.claw, parts.claw),
+        partLowest(leg.bones[3], parts.tarsus),
+      );
+      if (low >= floor - 1e-4) break;
       leg.foot.y += floor - low;
       this.#solveAndPlace(leg);
     }
@@ -550,29 +554,67 @@ export class Spider {
   }
 }
 
-/** Lowest world height of a mesh's bounding box. Shared geometries cache the box. */
-function meshLowest(object: Object3D): number {
-  object.updateWorldMatrix(true, true);
-  let lowest = Infinity;
-  object.traverse((node) => {
+/**
+ * One drawn geometry, in the space of the claw group or the tarsus group.
+ * Baked once: walking these meshes on every planted foot blew the frame budget
+ * once coverage instrumentation was on.
+ */
+type FootPart = {
+  local: Matrix4;
+  cx: number;
+  cy: number;
+  cz: number;
+  hx: number;
+  hy: number;
+  hz: number;
+};
+
+let bakedFeet: { claw: FootPart[]; tarsus: FootPart[] } | undefined;
+
+function footParts(leg: Leg): { claw: FootPart[]; tarsus: FootPart[] } {
+  bakedFeet ??= { claw: collectParts(leg.claw), tarsus: collectParts(leg.bones[3]) };
+  return bakedFeet;
+}
+
+function collectParts(root: Object3D): FootPart[] {
+  root.updateWorldMatrix(true, true);
+  const inv = new Matrix4().copy(root.matrixWorld).invert();
+  const parts: FootPart[] = [];
+  root.traverse((node) => {
     const geometry = (node as Mesh).geometry as BufferGeometry | undefined;
     if (!geometry) return;
-    if (!geometry.boundingBox) geometry.computeBoundingBox();
+    geometry.computeBoundingBox();
     // computeBoundingBox always assigns the box, including an empty one.
     const box = geometry.boundingBox!;
-    const world = node.matrixWorld;
-    for (let i = 0; i < 8; i++) {
-      boxCorner
-        .set(
-          i & 1 ? box.max.x : box.min.x,
-          i & 2 ? box.max.y : box.min.y,
-          i & 4 ? box.max.z : box.min.z,
-        )
-        .applyMatrix4(world);
-      if (boxCorner.y < lowest) lowest = boxCorner.y;
-    }
+    parts.push({
+      local: new Matrix4().multiplyMatrices(inv, node.matrixWorld),
+      cx: (box.min.x + box.max.x) * 0.5,
+      cy: (box.min.y + box.max.y) * 0.5,
+      cz: (box.min.z + box.max.z) * 0.5,
+      hx: (box.max.x - box.min.x) * 0.5,
+      hy: (box.max.y - box.min.y) * 0.5,
+      hz: (box.max.z - box.min.z) * 0.5,
+    });
   });
+  return parts;
+}
+
+/** Lowest world Y of baked part boxes. The oriented box matches the old 8-corner walk. */
+function partLowest(object: Object3D, parts: readonly FootPart[]): number {
+  object.updateWorldMatrix(true, false);
+  let lowest = Infinity;
+  for (const part of parts) {
+    partWorld.multiplyMatrices(object.matrixWorld, part.local);
+    lowest = Math.min(lowest, orientedMinY(partWorld, part));
+  }
   return lowest;
+}
+
+function orientedMinY(matrix: Matrix4, part: FootPart): number {
+  const e = matrix.elements;
+  const worldY = e[1] * part.cx + e[5] * part.cy + e[9] * part.cz + e[13];
+  const half = Math.abs(e[1]) * part.hx + Math.abs(e[5]) * part.hy + Math.abs(e[9]) * part.hz;
+  return worldY - half;
 }
 
 /** Keep a step inside the round island instead of the old square corners. */
