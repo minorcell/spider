@@ -14,7 +14,7 @@ import {
   type WorldState,
 } from '../state.js';
 import { kindOf, propertiesOf, slicesOf } from '../kinds.js';
-import { IDLE_CONTROLS, type Controls } from '../types.js';
+import { IDLE_CONTROLS } from '../types.js';
 import {
   blockedAt,
   BODY_RADIUS,
@@ -38,7 +38,7 @@ import {
 import { insideLand, nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '../terrain.js';
 import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '../config.js';
 import { waterAt } from '../water.js';
-import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal, type Goal } from './goals.js';
+import { heightGoal, routeGoal, turnGoal, walkGoal, type Goal } from './goals.js';
 import { planRoute } from '../route.js';
 import { applyBody, type SimBody } from './snapshot.js';
 import { bindLegWorld } from './bindWorld.js';
@@ -269,23 +269,6 @@ export class SimSession {
 
   setHeight(level: number): Promise<GoalOutcome> {
     return this.run(heightGoal(this.spider, level));
-  }
-
-  drive(seconds: number, input: Partial<Controls>): Promise<GoalOutcome> {
-    const controls: Controls = {
-      throttle: input.throttle ?? 0,
-      turn: input.turn ?? 0,
-      lift: input.lift ?? 0,
-      boost: input.boost ?? 0,
-    };
-    const startedAt = this.spider.time;
-    const held = () => Math.abs(controls.throttle) > 0.05 && this.spider.stuckFor >= STUCK_LIMIT;
-    return this.run({
-      timeout: seconds + 1,
-      controls: () => controls,
-      done: () => this.spider.time - startedAt >= seconds || held(),
-      result: () => (held() ? { seconds, halt: this.spider.halt } : { seconds }),
-    });
   }
 
   /**

@@ -10,6 +10,7 @@ import { Terrain } from '../../../src/shared/terrain.js';
 import type { EntityState } from '../../../src/shared/state.js';
 import type { Controls } from '../../../src/shared/types.js';
 import { block } from '../../helpers.js';
+import { drive } from '../../simHelpers.js';
 
 const routeControl = vi.hoisted(() => ({
   plan: null as null | ((...args: unknown[]) => unknown),
@@ -160,7 +161,7 @@ describe('SimSession basics', () => {
     };
     session.spider.root.position.set(2, 0, 0);
     session.spider.yaw = -Math.PI / 2;
-    const outcome = await settle(session.drive(2, { throttle: 1 }), session);
+    const outcome = await settle(drive(session, 2, { throttle: 1 }), session);
     expect(outcome).toMatchObject({ ok: false, reason: 'blocked', halt: 'solid' });
     expect(session.spider.root.position.x).toBeLessThan(3);
   });
@@ -274,7 +275,7 @@ describe('goals', () => {
   it('preempts the previous goal', async () => {
     const session = new SimSession(4);
     const first = session.walk(5);
-    const second = session.drive(0.1, {});
+    const second = drive(session, 0.1, {});
     await expect(first).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
     await expect(settle(second, session)).resolves.toMatchObject({ ok: true });
   });
@@ -318,17 +319,17 @@ describe('goals', () => {
 
   it('drives for a fixed time and stops against a solid', async () => {
     const session = new SimSession(4);
-    await expect(settle(session.drive(0.3, { throttle: 1 }), session)).resolves.toMatchObject({
+    await expect(settle(drive(session, 0.3, { throttle: 1 }), session)).resolves.toMatchObject({
       ok: true,
     });
     session.spider.root.position.set(0, 0, 1.8);
     session.spider.yaw = Math.PI;
-    const blocked = await settle(session.drive(2, { throttle: 1 }), session);
+    const blocked = await settle(drive(session, 2, { throttle: 1 }), session);
     expect(blocked).toMatchObject({ ok: false, reason: 'blocked', halt: 'solid' });
-    await expect(settle(session.drive(0.1, { turn: 1 }), session)).resolves.toMatchObject({
+    await expect(settle(drive(session, 0.1, { turn: 1 }), session)).resolves.toMatchObject({
       ok: true,
     });
-    await expect(settle(session.drive(0.1, {}), session)).resolves.toMatchObject({ ok: true });
+    await expect(settle(drive(session, 0.1, {}), session)).resolves.toMatchObject({ ok: true });
   });
 
   it('runs an arbitrary goal to its timeout', async () => {
