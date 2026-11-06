@@ -17,10 +17,17 @@ import { worldClock, type WorldClock } from '../shared/ecology.js';
 import { setGroundLight } from './groundView.js';
 
 const daySky = new Color(PALETTE.paper);
-const nightSky = new Color(0x172235);
+const nightSky = new Color(0x07090e);
 const sky = new Color();
 const cloudDay = new Color(0xf3f1eb);
 const cloudNight = new Color(0x536277);
+
+// Lambert divides diffuse by PI, so these are the amounts reflected by white paper.
+// The palette is already near white. A gray night fill reads as an uncolored film.
+const dayFill = Math.PI * 0.8;
+const daySun = Math.PI * 0.22;
+const nightFill = Math.PI * 0.012;
+const nightMoon = Math.PI * 0.02;
 
 /** Daylight is sun elevation; paper brightness should settle well before noon. */
 function dayBrightness(clock: WorldClock): number {
@@ -107,9 +114,10 @@ export function applyEcologyLighting(
 ): WorldClock {
   const clock = worldClock(at);
   const brightness = dayBrightness(clock);
-  sky.copy(nightSky).lerp(daySky, 0.18 + brightness * 0.82);
+  sky.copy(nightSky).lerp(daySky, brightness);
   renderer.setClearColor(sky, 1);
-  const light = 0.42 + brightness * 0.58;
+  // Water and the ground grid are unlit, so they follow this curve instead of the lamps.
+  const light = 0.05 + brightness * 0.95;
   setGroundLight(light * (0.84 + brightness * 0.16), light * (0.89 + brightness * 0.11), light);
   return clock;
 }
@@ -207,11 +215,10 @@ export class EcologySky {
     this.#lightDirection.copy(this.#sunDirection).multiplyScalar(isDay ? 1 : -1);
     // Fade at the horizon so a light switch cannot flip a long dark shadow.
     const altitude = Math.max(0, this.#lightDirection.y);
-    // Lambert divides diffuse light by PI. Keep a bright neutral paper base,
-    // with a smaller directional contribution for shape and cast shadows.
-    this.light.intensity = (isDay ? Math.PI * 0.22 : 0.32) * Math.min(1, altitude * 5);
+    const cover = Math.min(1, altitude * 5);
+    this.light.intensity = (isDay ? daySun : nightMoon) * cover;
     this.light.color.setHex(isDay ? 0xfff6e8 : 0xaecbff);
-    this.ambient.intensity = 0.5 + brightness * (Math.PI * 0.8 - 0.5);
+    this.ambient.intensity = nightFill + brightness * (dayFill - nightFill);
     this.light.position.copy(focus).addScaledVector(this.#lightDirection, 100);
     this.light.target.position.copy(focus);
     const extent = overlook ? 60 : 24;

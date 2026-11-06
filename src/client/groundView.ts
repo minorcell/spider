@@ -167,11 +167,14 @@ waterMaterial.userData.uTime = waterTime;
 
 const contourBase = new Color(PALETTE.ink);
 const waterBase = new Color(PALETTE.water);
+const gridBase = new Color(PALETTE.grid);
+const gridInk = new LineBasicMaterial({ color: PALETTE.grid });
 
 /** Apply the current ecology tint without rebuilding the baked island. */
 export function setGroundLight(red: number, green: number, blue: number): void {
   contourInk.color.copy(contourBase);
   contourMajor.color.copy(contourBase);
+  gridInk.color.setRGB(gridBase.r * red, gridBase.g * green, gridBase.b * blue);
   waterShallow.value
     .copy(waterBase)
     .setRGB(waterBase.r * red, waterBase.g * green, waterBase.b * blue);
@@ -206,10 +209,9 @@ export function islandGroup(buffers: IslandBuffers): Group {
   geo.computeVertexNormals();
   group.add(new Mesh(geo, groundMat));
 
-  const ink = new LineBasicMaterial({ color: PALETTE.grid });
   const grid = new BufferGeometry();
   grid.setAttribute('position', new Float32BufferAttribute(buffers.grid, 3));
-  group.add(new LineSegments(grid, ink));
+  group.add(new LineSegments(grid, gridInk));
 
   const minor = new BufferGeometry();
   minor.setAttribute('position', new Float32BufferAttribute(buffers.contourMinor, 3));

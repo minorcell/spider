@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { applyEcologyLighting, EcologySky } from '../../src/client/ecologyView.js';
+import { buildIsland } from '../../src/client/groundView.js';
 import { worldClock } from '../../src/shared/ecology.js';
-import { Color, Vector3 } from 'three';
+import { Color, LineBasicMaterial, LineSegments, Vector3 } from 'three';
 import { PALETTE } from '../../src/shared/config.js';
 
 describe('applyEcologyLighting', () => {
@@ -69,10 +70,32 @@ describe('applyEcologyLighting', () => {
       expect(color.getHex()).toBe(PALETTE.paper);
     }
     expect(backgrounds[3].r).toBeLessThan(backgrounds[0].r * 0.3);
+    expect(backgrounds[3].r).toBeLessThan(0.05);
     const sky = new EcologySky();
-    sky.update(worldClock(new Date(2026, 0, 1, 23)), new Vector3(), false);
-    expect(sky.ambient.intensity / Math.PI).toBeLessThan(0.2);
+    const focus = new Vector3();
+    sky.update(worldClock(new Date(2026, 0, 1, 23)), focus, false);
+    // A white fill on the paper palette is the milky film. Night has to stay near black.
+    const fill = sky.ambient.color.clone().multiplyScalar(sky.ambient.intensity / Math.PI);
+    const altitude = sky.light.position.clone().sub(sky.light.target.position).normalize().y;
+    const moon = sky.light.color.clone().multiplyScalar((sky.light.intensity * altitude) / Math.PI);
+    for (const value of fill.toArray()) expect(value).toBeLessThan(0.02);
+    for (const value of fill.clone().add(moon).toArray()) expect(value).toBeLessThan(0.05);
     expect(sky.moon.visible).toBe(true);
     sky.dispose();
+  });
+
+  it('dims the unlit ground grid at night and restores it at noon', () => {
+    const grid = buildIsland(() => 0).children[1] as LineSegments;
+    const color = (grid.material as LineBasicMaterial).color;
+    const renderer = { setClearColor: () => undefined };
+    const base = new Color(PALETTE.grid);
+    applyEcologyLighting(renderer, new Date(2026, 0, 1, 23));
+    expect(color.r).toBeLessThan(base.r * 0.08);
+    expect(color.g).toBeLessThan(base.g * 0.08);
+    expect(color.b).toBeLessThan(base.b * 0.08);
+    applyEcologyLighting(renderer, new Date(2026, 0, 1, 12));
+    expect(color.r).toBeCloseTo(base.r);
+    expect(color.g).toBeCloseTo(base.g);
+    expect(color.b).toBeCloseTo(base.b);
   });
 });
