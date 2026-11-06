@@ -36,11 +36,15 @@ interface Mover {
   z0: number;
   /** 这一步开始做竖直积分时的高度。落点被接住时用来丢掉下落速度。 */
   y0: number;
+  /** Already at rest, away from the spider. This step does not resample the ground. */
+  asleep: boolean;
 }
 
 const spinQ = new Quaternion();
 const spinDelta = new Quaternion();
 const spinAxis = new Vector3();
+/** Bodies that finished a step at rest. The next idle step leaves them alone. */
+const asleepBodies = new WeakSet<EntityState>();
 
 /** Contact radius, mass, and volume of a loose body. Fixed kinds stay out. */
 function looseOf(entity: EntityState): {
@@ -82,24 +86,38 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
   for (const entity of world.entities) {
     const loose = looseOf(entity);
     if (!loose) continue;
+    const vx = entity.vx ?? 0;
+    const vy = entity.vy ?? 0;
+    const vz = entity.vz ?? 0;
+    const dx = entity.x - body.x;
+    const dz = entity.z - body.z;
+    const reach = BODY_RADIUS + loose.radius;
+    const asleep =
+      asleepBodies.has(entity) &&
+      vx === 0 &&
+      vy === 0 &&
+      vz === 0 &&
+      dx * dx + dz * dz >= reach * reach;
     movers.push({
       entity,
       radius: loose.radius,
       rolls: loose.rolls,
       mass: Math.max(1e-9, loose.mass),
       volume: Math.max(0, loose.volume),
-      vx: entity.vx ?? 0,
-      vy: entity.vy ?? 0,
-      vz: entity.vz ?? 0,
+      vx,
+      vy,
+      vz,
       slope: 0,
       x0: entity.x,
       z0: entity.z,
       y0: entity.y,
+      asleep,
     });
   }
   if (movers.length === 0) return;
 
   for (const mover of movers) {
+    if (mover.asleep) continue;
     const { entity, radius, mass, volume } = mover;
     let { vx, vy, vz } = mover;
     const ground = world.terrain.height(entity.x, entity.z);
@@ -175,6 +193,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
   // Gravity and buoyancy own the vertical axis. Contacts run after, so a body
   // that has landed can still be lifted onto another body.
   for (const mover of movers) {
+    if (mover.asleep) continue;
     if (!insideLand(world.terrain, mover.entity.x, mover.entity.z, mover.radius)) {
       mover.entity.x = mover.x0;
       mover.entity.z = mover.z0;
@@ -204,7 +223,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
 
   // 接触只改位置。叠在一起时沿三维法线分开，不再每帧加一截水平速度，
   // 否则堆着的苹果会一直抖，也永远睡不着。
-  resolveContacts(movers, world);
+  if (movers.some((mover) => !mover.asleep)) resolveContacts(movers, world);
 
   for (const mover of movers) {
     // 这一步没有真正下落，说明地面或别的东西把落点接住了。
@@ -225,6 +244,16 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       mover.vx = 0;
       mover.vz = 0;
     }
+    const stayed =
+      mover.entity.x === mover.x0 &&
+      mover.entity.y === mover.y0 &&
+      mover.entity.z === mover.z0 &&
+      mover.vx === 0 &&
+      mover.vy === 0 &&
+      mover.vz === 0 &&
+      mover.slope <= rules.sleepSlope;
+    if (stayed) asleepBodies.add(mover.entity);
+    else asleepBodies.delete(mover.entity);
   }
 }
 
