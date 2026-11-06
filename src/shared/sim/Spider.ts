@@ -558,8 +558,8 @@ function meshLowest(object: Object3D): number {
     const geometry = (node as Mesh).geometry as BufferGeometry | undefined;
     if (!geometry) return;
     if (!geometry.boundingBox) geometry.computeBoundingBox();
-    const box = geometry.boundingBox;
-    if (!box) return;
+    // computeBoundingBox always assigns the box, including an empty one.
+    const box = geometry.boundingBox!;
     const world = node.matrixWorld;
     for (let i = 0; i < 8; i++) {
       boxCorner
