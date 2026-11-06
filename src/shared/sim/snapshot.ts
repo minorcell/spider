@@ -331,6 +331,7 @@ function readSpider(value: unknown): SpiderState | null {
     chassisPitch: raw.chassisPitch as number,
     chassisRoll: raw.chassisRoll as number,
     headYaw: raw.headYaw as number,
+    lamp: raw.lamp === true,
     feet,
   };
 }

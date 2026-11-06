@@ -145,19 +145,25 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
                 message: `草丛把视野缩短到了 ${observation.view}。先用 set_height 抬高身体，再 observe。`,
                 next: 'set_height',
               }
-            : world.clock.phase !== 'day' && observation.view < VIEW_DISTANCE
+            : !session.lamp && world.view < 0.9 && observation.view < VIEW_DISTANCE
               ? {
                   code: 'view-limited-by-light',
-                  message: `现在是${world.clock.phase}，光线把视野缩短到了 ${observation.view}。靠近后再 observe。`,
-                  next: 'go',
+                  message: `现在是${world.clock.localTime}，视野只有 ${observation.view}。用 lamp 把灯打开，能看得更远，但到不了白天。`,
+                  next: 'lamp',
                 }
-              : observation.beyond > 0 || observation.hidden > 0
+              : session.lamp && world.view < 0.9 && observation.view < VIEW_DISTANCE
                 ? {
-                    code: 'partial-observation',
-                    message: `这次只看到了视野内的对象，还有 ${observation.beyond} 个在视野外、${observation.hidden} 个被遮挡。移动或抬高身体后再 observe。`,
+                    code: 'view-limited-by-light',
+                    message: `灯已经开了，视野是 ${observation.view}，还是比白天近。靠近后再 observe。`,
                     next: 'go',
                   }
-                : undefined;
+                : observation.beyond > 0 || observation.hidden > 0
+                  ? {
+                      code: 'partial-observation',
+                      message: `这次只看到了视野内的对象，还有 ${observation.beyond} 个在视野外、${observation.hidden} 个被遮挡。移动或抬高身体后再 observe。`,
+                      next: 'go',
+                    }
+                  : undefined;
         return {
           ok: true,
           world,
@@ -249,6 +255,17 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         if (input.verb === 'store') return finish(session.store(input.id));
         if (input.verb === 'drink') return finish(session.drink());
         return finish(await session.sleep());
+      },
+    }),
+    lamp: tool({
+      description:
+        '开关眼睛和背上的灯。天越暗视野越短，开灯能补回一部分，但到不了白天。晚上看不清就打开。',
+      inputSchema: call({
+        on: z.boolean().describe('true 开灯，false 关灯。'),
+      }),
+      execute: async ({ on }) => {
+        session.setLamp(on);
+        return finish({ ok: true, action: on ? 'lamp-on' : 'lamp-off' });
       },
     }),
     set_height: tool({

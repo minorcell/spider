@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { visualRangeMultiplier, worldClock } from '../../src/shared/ecology.js';
+import { visualRange, worldClock } from '../../src/shared/ecology.js';
 
 describe('worldClock', () => {
   it('uses local time and reports smooth daylight', () => {
@@ -26,10 +26,19 @@ describe('worldClock', () => {
     expect(worldClock(new Date(2026, 0, 1, 19, 0)).period).toBe('night');
   });
 
-  it('limits vision by light without changing close-range sensing', () => {
-    expect(visualRangeMultiplier('day')).toBe(1);
-    expect(visualRangeMultiplier('dawn')).toBe(0.8);
-    expect(visualRangeMultiplier('dusk')).toBe(0.8);
-    expect(visualRangeMultiplier('night')).toBe(0.55);
+  it('opens the view with the clock and only partly with the lamp', () => {
+    const at = (hour: number) => worldClock(new Date(2026, 0, 1, hour));
+    expect(visualRange(at(12))).toBeCloseTo(1, 2);
+    expect(visualRange(at(18))).toBeGreaterThan(0.75);
+    expect(visualRange(at(18))).toBeLessThan(0.9);
+    expect(visualRange(at(19))).toBeGreaterThan(0.7);
+    expect(visualRange(at(19))).toBeLessThan(0.85);
+    expect(visualRange(at(6))).toBeCloseTo(visualRange(at(18)), 5);
+    expect(visualRange(at(0))).toBeCloseTo(0.1, 2);
+    const midnight = visualRange(at(0));
+    const lit = visualRange(at(0), true);
+    expect(lit).toBeGreaterThan(midnight + 0.4);
+    expect(lit).toBeLessThan(0.8);
+    expect(visualRange(at(12), true)).toBeCloseTo(1, 2);
   });
 });

@@ -56,6 +56,8 @@ export interface SpiderState {
   chassisPitch: number;
   chassisRoll: number;
   headYaw: number;
+  /** Night lamp. Absent on older saves, which means off. */
+  lamp?: boolean;
   /** One entry per leg, in mount order. */
   feet: Vec3[];
 }
@@ -156,6 +158,10 @@ export interface WorldInfo {
     /** Continuous local daylight in [0, 1]. */
     daylight: number;
   };
+  /** The spider's own lamp. It is not the sun. */
+  lamp: boolean;
+  /** Fraction of the daytime view at this clock, after the lamp. */
+  view: number;
 }
 
 export interface SeenEntity {

@@ -33,7 +33,7 @@ const observation: Observation = {
   entities: [],
 };
 
-let session: Record<string, ReturnType<typeof vi.fn>>;
+let session: Record<string, ReturnType<typeof vi.fn>> & { lamp?: boolean };
 
 const world = {
   clock: {
@@ -99,6 +99,7 @@ describe('spiderTools', () => {
     expect(Object.keys(spiderTools(session as unknown as SimSession)).sort()).toEqual([
       'act',
       'go',
+      'lamp',
       'mark',
       'observe',
       'set_height',
@@ -156,13 +157,38 @@ describe('spiderTools', () => {
     >;
     expect(partial.hint).toMatchObject({ code: 'partial-observation', next: 'go' });
 
-    session.observe.mockReturnValueOnce({ ...observation, view: 8.8 });
+    session.observe.mockReturnValueOnce({ ...observation, view: 1.6 });
+    session.worldInfo.mockReturnValueOnce({
+      ...world,
+      clock: { ...world.clock, localTime: '00:00:00', phase: 'night', daylight: 0 },
+      lamp: false,
+      view: 0.1,
+    });
+    const dark = (await execute(tools.observe, { distance: VIEW_DISTANCE })) as Record<string, any>;
+    expect(dark.hint).toMatchObject({ code: 'view-limited-by-light', next: 'lamp' });
+
+    session.lamp = true;
+    session.observe.mockReturnValueOnce({ ...observation, view: 10 });
     session.worldInfo.mockReturnValueOnce({
       ...world,
       clock: { ...world.clock, phase: 'night', daylight: 0 },
+      lamp: true,
+      view: 0.64,
     });
-    const dark = (await execute(tools.observe, { distance: VIEW_DISTANCE })) as Record<string, any>;
-    expect(dark.hint).toMatchObject({ code: 'view-limited-by-light', next: 'go' });
+    const lit = (await execute(tools.observe, { distance: VIEW_DISTANCE })) as Record<string, any>;
+    expect(lit.hint).toMatchObject({ code: 'view-limited-by-light', next: 'go' });
+  });
+
+  it('lets the spider turn the lamp on and off', async () => {
+    const tools = spiderTools(session as unknown as SimSession);
+    session.setLamp = vi.fn();
+    session.worldInfo.mockReturnValue({ ...world, lamp: true, view: 0.64 });
+    const on = (await execute(tools.lamp, { on: true })) as Record<string, unknown>;
+    expect(session.setLamp).toHaveBeenCalledWith(true);
+    expect(on).toMatchObject({ ok: true, action: 'lamp-on' });
+    const off = (await execute(tools.lamp, { on: false })) as Record<string, unknown>;
+    expect(session.setLamp).toHaveBeenCalledWith(false);
+    expect(off).toMatchObject({ ok: true, action: 'lamp-off' });
   });
 
   it('drinks through the session and returns the body', async () => {

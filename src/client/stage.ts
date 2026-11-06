@@ -18,6 +18,7 @@ import { paintCanvas } from '../ui/dress.js';
 import { buildIsland, tickWater } from './groundView.js';
 import { waterContact, waterSplashes } from './waterMotion.js';
 import { applyEcologyLighting, EcologySky, enableWorldShadows } from './ecologyView.js';
+import { Headlamp } from './headlamp.js';
 import { worldClock } from '../shared/ecology.js';
 import { ObserveOverlay } from './observeView.js';
 import { buildProp, drapeGrass } from './props.js';
@@ -101,6 +102,7 @@ export class Stage {
   /** Ecology follows local wall time and only needs a once-per-second update. */
   #ecologySecond = -1;
   readonly #sky = new EcologySky();
+  readonly #lamp = new Headlamp();
   #clock = worldClock();
 
   constructor(host: HTMLElement, spider: Spider) {
@@ -132,6 +134,8 @@ export class Stage {
       this.#sky.object,
       waterSplashes,
     );
+
+    this.#lamp.attach(this.#spider);
 
     this.#bindEvents();
     this.#resize();
@@ -346,6 +350,7 @@ export class Stage {
     el.removeEventListener('wheel', this.#onWheel);
     disposeGeometries(this.#scene);
     this.#sky.dispose();
+    this.#lamp.dispose();
     this.#renderer.dispose();
     this.#sound.dispose();
     el.remove();
@@ -492,6 +497,7 @@ export class Stage {
       this.#overlook,
       dt,
     );
+    this.#lamp.update(this.#clock, this.#spider.lamp);
     const world = this.#world?.();
     if (world) this.#observe.sync(this.#overlook, this.#camera, this.#spider, world, this.#view);
     this.#renderer.render(this.#scene, this.#camera);

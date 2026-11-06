@@ -45,7 +45,7 @@ import { bindLegWorld } from './bindWorld.js';
 import { stepPhysics } from './physics.js';
 import { Spider } from './Spider.js';
 import { localDate } from '../dates.js';
-import { visualRangeMultiplier, worldClock } from '../ecology.js';
+import { visualRange, worldClock } from '../ecology.js';
 
 /** A sentence for a detour the body already took. Null when the straight walk was clear. */
 function detourNote(around: readonly string[], direct: boolean, arrived: boolean): string | null {
@@ -122,7 +122,18 @@ export class SimSession {
         phase: clock.period,
         daylight: round3(clock.daylight),
       },
+      lamp: this.spider.lamp,
+      view: round3(visualRange(clock, this.spider.lamp)),
     };
+  }
+
+  /** The spider's lamp. On gives back part of the view the dark took. */
+  get lamp(): boolean {
+    return this.spider.lamp;
+  }
+
+  setLamp(on: boolean): void {
+    this.spider.lamp = on;
   }
 
   /** Load a saved island into this same world object. */
@@ -137,7 +148,7 @@ export class SimSession {
   observe(distance = VIEW_DISTANCE): Observation {
     const asked = Math.min(VIEW_DISTANCE, Math.max(0, distance));
     const light = worldClock();
-    const lightLimit = VIEW_DISTANCE * visualRangeMultiplier(light.period);
+    const lightLimit = VIEW_DISTANCE * visualRange(light, this.spider.lamp);
     const { x, z } = this.spider.root.position;
     const ground = surfaceOf(this.world.terrain, x, z);
     const eye = ground + EYE_HEIGHT + this.spider.heightSet;

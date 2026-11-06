@@ -55,6 +55,8 @@ export class Spider {
   yaw = 0;
   yawRate = 0;
   headYaw = 0;
+  /** The spider turns this on. The sun does not. */
+  lamp = false;
   heightSet = 0;
   speed = 0;
   time = 0;
@@ -208,6 +210,7 @@ export class Spider {
       chassisPitch: this.chassis.rotation.x,
       chassisRoll: this.chassis.rotation.z,
       headYaw: this.headYaw,
+      lamp: this.lamp,
       feet: this.legs.map((leg) => ({ x: leg.foot.x, y: leg.foot.y, z: leg.foot.z })),
     };
   }
@@ -223,6 +226,7 @@ export class Spider {
     this.chassis.rotation.x = state.chassisPitch;
     this.chassis.rotation.z = state.chassisRoll;
     this.#head.rotation.y = state.headYaw;
+    this.lamp = state.lamp === true;
     for (let i = 0; i < this.legs.length; i++) {
       const foot = state.feet[i];
       this.legs[i].foot.set(foot.x, foot.y, foot.z);

@@ -4,9 +4,16 @@ export const LOCAL_DAY_SECONDS = 24 * 60 * 60;
 
 export type LightPeriod = 'night' | 'dawn' | 'day' | 'dusk';
 
-/** Fraction of the normal visual range available under the local light. */
-export function visualRangeMultiplier(period: LightPeriod): number {
-  return period === 'night' ? 0.55 : period === 'day' ? 1 : 0.8;
+/**
+ * Fraction of the daytime view. Noon is 1, six in the evening is still near
+ * 0.8, and midnight is 0.1. The lamp gives back part of the missing range
+ * and never restores the whole day.
+ */
+export function visualRange(clock: WorldClock, lamp = false): number {
+  const fromNoon = Math.cos((clock.dayFraction - 0.5) * Math.PI * 2);
+  const sun = 0.5 + 0.5 * fromNoon;
+  const open = 0.1 + 0.9 * sun ** 0.3;
+  return lamp ? open + (1 - open) * 0.6 : open;
 }
 
 export interface WorldClock {
