@@ -129,6 +129,27 @@ beforeEach(() => {
 });
 
 describe('Stage setup', () => {
+  it('shows the pack at night only while the spider leaves the lamp on', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 0, 1, 23));
+    try {
+      const spider = new RealSpider();
+      const stage = new Stage(makeHost(), spider);
+      const pack = spider.chassis.getObjectByName('headlamp');
+      expect(pack?.visible).toBe(false);
+      spider.lamp = true;
+      stage.start();
+      frame();
+      expect(pack?.visible).toBe(true);
+      spider.lamp = false;
+      frame();
+      expect(pack?.visible).toBe(false);
+      stage.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('creates the renderer, camera, and canvas', () => {
     const dispose = vi.spyOn(BufferGeometry.prototype, 'dispose');
     const host = makeHost();

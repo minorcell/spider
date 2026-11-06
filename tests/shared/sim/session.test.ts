@@ -93,6 +93,16 @@ describe('SimSession basics', () => {
       0.988,
       3,
     );
+    const noon = new Date(2026, 0, 1, 12);
+    expect(session.worldInfo(noon)).toMatchObject({ lamp: false, view: 1 });
+    session.setLamp(true);
+    const midnight = new Date(2026, 0, 1, 0);
+    expect(session.worldInfo(midnight)).toMatchObject({ lamp: true });
+    expect(session.worldInfo(midnight).view).toBeCloseTo(
+      visualRange(worldClock(midnight), true),
+      3,
+    );
+    expect(session.worldInfo(midnight).view).toBeLessThan(1);
   });
 
   it('ignores negative frame steps', () => {

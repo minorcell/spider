@@ -94,6 +94,25 @@ describe('snapshot', () => {
     expect(first.spider.root.position.z).toBeLessThan(0);
   });
 
+  it('keeps a lit lamp and leaves an older body dark', () => {
+    const lit = good();
+    lit.spider.lamp = true;
+    const parsed = classify(lit, today);
+    expect(parsed.status).toBe('ok');
+    if (parsed.status !== 'ok') return;
+    const next = session();
+    applyBody(next, parsed.record);
+    expect(next.lamp).toBe(true);
+
+    const older = good();
+    delete older.spider.lamp;
+    const legacy = classify(older, today);
+    expect(legacy.status).toBe('ok');
+    if (legacy.status !== 'ok') return;
+    applyBody(next, legacy.record);
+    expect(next.lamp).toBe(false);
+  });
+
   it('rounds named places through a body and restores them', () => {
     const record = good();
     record.marks = [{ name: '水边', x: 2, z: -3, note: '喝水' }];
