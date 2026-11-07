@@ -30,7 +30,8 @@ jobs:
 
       - run: pnpm format:check
 
-      - run: pnpm test:coverage
+      # Timing budgets are local-only: shared runners have variable CPU capacity.
+      - run: pnpm test:coverage --exclude tests/perf/budget.test.ts
 
       - run: pnpm build
 

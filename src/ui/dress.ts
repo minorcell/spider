@@ -21,6 +21,23 @@ export function paintCanvas(canvas: HTMLElement): void {
   paint(canvas, { display: 'block', width: '100%', height: '100%' });
 }
 
+export function paintFps(node: HTMLElement): void {
+  paint(node, {
+    position: 'absolute',
+    top: 'max(18px, env(safe-area-inset-top))',
+    left: 'max(22px, env(safe-area-inset-left))',
+    zIndex: '2',
+    margin: '0',
+    padding: '0',
+    color: color.muted,
+    background: color.paper,
+    fontFamily: typeface.mono,
+    fontSize: '11px',
+    fontVariantNumeric: 'tabular-nums',
+    pointerEvents: 'none',
+  });
+}
+
 export function paintTrace(trace: HTMLElement, tail: HTMLElement): void {
   paint(trace, {
     ...serif,

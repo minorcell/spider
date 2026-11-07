@@ -84,7 +84,7 @@ function quickProviders(doc: Document): HTMLElement {
   return row;
 }
 
-/** Top-left link to the repo: GitHub mark, a star, and the live count. */
+/** Repository link in the toolbar: a star and the live count. */
 function githubBadge(doc: Document): HTMLAnchorElement {
   const badge = h(doc, 'a', {
     id: 'github',
@@ -97,13 +97,9 @@ function githubBadge(doc: Document): HTMLAnchorElement {
   const stars = h(doc, 'span', { id: 'github-stars' });
   const star = icon(doc, 'star');
   stars.append(star, h(doc, 'span', { id: 'github-stars-count' }, REPO_STARS));
-  badge.append(icon(doc, 'github'), stars);
+  badge.append(stars);
 
   paint(badge, {
-    position: 'absolute',
-    top: '18px',
-    left: '22px',
-    zIndex: '3',
     display: 'inline-flex',
     alignItems: 'center',
     gap: '8px',
@@ -121,8 +117,6 @@ function githubBadge(doc: Document): HTMLAnchorElement {
     display: 'inline-flex',
     alignItems: 'center',
     gap: '4px',
-    paddingLeft: '8px',
-    borderLeft: border.ink,
   });
   const invert = (on: boolean): void => {
     paint(badge, {
@@ -151,7 +145,7 @@ export function buildChrome(doc: Document): DocumentFragment {
   settingsOpen.setAttribute('aria-haspopup', 'dialog');
   settingsOpen.setAttribute('aria-controls', 'settings');
   settingsOpen.setAttribute('aria-expanded', 'false');
-  corner.append(observe, settingsOpen);
+  corner.append(observe, githubBadge(doc), settingsOpen);
 
   const trace = h(doc, 'ol', { id: 'trace', hidden: true });
   const tail = h(doc, 'span', { id: 'trace-tail', hidden: true });
@@ -381,18 +375,7 @@ export function buildChrome(doc: Document): DocumentFragment {
   choice.append(choiceForm);
 
   paint(keys, { color: color.ink });
-  fragment.append(
-    keys,
-    githubBadge(doc),
-    corner,
-    trace,
-    tail,
-    pilot,
-    settings,
-    leave,
-    hold,
-    choice,
-  );
+  fragment.append(keys, corner, trace, tail, pilot, settings, leave, hold, choice);
   dressChrome({
     keys,
     corner,

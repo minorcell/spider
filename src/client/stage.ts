@@ -15,6 +15,7 @@ import { WORLD_RADIUS } from '../shared/terrain.js';
 import type { EntityState, WorldState } from '../shared/state.js';
 import type { Spider } from '../shared/sim/Spider.js';
 import { paintCanvas } from '../ui/dress.js';
+import { FpsDisplay } from './fps.js';
 import { buildIsland, tickWater } from './groundView.js';
 import { waterContact, waterSplashes } from './waterMotion.js';
 import { applyEcologyLighting, EcologySky, enableWorldShadows } from './ecologyView.js';
@@ -50,6 +51,7 @@ const bubbleAt = new Vector3();
 
 /** Renderer and camera. It steps the one spider, then paints that same spider. */
 export class Stage {
+  readonly #fps: FpsDisplay;
   readonly #host: HTMLElement;
   readonly #renderer: WebGPURenderer;
   readonly #scene = new Scene();
@@ -122,6 +124,7 @@ export class Stage {
     this.#renderer.setClearColor(PALETTE.paper, 1);
     host.appendChild(this.#renderer.domElement);
     paintCanvas(this.#renderer.domElement);
+    this.#fps = new FpsDisplay(host);
 
     this.#camera = new PerspectiveCamera(VIEW.fov, 1, VIEW.near, VIEW.far);
     this.#observe = new ObserveOverlay(host);
@@ -354,6 +357,7 @@ export class Stage {
     this.#renderer.dispose();
     this.#sound.dispose();
     el.remove();
+    this.#fps.element.remove();
   }
 
   #bindEvents(): void {
@@ -501,6 +505,7 @@ export class Stage {
     const world = this.#world?.();
     if (world) this.#observe.sync(this.#overlook, this.#camera, this.#spider, world, this.#view);
     this.#renderer.render(this.#scene, this.#camera);
+    this.#fps.tick(now);
     this.#onAnchor?.(this.#aboveSpider());
   };
 
