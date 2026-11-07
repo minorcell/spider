@@ -24,7 +24,7 @@ function dress(entities: typeof nests): void {
 describe('boot', () => {
   test('bake a worker island', async ({ bench }) => {
     await bench('bake a worker island', () => {
-      void bakeWorkerIsland();
+      return bakeWorkerIsland();
     }).run();
   });
 

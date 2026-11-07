@@ -3,7 +3,15 @@ import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX, MOUNTS } from '.
 import { KINDS } from '../kinds.js';
 import type { EntityState, Footprint, PlaceMark, SpiderState, WorldState } from '../state.js';
 import { blockedAt, BODY_RADIUS } from '../sight.js';
-import { APPLE_EVERY, GRASS, nestBlocks, populateScenery, propBlocks, restingY } from '../world.js';
+import {
+  APPLE_EVERY,
+  GRASS,
+  TREES,
+  nestBlocks,
+  populateScenery,
+  propBlocks,
+  restingY,
+} from '../world.js';
 import { insideLand, Terrain } from '../terrain.js';
 import { waterAt } from '../water.js';
 import { bindLegWorld } from './bindWorld.js';
@@ -25,7 +33,7 @@ const PLACE_Y = 1_000;
 /** World body. No lease and no database key. */
 export interface SimBody {
   /** Absent in saves made before trees and stones were introduced. */
-  scenery?: 1 | 2 | 3 | 4;
+  scenery?: 1 | 2 | 3 | 4 | 5;
   seed: number;
   appleIn: number;
   sprouts: number;
@@ -62,7 +70,7 @@ export interface Restorable {
 export function captureBody(session: Restorable, pending: SimBody['pending']): SimBody {
   const world = session.world;
   return {
-    scenery: 4,
+    scenery: 5,
     seed: world.seed,
     appleIn: world.appleIn ?? APPLE_EVERY,
     sprouts: world.sprouts ?? 0,
@@ -96,15 +104,19 @@ export function applyBody(
       (entity) => entity.kind !== 'grass' || ++patches <= GRASS,
     );
   }
-  if (body.scenery !== 4) {
+  if (body.scenery !== 4 && body.scenery !== 5) {
     for (const entity of world.entities) {
       if (entity.kind === 'grass') entity.footprint = { kind: 'circle', r: grassRadius(entity.id) };
     }
   }
+  if (body.scenery !== 5) {
+    let trees = 0;
+    world.entities = world.entities.filter((entity) => entity.kind !== 'tree' || ++trees <= TREES);
+  }
   world.blocks = [...nestBlocks(), ...propBlocks(world.entities)];
   world.marks = structuredClone(body.marks);
   world.carrying = structuredClone(body.carrying);
-  if (body.scenery !== 2 && body.scenery !== 3 && body.scenery !== 4)
+  if (body.scenery !== 2 && body.scenery !== 3 && body.scenery !== 4 && body.scenery !== 5)
     populateScenery(world, body.spider.position, MAX_ENTITIES);
   // Terrain updates can move a shoreline under a saved patch.
   world.entities = world.entities.filter(
@@ -216,7 +228,11 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
   const marks = readMarks(raw.marks);
   if (!marks) return null;
   return {
-    ...(raw.scenery === 1 || raw.scenery === 2 || raw.scenery === 3 || raw.scenery === 4
+    ...(raw.scenery === 1 ||
+    raw.scenery === 2 ||
+    raw.scenery === 3 ||
+    raw.scenery === 4 ||
+    raw.scenery === 5
       ? { scenery: raw.scenery }
       : {}),
     seed: raw.seed >>> 0,

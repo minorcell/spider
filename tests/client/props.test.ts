@@ -4,6 +4,15 @@ import { buildProp, drapeGrass } from '../../src/client/props.js';
 import { nestSurface } from '../../src/shared/nestShape.js';
 
 describe('buildProp', () => {
+  it('batches a tree into four draws while retaining crown and trunk detail', () => {
+    const tree = buildProp('tree', 0, { kind: 'circle', r: 0.5 }, 'tree-1')!;
+    expect(tree.children).toHaveLength(4);
+    expect(tree.getObjectByName('trunk')).toBeInstanceOf(Mesh);
+    expect(tree.getObjectByName('crown')).toBeInstanceOf(Mesh);
+    expect(tree.getObjectByName('outline')).toBeInstanceOf(Mesh);
+    expect((tree.getObjectByName('crown') as Mesh).geometry.index!.count).toBeGreaterThan(1000);
+  });
+
   it.each(['tree', 'stone', 'bog-stone'])(
     'builds reproducible %s variants at the saved size',
     (kind) => {

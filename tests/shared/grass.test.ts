@@ -5,6 +5,25 @@ import { grassHere } from '../../src/shared/sight.js';
 import { buildProp } from '../../src/client/props.js';
 
 describe('grass shape', () => {
+  it('invalidates cached cover when a patch is resized or renamed', () => {
+    const entity = {
+      id: 'grass-1',
+      kind: 'grass',
+      x: 0,
+      y: 0,
+      z: 0,
+      stage: 0,
+      footprint: { kind: 'circle' as const, r: 1 },
+    };
+    const query = (x: number, z: number) => grassHere(x, z, [entity], 0);
+    expect(query(0, 0)).toBe(true);
+    expect(query(0, 0)).toBe(true);
+    entity.footprint.r = 2;
+    expect(query(0, 0)).toBe(true);
+    entity.id = 'grass-2';
+    expect(query(0, 0)).toBe(true);
+  });
+
   it('rejects a wet edge or a small water pocket even with a dry center', () => {
     expect(grassOnDryGround(() => 0, 0, 0, 1)).toBe(true);
     expect(grassOnDryGround((x) => (x > 0.6 ? -1 : 0), 0, 0, 1)).toBe(false);

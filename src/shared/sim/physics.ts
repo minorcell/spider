@@ -387,9 +387,12 @@ function contactNormal(
   const dx = b.entity.x - a.entity.x;
   const dy = b.entity.y + b.radius - (a.entity.y + a.radius);
   const dz = b.entity.z - a.entity.z;
-  const dist = Math.hypot(dx, dy, dz);
   const min = a.radius + b.radius;
-  if (dist >= min + slop) return null;
+  const reach = min + slop;
+  if (Math.abs(dx) >= reach || Math.abs(dy) >= reach || Math.abs(dz) >= reach) return null;
+  const squared = dx * dx + dy * dy + dz * dz;
+  if (squared >= reach * reach) return null;
+  const dist = Math.sqrt(squared);
   if (dist < 1e-8) return { nx: 1, ny: 0, nz: 0, depth: min - dist };
   return { nx: dx / dist, ny: dy / dist, nz: dz / dist, depth: min - dist };
 }

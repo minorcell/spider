@@ -1,4 +1,13 @@
-import { CatmullRomCurve3, Group, Mesh, MeshLambertMaterial, SphereGeometry, Vector3 } from 'three';
+import {
+  CatmullRomCurve3,
+  Group,
+  LineSegments,
+  Mesh,
+  MeshLambertMaterial,
+  SphereGeometry,
+  Vector3,
+} from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PALETTE } from '../../shared/config.js';
 import { mulberry32 } from '../../shared/noise.js';
 import { growShell, inkMat, inkSolidMat, stemMat } from '../../shared/sim/parts.js';
@@ -17,22 +26,30 @@ const foliageMat = new MeshLambertMaterial({
   polygonOffsetUnits: 1,
 });
 
-/** 低模纸团：按顶点位置抖动，接缝上的重复顶点拿到同一个缩放，不会裂开。 */
+// Build the seam lookup once, rather than formatting every vertex of every crown.
+const crownTemplate = new SphereGeometry(1, 9, 6);
+const crownPositions = crownTemplate.getAttribute('position');
+const crownVertexIds: number[] = [];
+const crownIds = new Map<string, number>();
+for (let i = 0; i < crownPositions.count; i++) {
+  const key = `${crownPositions.getX(i).toFixed(3)},${crownPositions.getY(i).toFixed(3)},${crownPositions.getZ(i).toFixed(3)}`;
+  if (!crownIds.has(key)) crownIds.set(key, crownIds.size);
+  crownVertexIds.push(crownIds.get(key)!);
+}
+
+/** Seam vertices share their jitter, keeping the original crown shape. */
 function blobGeometry(rand: () => number, radius: number, squash: number): SphereGeometry {
-  const geometry = new SphereGeometry(1, 9, 6);
+  const geometry = crownTemplate.clone();
   const position = geometry.getAttribute('position');
-  const offsets = new Map<string, number>();
+  const scales = Array.from({ length: crownIds.size }, () => 0.84 + rand() * 0.3);
   for (let i = 0; i < position.count; i++) {
-    const x = position.getX(i);
-    const y = position.getY(i);
-    const z = position.getZ(i);
-    const key = `${x.toFixed(3)},${y.toFixed(3)},${z.toFixed(3)}`;
-    let scale = offsets.get(key);
-    if (scale === undefined) {
-      scale = 0.84 + rand() * 0.3;
-      offsets.set(key, scale);
-    }
-    position.setXYZ(i, x * scale * radius, y * scale * radius * squash, z * scale * radius);
+    const scale = scales[crownVertexIds[i]] * radius;
+    position.setXYZ(
+      i,
+      position.getX(i) * scale,
+      position.getY(i) * scale * squash,
+      position.getZ(i) * scale,
+    );
   }
   geometry.computeVertexNormals();
   return geometry;
@@ -194,6 +211,42 @@ export function buildTree(seed = 1, height = 3.4): Group {
   }
   for (const item of blobs) group.add(blob(rand, item.at, item.radius, 0.86));
 
+  // One draw per material instead of a draw for each branch, crown and shell.
+  group.updateMatrixWorld(true);
+  const stems: (typeof trunkGeometry)[] = [];
+  const leaves: (typeof trunkGeometry)[] = [];
+  const shells: (typeof trunkGeometry)[] = [];
+  const lines: number[] = [];
+  const point = new Vector3();
+  group.traverse((node) => {
+    if (node instanceof Mesh) {
+      const geometry = node.geometry;
+      geometry.applyMatrix4(node.matrixWorld);
+      geometry.deleteAttribute('uv');
+      const batch =
+        node.material === foliageMat ? leaves : node.material === stemMat ? stems : shells;
+      batch.push(geometry);
+    } else if (node instanceof LineSegments) {
+      const positions = node.geometry.getAttribute('position');
+      for (let i = 0; i < positions.count; i++) {
+        point.fromBufferAttribute(positions, i).applyMatrix4(node.matrixWorld);
+        lines.push(point.x, point.y, point.z);
+      }
+      node.geometry.dispose();
+    }
+  });
+  group.clear();
+  for (const [geometries, material, name] of [
+    [stems, stemMat, 'trunk'],
+    [leaves, foliageMat, 'crown'],
+    [shells, inkSolidMat, 'outline'],
+  ] as const) {
+    const mesh = new Mesh(mergeGeometries(geometries)!, material);
+    mesh.name = name;
+    group.add(mesh);
+    for (const geometry of geometries) geometry.dispose();
+  }
+  group.add(lineFrom(lines, inkMat));
   group.userData.height = groupHeight(group);
   return group;
 }

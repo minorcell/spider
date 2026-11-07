@@ -46,6 +46,24 @@ function good(): WorldRecord {
 }
 
 describe('snapshot', () => {
+  it('reduces the former 32-tree world to 24 without changing other entities', () => {
+    const old = good();
+    old.scenery = 4;
+    const tree = old.entities.find((entity) => entity.kind === 'tree')!;
+    const others = old.entities.filter((entity) => entity.kind !== 'tree');
+    const trees = Array.from({ length: 32 }, (_, index) => ({ ...tree, id: `tree-${index + 1}` }));
+    old.entities = [...others, ...trees];
+    const restored = session();
+    applyBody(restored, old);
+    expect(
+      restored.world.entities.filter((entity) => entity.kind === 'tree').map((entity) => entity.id),
+    ).toEqual(trees.slice(0, 24).map((entity) => entity.id));
+    expect(restored.world.blocks.filter((block) => block.id.startsWith('tree-'))).toHaveLength(24);
+    const saved = captureBody(restored, null);
+    applyBody(restored, saved);
+    expect(captureBody(restored, null)).toEqual(saved);
+  });
+
   it('removes saved grass covered by a changed shoreline', () => {
     const old = good();
     old.entities.push({ id: 'grass-no-footprint', kind: 'grass', x: 10, y: 0, z: 10, stage: 0 });
@@ -142,7 +160,7 @@ describe('snapshot', () => {
       });
     }
     const saved = captureBody(first, old.pending);
-    expect(saved.scenery).toBe(4);
+    expect(saved.scenery).toBe(5);
     const parsed = classify({ ...old, ...saved });
     expect(parsed.status).toBe('ok');
     if (parsed.status !== 'ok') throw new Error('invalid upgraded save');

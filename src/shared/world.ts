@@ -22,7 +22,7 @@ export const REACH_Y = 1.6;
 
 const APPLES = 20;
 export const GRASS = 32;
-const TREES = 32;
+export const TREES = 24;
 const STONES = 10;
 const BOG_STONES = 5;
 const MIN_GAP = 3.4;
@@ -137,7 +137,8 @@ export function createWorld(
  */
 export function grow(world: WorldState, dt: number, avoid?: { x: number; z: number }): void {
   if (world.appleIn == null || world.sprouts == null) return;
-  const onGround = world.entities.filter((entity) => entity.kind === 'apple').length;
+  let onGround = 0;
+  for (const entity of world.entities) if (entity.kind === 'apple') onGround += 1;
   if (onGround >= APPLES) {
     world.appleIn = APPLE_EVERY;
     return;

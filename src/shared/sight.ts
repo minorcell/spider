@@ -1,4 +1,4 @@
-import { grassClumps, grassSeed } from './grass.js';
+import { grassClumps, grassSeed, type GrassClump } from './grass.js';
 import type { Block, EntityState } from './state.js';
 
 /** Interior of the nest. You start here. */
@@ -157,6 +157,20 @@ export function sightOutline(
 /** How high grass stands above its patch. Eyes above this see over it. */
 export const GRASS_HEIGHT = 1.35;
 
+// Entities own their cache lifetime; discarded/restored worlds can be collected.
+const coverShapes = new WeakMap<
+  EntityState,
+  { id: string; radius: number; clumps: GrassClump[] }
+>();
+
+function coverShape(entity: EntityState, radius: number): GrassClump[] {
+  const cached = coverShapes.get(entity);
+  if (cached && cached.id === entity.id && cached.radius === radius) return cached.clumps;
+  const clumps = grassClumps(radius, grassSeed(entity.id));
+  coverShapes.set(entity, { id: entity.id, radius, clumps });
+  return clumps;
+}
+
 /**
  * True when the body stands inside a grass patch and its eyes are still below
  * the blades. Reared high enough, the spider is over the grass, not in it.
@@ -171,7 +185,9 @@ export function grassHere(
     (entity) =>
       entity.kind === 'grass' &&
       entity.footprint?.kind === 'circle' &&
-      grassClumps(entity.footprint.r, grassSeed(entity.id)).some(
+      Math.abs(entity.x - x) <= entity.footprint.r &&
+      Math.abs(entity.z - z) <= entity.footprint.r &&
+      coverShape(entity, entity.footprint.r).some(
         (clump) =>
           Math.hypot(entity.x + clump.x - x, entity.z + clump.z - z) <= clump.radius &&
           eye < entity.y + clump.height,
