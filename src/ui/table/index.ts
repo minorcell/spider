@@ -6,17 +6,14 @@ export type TableCell = Node | string;
 
 export interface TableColumn {
   label: string;
-  /** Right-align the column and set it in the mono face. */
   numeric?: boolean;
 }
 
-/** A ruled table. A column marked numeric takes `.num` on its head and cells. */
 export function table(
   doc: Document,
   options: {
     columns: TableColumn[];
     rows: TableCell[][];
-    /** One full-width row when `rows` is empty. */
     empty?: string;
   },
 ): HTMLTableElement {

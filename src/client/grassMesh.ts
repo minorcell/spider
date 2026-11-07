@@ -11,12 +11,8 @@ import { grassClumps } from '../shared/grass.js';
 import { mulberry32 } from '../shared/noise.js';
 import { grassMat, inkMat } from '../shared/sim/parts.js';
 
-// 草成堆长。旧版一片草是 64 根方条，远远看去像木栅栏；现在每片只有三四堆，
-// 每堆十几片弯叶，叶子更长、更宽，顶点总数反而更少。
-
 const TAU = Math.PI * 2;
 const UP = new Vector3(0, 1, 0);
-/** 叶片根部离地的高度，drape 时按这个值反推。 */
 const BASE_Y = 0.015;
 
 export type GrassStyle = 'thin' | 'seed' | 'broad';
@@ -53,7 +49,6 @@ function segment(out: number[], a: Vector3, b: Vector3): void {
   out.push(a.x, a.y, a.z, b.x, b.y, b.z);
 }
 
-/** 一片弯叶，返回中脉上的点，便于在叶尖接穗。 */
 function addBlade(batch: Batch, options: BladeOptions): Vector3[] {
   const { base, yaw, length, lean, droop, width, twist = 0, veins = 0, midrib = false } = options;
   const dir = new Vector3(Math.cos(yaw), 0, Math.sin(yaw));
@@ -120,7 +115,6 @@ function addBlade(batch: Batch, options: BladeOptions): Vector3[] {
   return spine;
 }
 
-/** 三次贝塞尔，只用到点和切线。 */
 class CubicBezier {
   constructor(
     readonly p0: Vector3,
@@ -148,7 +142,6 @@ class CubicBezier {
   }
 }
 
-/** 一根抽穗：细茎加两侧交替的小芒。 */
 function addHead(
   batch: Batch,
   base: Vector3,
@@ -181,7 +174,6 @@ function addHead(
   segment(batch.ink, top.clone().addScaledVector(UP, -0.2), top.clone().addScaledVector(UP, 0.02));
 }
 
-/** 一片草：三四个大小不一的草堆，叶子向上抽再弯下。 */
 export function buildGrass(radius: number, seed: number, style: GrassStyle): Group {
   const rand = mulberry32(seed);
   const batch: Batch = { paper: [], indices: [], ink: [], blades: [] };
@@ -229,7 +221,6 @@ export function buildGrass(radius: number, seed: number, style: GrassStyle): Gro
       }
     }
 
-    // Fit every clump to the same radius and height used by perception.
     let horizontal = 0;
     let top = BASE_Y;
     for (const coordinates of [batch.paper, batch.ink]) {
@@ -271,7 +262,6 @@ export function buildGrass(radius: number, seed: number, style: GrassStyle): Gro
   return group;
 }
 
-/** 每根草按自己脚下的地面抬起，斜坡上不会一半埋进土里。 */
 export function drapeGrass(
   group: Group,
   x: number,

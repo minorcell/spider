@@ -1,7 +1,3 @@
-/**
- * opencode.ai 不返回 CORS 头，静态页面没法直接调。这一层把请求转发过去，
- * 并补上浏览器需要的 CORS 头；Key 由访问者自己带，Worker 不保存。
- */
 const UPSTREAM = 'https://opencode.ai/inference/go';
 
 const CORS = {

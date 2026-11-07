@@ -1,17 +1,14 @@
 import { grassClumps, grassSeed, type GrassClump } from './grass.js';
 import type { Block, EntityState } from './state.js';
 
-/** Interior of the nest. You start here. */
 export const HOME = { half: 2.15 } as const;
 
-/** How wide you are when a wall decides you do not fit. */
 export const BODY_RADIUS = 0.48;
 
 export function insideHome(x: number, z: number): boolean {
   return Math.abs(x) <= HOME.half && Math.abs(z) <= HOME.half;
 }
 
-/** The solid whose footprint the body overlaps, if any. */
 export function blockAt(
   x: number,
   z: number,
@@ -49,7 +46,6 @@ export function blockedAt(
   return blockAt(x, z, blocks, radius) !== null;
 }
 
-/** A solid lies across the line of sight, not merely at the thing being looked at. */
 export function occluded(
   x0: number,
   z0: number,
@@ -66,28 +62,12 @@ export function occluded(
   return false;
 }
 
-/** How high the eyes sit above the ground under the body. */
 export const EYE_HEIGHT = 0.85;
 
-/**
- * How far above an anchor its visible top sits. A look aims at the top of a
- * thing, not at the point where it touches the ground.
- */
 export const SIGHT_TOP = 0.35;
 
-/**
- * How far above the line a ridge has to stand before it hides a target. This
- * only papers over the terrain mesh's own roughness: a real bank hides what is
- * behind it, even when the spider could rear up over a small bump.
- */
 export const GROUND_CLEARANCE = 0.2;
 
-/**
- * A rise in the ground hides the far point. Samples the horizontal span and
- * compares each ground height with the eye-to-target ray. A small bump is not
- * enough: the ridge has to stand about a body high above the line, or a gentle
- * slope would hide half the island.
- */
 export function groundOccluded(
   x0: number,
   z0: number,
@@ -111,11 +91,6 @@ export function groundOccluded(
   return false;
 }
 
-/**
- * The ground a look can reach, one point per bearing. Each ray marches out and
- * stops at the first ridge or wall that hides what is behind it. A clear look
- * is still a circle; a valley with a bank across it is a bite out of the shape.
- */
 export function sightOutline(
   x: number,
   z: number,
@@ -139,8 +114,6 @@ export function sightOutline(
       points.push({ x, z });
       continue;
     }
-    // Walls do not move, so find the first one on this bearing once instead of
-    // testing every solid at every step of the march.
     const wall = nearestWall(x, z, dx, dz, blocks, eye, outer);
     for (let s = 1; s <= steps; s++) {
       const r = Math.min(outer, s * step);
@@ -148,9 +121,6 @@ export function sightOutline(
       const px = x + dx * r;
       const pz = z + dz * r;
       const ground = height(px, pz);
-      // The outline is the ground itself, not the top of something standing on
-      // it. Aiming above the ground made the area creep over the far side of a
-      // ridge that the eye cannot actually see past.
       const slope = (ground - eye) / r;
       if (slope < horizon) break;
       horizon = Math.max(horizon, (ground - eye - GROUND_CLEARANCE) / r);
@@ -162,10 +132,8 @@ export function sightOutline(
   return points;
 }
 
-/** How high grass stands above its patch. Eyes above this see over it. */
 export const GRASS_HEIGHT = 1.35;
 
-// Entities own their cache lifetime; discarded/restored worlds can be collected.
 const coverShapes = new WeakMap<
   EntityState,
   { id: string; radius: number; clumps: GrassClump[] }
@@ -179,10 +147,6 @@ function coverShape(entity: EntityState, radius: number): GrassClump[] {
   return clumps;
 }
 
-/**
- * True when the body stands inside a grass patch and its eyes are still below
- * the blades. Reared high enough, the spider is over the grass, not in it.
- */
 export function grassHere(
   x: number,
   z: number,
@@ -203,7 +167,6 @@ export function grassHere(
   );
 }
 
-/** Distance to the first solid across the ray, or Infinity when the look is clear. */
 function nearestWall(
   x: number,
   z: number,
@@ -226,7 +189,6 @@ function segmentHits(x0: number, z0: number, x1: number, z1: number, block: Bloc
   return segmentEntry(x0, z0, x1, z1, block) !== null;
 }
 
-/** Where along the segment the slab starts, or null when the segment misses it. */
 function segmentEntry(x0: number, z0: number, x1: number, z1: number, block: Block): number | null {
   const dx = x1 - x0;
   const dz = z1 - z0;
@@ -244,6 +206,5 @@ function segmentEntry(x0: number, z0: number, x1: number, z1: number, block: Blo
     else t1 = Math.min(t1, t);
     if (t0 > t1) return null;
   }
-  // A hit only at the far end is the thing itself, not something in front of it.
   return t0 < 0.98 ? t0 : null;
 }

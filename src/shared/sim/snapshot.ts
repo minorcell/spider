@@ -23,16 +23,10 @@ export const MAX_PENDING = 4000;
 export const MAX_JSON = 64_000;
 const MAX_SPROUTS = 1_000_000;
 const MAX_TOOL = 32;
-/**
- * The island rim is 52. A planted foot and a prop set down past that rim are
- * still this spider. Farther than this is garbage, and the snapshot is dropped.
- */
 const PLACE_M = 1_000_000;
 const PLACE_Y = 1_000;
 
-/** World body. No lease and no database key. */
 export interface SimBody {
-  /** Absent in saves made before trees and stones were introduced. */
   scenery?: 1 | 2 | 3 | 4 | 5;
   seed: number;
   appleIn: number;
@@ -44,12 +38,10 @@ export interface SimBody {
   pending: { text: string; tool: string | null } | null;
 }
 
-/** One stored record. IndexedDB and localStorage share this shape. */
 export interface WorldRecord extends SimBody {
   id: 'current';
   format: 3;
   savedAt: number;
-  /** Local day of the write. */
   day: string;
   owner: string;
   seq: number;
@@ -91,13 +83,11 @@ export function applyBody(
   const world = session.world;
   world.terrain = terrain;
   world.seed = terrain.seed;
-  // 地形函数会改；恢复时把落地的道具重新放到当前地面上。
   world.entities = structuredClone(body.entities).map((entity) =>
     entity.kind === 'nest'
       ? entity
       : { ...entity, y: restingY(terrain, entity.kind, entity.x, entity.z, entity.footprint) },
   );
-  // Thin the dense vegetation release once, keeping the original patches first.
   if (body.scenery === 2) {
     let patches = 0;
     world.entities = world.entities.filter(
@@ -118,7 +108,6 @@ export function applyBody(
   world.carrying = structuredClone(body.carrying);
   if (body.scenery !== 2 && body.scenery !== 3 && body.scenery !== 4 && body.scenery !== 5)
     populateScenery(world, body.spider.position, MAX_ENTITIES);
-  // Terrain updates can move a shoreline under a saved patch.
   world.entities = world.entities.filter(
     (entity) =>
       entity.kind !== 'grass' ||
@@ -246,7 +235,6 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
   };
 }
 
-/** No marks is a valid old body. A present list must stay inside the limits. */
 function readMarks(value: unknown): PlaceMark[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > MARK_LIMIT) return null;
@@ -326,7 +314,6 @@ function readEntity(value: unknown): EntityState | null {
   return entity;
 }
 
-/** Identity when absent. A partial or non-finite orientation is a bad record. */
 function readSpin(
   raw: Record<string, unknown>,
 ): { qx: number; qy: number; qz: number; qw: number } | null | undefined {
@@ -341,7 +328,6 @@ function readSpin(
   return { qx, qy, qz, qw };
 }
 
-/** 缺省或有限数字；其他值是坏记录。 */
 function optionalNumber(value: unknown): number | undefined | null {
   if (value === undefined) return undefined;
   return isFiniteNumber(value) ? value : null;
@@ -384,7 +370,6 @@ function readSpider(value: unknown): SpiderState | null {
   };
 }
 
-/** `null` is no sentence. `undefined` means the field is unusable. */
 function readPending(value: unknown): SimBody['pending'] | undefined {
   if (value == null) return null;
   if (!value || typeof value !== 'object') return undefined;

@@ -24,9 +24,7 @@ export function readLease(): Lease | null {
 export function setLease(page: string, until: number): void {
   try {
     localStorage.setItem(LEASE_KEY, JSON.stringify({ owner: page, until }));
-  } catch {
-    // The snapshot still carries an owner and a lease.
-  }
+  } catch {}
 }
 
 export function leaseOf(record?: WorldRecord): Lease | null {
@@ -53,25 +51,19 @@ export function bufferPut(record: WorldRecord): boolean {
 export function forgetBuffer(): void {
   try {
     localStorage.removeItem(BUFFER_KEY);
-  } catch {
-    // Leave a blocked buffer alone.
-  }
+  } catch {}
 }
 
 export function forgetLease(): void {
   try {
     localStorage.removeItem(LEASE_KEY);
-  } catch {
-    // A blocked buffer is replaced by the next write anyway.
-  }
+  } catch {}
 }
 
 export function forgetOwner(): void {
   try {
     sessionStorage.removeItem(OWNER_KEY);
-  } catch {
-    // A blocked session store just means the next launch mints an owner.
-  }
+  } catch {}
 }
 
 export function pageOwner(): string {

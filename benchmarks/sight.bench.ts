@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, test } from 'vitest';
 import { EYE_HEIGHT, sightOutline } from '../src/shared/sight.js';
 import { toObservation, type SpiderState } from '../src/shared/state.js';

@@ -5,9 +5,6 @@ import { growShell, inkMat, inkSolidMat } from '../../shared/sim/parts.js';
 import { buildGrass } from '../grassMesh.js';
 import { groupHeight, lineFrom } from './geometry.js';
 
-// 石头是压扁的低模球，顶面被一组正弦扰动推成不规则的坡棱；
-// 轮廓用墨壳，石面上的几道裂纹顺着同一套扰动走，不会浮在表面外。
-
 const stoneMat = new MeshLambertMaterial({
   color: PALETTE.stone,
   flatShading: true,
@@ -16,7 +13,6 @@ const stoneMat = new MeshLambertMaterial({
   polygonOffsetUnits: 1,
 });
 
-/** 沼石泡在水和泥里，比岸上的石头暗半档。 */
 const bogStoneMat = new MeshLambertMaterial({
   color: PALETTE.bogStone,
   flatShading: true,
@@ -25,7 +21,6 @@ const bogStoneMat = new MeshLambertMaterial({
   polygonOffsetUnits: 1,
 });
 
-/** 苔藓的绿，比草叶深一点。 */
 const mossMat = new MeshLambertMaterial({
   color: PALETTE.moss,
   flatShading: true,
@@ -41,7 +36,6 @@ interface RockShape {
   readonly phase: number;
 }
 
-/** 石头表面的起伏。墨线和顶点读同一个函数，裂纹才贴得住。 */
 function swell(dir: Vector3, phase: number): number {
   return (
     1 +
@@ -65,7 +59,6 @@ function rockGeometry(shape: RockShape): BufferGeometry {
   return geometry;
 }
 
-/** 表面的一条裂纹：从单位球的一条大圆弧投到石头表面。 */
 function crease(shape: RockShape, u: Vector3, v: Vector3, from: number, to: number): number[] {
   const out: number[] = [];
   const dir = new Vector3();
@@ -89,7 +82,6 @@ function creaseBasis(rand: () => number): { u: Vector3; v: Vector3 } {
   return { u, v };
 }
 
-/** 一块石头：主体、墨壳和几道裂纹。原点在脚下。 */
 function boulder(rand: () => number, size: number, bog: boolean): Group {
   const group = new Group();
   const shape: RockShape = {
@@ -119,7 +111,6 @@ function boulder(rand: () => number, size: number, bog: boolean): Group {
   group.add(lines);
 
   if (bog) {
-    // 苔藓：两三片压扁的绿纸贴在石头顶上。
     const patches = 2 + Math.floor(rand() * 2);
     for (let k = 0; k < patches; k++) {
       const moss = new Mesh(new SphereGeometry(1, 8, 5), mossMat);
@@ -138,7 +129,6 @@ function boulder(rand: () => number, size: number, bog: boolean): Group {
       moss.rotation.y = rand() * 6.283;
       group.add(moss);
     }
-    // 灯芯草：两小丛，从水面下抽出来。
     for (let k = 0; k < 2; k++) {
       const tuft = buildGrass(0.52 + rand() * 0.18, (rand() * 1e9) >>> 0, 'seed');
       const angle = rand() * 6.283;
@@ -151,10 +141,6 @@ function boulder(rand: () => number, size: number, bog: boolean): Group {
   return group;
 }
 
-/**
- * 一组石头：一大两小。`size` 是主体的水平半径量级；
- * `bog` 让它变扁、长苔藓并在脚边抽两丛草，适合放在浅水边。
- */
 export function buildStone(seed = 1, size = 1, bog = false): Group {
   const rand = mulberry32(seed >>> 0);
   const group = new Group();

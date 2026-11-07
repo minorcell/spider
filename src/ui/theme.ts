@@ -3,10 +3,6 @@ import { themes, variableName, type ThemeName, type ThemePalette } from './token
 const STYLE_ID = 'ui-theme';
 const TRANSITION_MS = 1100;
 
-/**
- * Custom properties are registered so a theme switch can animate the computed
- * colors instead of snapping. Browsers without `@property` simply switch.
- */
 function themeStyle(): string {
   const entries = Object.entries(themes.day);
   const declarations = entries
@@ -29,7 +25,6 @@ function ensureStyle(doc: Document): void {
   doc.head.append(style);
 }
 
-/** Install one palette on the root element. Every `var(--ui-*)` follows it. */
 export function installTheme(doc: Document, theme: ThemeName): void {
   ensureStyle(doc);
   const root = doc.documentElement;

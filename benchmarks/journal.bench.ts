@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, test } from 'vitest';
 import {
   blankSession,

@@ -12,16 +12,11 @@ function placeThumb(input: HTMLInputElement, thumb: HTMLElement): void {
   });
 }
 
-/** Move the thumb after `checked` is set by code, which fires no change event. */
 export function reflectSwitch(input: HTMLInputElement): void {
   const thumb = thumbs.get(input);
   if (thumb) placeThumb(input, thumb);
 }
 
-/**
- * Turn a label's checkbox into a switch. The input keeps its name, so a form
- * can still read it. Calling this twice does not add a second track.
- */
 export function enhanceSwitch(label: HTMLLabelElement): HTMLLabelElement {
   const input = label.querySelector('input[type="checkbox"]');
   if (!(input instanceof HTMLInputElement)) throw new Error('A switch needs a checkbox');
@@ -80,7 +75,6 @@ export function enhanceSwitch(label: HTMLLabelElement): HTMLLabelElement {
   return label;
 }
 
-/** A labeled switch. `checked` is the initial position; later changes stay on the input. */
 export function switchField(
   doc: Document,
   options: { name: string; label: string; checked?: boolean },

@@ -2,19 +2,12 @@ import { GAIT } from './config.js';
 import { blockAt, BODY_RADIUS } from './sight.js';
 import type { Block } from './state.js';
 
-/** Extra gap past the body so a waypoint is not scraped along a corner. */
 const PAD = BODY_RADIUS + 0.35;
 const SAMPLE = 0.2;
-/** Cell size of the wall lookup. Bigger than any single prop wall. */
 const CELL = 3;
-/** A detour only needs corners near the straight line. */
 const CORRIDOR = 12;
 const CORRIDOR_STEP = 0.5;
 
-/**
- * Walls bucketed by cell. A route probes thousands of points; without this it
- * would compare every point against every tree and stone on the island.
- */
 class BlockGrid {
   readonly #cells = new Map<number, Block[]>();
 
@@ -55,18 +48,11 @@ export interface PlanPoint {
 }
 
 export interface Plan {
-  /** Includes where you are and where you asked to stand. */
   points: PlanPoint[];
-  /** Solids the straight segment would overlap. Empty when the straight walk is clear. */
   around: string[];
-  /** True when the straight segment is walkable, so the body need not leave it. */
   direct: boolean;
 }
 
-/**
- * A short path around axis-aligned solids. The body stays on the same
- * blockedAt test the walker uses. Heading is not involved: x/z are world.
- */
 export function planRoute(
   x0: number,
   z0: number,
@@ -81,7 +67,7 @@ export function planRoute(
   const goal = { x: x1, z: z1 };
   if (!standable(goal, grid, limit)) return null;
   if (!standable(start, grid, limit)) return null;
-  const direct = segmentClear(start, goal, grid, height, limit);
+  const direct = segmentClear(start, goal, grid, height);
   if (direct) return { points: [start, goal], around: [], direct: true };
 
   const nodes = [start, goal];
@@ -99,11 +85,8 @@ export function planRoute(
   }
 
   const n = nodes.length;
-  // Visibility is computed when the search asks for it. A route near the nest
-  // used to trace every pair of corners on the island first, most of which the
-  // search never looked at.
   const sees = (i: number, j: number): boolean => {
-    return segmentClear(nodes[i], nodes[j], grid, height, limit);
+    return segmentClear(nodes[i], nodes[j], grid, height);
   };
 
   const goalIndex = 1;
@@ -138,7 +121,7 @@ export function planRoute(
   for (let at = goalIndex; at >= 0; at = came[at]) points.push(nodes[at]);
   points.reverse();
   return {
-    points: pull(points, grid, height, limit),
+    points: pull(points, grid, height),
     around: blocksBetween(start, goal, grid),
     direct: false,
   };
@@ -148,7 +131,6 @@ function standable(point: PlanPoint, grid: BlockGrid, limit: number): boolean {
   return Math.hypot(point.x, point.z) <= limit && !grid.blockedAt(point.x, point.z);
 }
 
-/** Blocks whose corners could matter to a detour from a to b. */
 function corridor(blocks: readonly Block[], a: PlanPoint, b: PlanPoint): Block[] {
   const length = span(a, b);
   const steps = Math.max(1, Math.ceil(length / CORRIDOR_STEP));
@@ -169,13 +151,11 @@ function span(a: PlanPoint, b: PlanPoint): number {
   return Math.hypot(b.x - a.x, b.z - a.z);
 }
 
-/** True when every sample can be stood on and no step climbs faster than the body allows. */
 function segmentClear(
   a: PlanPoint,
   b: PlanPoint,
   grid: BlockGrid,
   height: (x: number, z: number) => number,
-  limit: number,
 ): boolean {
   const length = span(a, b);
   const steps = Math.max(1, Math.ceil(length / SAMPLE));
@@ -184,9 +164,6 @@ function segmentClear(
     const t = i / steps;
     const x = a.x + (b.x - a.x) * t;
     const z = a.z + (b.z - a.z) * t;
-    // Both ends of every segment are standable, so the line cannot leave the round limit.
-    /* v8 ignore next 2 */
-    if (Math.hypot(x, z) > limit) return false;
     if (grid.blockedAt(x, z)) return false;
     const ground = height(x, z);
     if (ground - previous > GAIT.maxSlope * (length / steps)) return false;
@@ -209,22 +186,19 @@ function blocksBetween(a: PlanPoint, b: PlanPoint, grid: BlockGrid): string[] {
   return ids;
 }
 
-/** Drop waypoints the body can already see past. */
 function pull(
   points: PlanPoint[],
   grid: BlockGrid,
   height: (x: number, z: number) => number,
-  limit: number,
 ): PlanPoint[] {
   const kept: PlanPoint[] = [];
   let i = 0;
   while (i < points.length - 1) {
     let j = points.length - 1;
-    while (j > i + 1 && !segmentClear(points[i], points[j], grid, height, limit)) j -= 1;
+    while (j > i + 1 && !segmentClear(points[i], points[j], grid, height)) j -= 1;
     if (kept.length === 0) kept.push(points[i]);
     kept.push(points[j]);
     i = j;
   }
-  /* v8 ignore next */
-  return kept.length > 0 ? kept : points;
+  return kept;
 }

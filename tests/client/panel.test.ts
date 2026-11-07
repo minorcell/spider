@@ -155,7 +155,6 @@ function clickModel(id: string): void {
     .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 }
 
-/** Let promises started by a timer callback settle while the clock is fake. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 50; i++) await vi.advanceTimersByTimeAsync(1);
 }
@@ -377,6 +376,34 @@ describe('running a goal', () => {
     submit();
     expect(loop.runAgent).not.toHaveBeenCalled();
     expect(document.querySelector('#trace')!.textContent).toBe('');
+  });
+
+  it('treats a missing bubble string as empty', async () => {
+    ready();
+    let place: ((point: { x: number; y: number } | null) => void) | undefined;
+    stage.follow.mockImplementation((callback: typeof place) => {
+      place = callback;
+    });
+    loop.runAgent.mockImplementation(async ({ onEvent }: { onEvent: (event: unknown) => void }) => {
+      onEvent({ type: 'text', text: '你' });
+      const live = document.querySelector('#trace li')!;
+      Object.defineProperty(live, 'textContent', {
+        configurable: true,
+        get: () => null,
+        set() {},
+      });
+      onEvent({ type: 'text', text: '好' });
+      return { text: '', usage: null };
+    });
+    mount();
+    document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
+    submit();
+    await flush();
+    const trace = document.querySelector<HTMLElement>('#trace')!;
+    Object.defineProperty(trace, 'textContent', { configurable: true, get: () => null });
+    expect(place).toEqual(expect.any(Function));
+    place?.({ x: 40, y: 40 });
+    expect(trace.hidden).toBe(false);
   });
 
   it('streams text into one speech bubble', async () => {

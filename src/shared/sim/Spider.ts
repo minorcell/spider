@@ -9,14 +9,9 @@ import { solveLeg, supportY, type LegSphere } from './legPose.js';
 import { ballGeo, ballShell, inkSolidMat, spiderMat } from './parts.js';
 import { buildSpiderBody } from './spiderBody.js';
 
-// A cephalothorax on eight jointed legs, an abdomen hung behind it, and an
-// alternating tetrapod gait. The drawn shell is finer than these two clearance
-// ellipsoids; the ellipsoids stay the walkable body.
-
 const UP = new Vector3(0, 1, 0);
 const NO_WATER: Water = Object.freeze({ surface: Number.NEGATIVE_INFINITY, depth: 0 });
 
-// Scratch vectors: posing must not allocate per frame.
 const worldFwd = new Vector3();
 const worldRight = new Vector3();
 const shoulderW = new Vector3();
@@ -26,11 +21,6 @@ const axisY = new Vector3();
 const axisZ = new Vector3();
 const basisM = new Matrix4();
 
-/**
- * Clearance shells. The head shell covers the face, eyes, fangs, and palps,
- * which sit ahead of the belly. Samples run over the whole shell, including
- * the top, so a slope cannot leave the upper body in the ground.
- */
 const SHELLS: readonly {
   c: readonly [number, number, number];
   r: readonly [number, number, number];
@@ -47,7 +37,6 @@ const partWorld = new Matrix4();
 
 export class Spider {
   readonly root = new Group();
-  /** The legs are solved and placed in world space, so rig is a sibling of root. */
   readonly rig = new Group();
   readonly chassis = new Group();
 
@@ -55,16 +44,12 @@ export class Spider {
   yaw = 0;
   yawRate = 0;
   headYaw = 0;
-  /** The spider turns this on. The sun does not. */
   lamp = false;
   heightSet = 0;
   speed = 0;
   time = 0;
-  /** Downward speed while the body is above the ground. */
   fall = 0;
-  /** How long a commanded step has been held still by a solid or a slope. */
   stuckFor = 0;
-  /** Why the last step failed to move. `clear` means it moved, or nothing was asked. */
   halt: 'clear' | 'solid' | 'steep' = 'clear';
 
   #head!: Group;
@@ -73,21 +58,15 @@ export class Spider {
   #blocked: (x: number, z: number) => boolean = () => false;
   #water: (x: number, z: number) => Water = () => NO_WATER;
   #waterNow: Water = NO_WATER;
-  /** True while the water is deep enough that the feet leave the bottom. */
   #swimming = false;
   #limit = WORLD_RADIUS;
-  /** Stays on while the body is still turning or walking, so feet are not glued mid-settle. */
   #stepping = false;
-  /** How long the body has been fully still, in seconds. */
   #stillFor = 0;
-  /** Ground height under the shell, cached for one pose. */
   #shellX = Number.NaN;
   #shellZ = Number.NaN;
   #shellYaw = Number.NaN;
   #shellGround = 0;
-  /** Loose bodies the legs must not pass through. Filled once per pose. */
   #spheres: LegSphere[] = [];
-  /** Last inputs that produced the current leg pose. Idle frames reuse it. */
   #held: {
     x: number;
     y: number;
@@ -112,7 +91,6 @@ export class Spider {
     this.update(0, IDLE_CONTROLS);
   }
 
-  /** The ground the feet plant on. Reseeds the stance for the new surface. */
   bindGround(ground: (x: number, z: number) => number, limit = WORLD_RADIUS): void {
     this.#ground = ground;
     this.#limit = limit;
@@ -122,32 +100,24 @@ export class Spider {
     this.update(0, IDLE_CONTROLS);
   }
 
-  /** Solids you cannot walk through. */
   bindBlocked(blocked: (x: number, z: number) => boolean): void {
     this.#blocked = blocked;
   }
 
-  /**
-   * What a leg may not pass through. `fill` lists sphere centers (apples).
-   * `mound` is extra ground, or −∞ where there is none (the nest).
-   */
   bindLegs(fill: (into: LegSphere[]) => void, mound: (x: number, z: number) => number): void {
     this.#fillLegs = fill;
     this.#mound = mound;
   }
 
-  /** The water column the body floats or wades through. */
   bindWater(water: (x: number, z: number) => Water): void {
     this.#water = water;
     this.#refreshWater();
   }
 
-  /** True while buoyancy, not the ground, is holding the body up. */
   get swimming(): boolean {
     return this.#swimming;
   }
 
-  /** Water depth under the body right now. Zero on dry ground. */
   get waterDepth(): number {
     return this.#waterNow.depth;
   }
@@ -190,7 +160,6 @@ export class Spider {
 
     this.#stepGait(dt, throttle, turn, boost);
     this.#applySlope();
-    // A moving body never reuses the last pose, so don't spend the frame recording one.
     const reuse =
       Math.abs(throttle) < 0.05 &&
       Math.abs(turn) < 0.5 &&
@@ -199,7 +168,6 @@ export class Spider {
     this.#pose(reuse);
   }
 
-  /** Snapshot for the wire: everything a viewer needs to rebuild the pose. */
   capture(): SpiderState {
     return {
       time: this.time,
@@ -215,7 +183,6 @@ export class Spider {
     };
   }
 
-  /** Viewer path: adopt an authoritative state and re-solve the pose. */
   applyState(state: SpiderState): void {
     this.time = state.time;
     this.yaw = state.yaw;
@@ -234,7 +201,6 @@ export class Spider {
     this.#pose(true);
   }
 
-  /** Put a saved pose back and stop. The saved speed is not resumed. */
   settle(state: SpiderState): void {
     this.applyState(state);
     this.speed = 0;
@@ -274,7 +240,6 @@ export class Spider {
     worldRight.crossVectors(worldFwd, UP).normalize();
   }
 
-  /** Read the water column once where the body is, for steering and support. */
   #refreshWater(): void {
     const water = this.#water(this.root.position.x, this.root.position.z);
     this.#waterNow = water;
@@ -331,15 +296,12 @@ export class Spider {
       this.root.position.z = nextZ;
       moved = true;
     }
-    // A free axis with a zero step is not progress. Head-on into a wall used to
-    // count that as a slide and keep the gait stepping until the goal timed out.
     if (!moved) {
       this.speed = 0;
       this.halt = 'solid';
     }
   }
 
-  /** Ease onto the commanded deck height. A real drop falls into the water. */
   #vertical(dt: number): void {
     const support = this.#support();
     const gap = this.root.position.y - support;
@@ -349,29 +311,23 @@ export class Spider {
       return;
     }
     this.fall = 0;
-    // Buoyancy is softer than the leg lift on land, so entering water settles
-    // instead of snapping onto a hard plane.
     const ease = this.#swimming ? WATER.buoyancyEase : GAIT.liftEase;
     const follow = (support - this.root.position.y) * Math.min(1, ease * dt);
-    // Snap the last fraction so a standing body stops changing and can reuse its pose.
     if (Math.abs(follow) < 1e-4) this.root.position.y = support;
     else this.root.position.y += follow;
   }
 
-  /** The ground, or the buoyant water line when the hollow is deep enough. */
   #support(): number {
     const float = this.#waterNow.depth > 0 ? floatHeight(this.#waterNow) : Number.NEGATIVE_INFINITY;
     return Math.max(this.#shellGroundAt(), float) + this.heightSet;
   }
 
-  /** The surface a step follows. Water is crossed at its line, not the seabed. */
   #travel(x: number, z: number): number {
     const water = this.#water(x, z);
     const ground = this.#ground(x, z);
     return water.depth > 0 ? Math.max(ground, floatHeight(water)) : ground;
   }
 
-  /** Highest ground under the shell. One pose reuses the samples. */
   #shellGroundAt(): number {
     const x = this.root.position.x;
     const z = this.root.position.z;
@@ -379,7 +335,6 @@ export class Spider {
       return this.#shellGround;
     }
     const center = this.#ground(x, z);
-    // Same tilt #applySlope adds, so the lift accounts for the belly dipping.
     const ahead = this.#ground(x + worldFwd.x * 0.8, z + worldFwd.z * 0.8) - center;
     const side = this.#ground(x + worldRight.x * 0.8, z + worldRight.z * 0.8) - center;
     shellEuler.set(
@@ -412,14 +367,11 @@ export class Spider {
     this.#shellX = x;
     this.#shellZ = z;
     this.#shellYaw = this.yaw;
-    // The shared contact skin, so a slope does not grow its own hover.
     this.#shellGround = center + (lift > 0 ? lift + CONTACT : 0);
     return this.#shellGround;
   }
 
-  /** Tip the shell with the ground, on top of the gait's pitch and roll. */
   #applySlope(): void {
-    // A floating body follows the water plane, not the unseen seabed.
     if (this.#swimming) return;
     const x = this.root.position.x;
     const z = this.root.position.z;
@@ -430,8 +382,6 @@ export class Spider {
   }
 
   #stepGait(dt: number, throttle: number, turn: number, boost: number): void {
-    // A full turn (the key, or a large correction) steps. The AI's final trim is a
-    // small turn with almost no stride; treating that as walking makes the feet stamp.
     const walking = Math.abs(throttle) > 0.05 || Math.abs(this.speed) > 0.1;
     const hardTurn = Math.abs(turn) > 0.5 || Math.abs(this.yawRate) > 0.5;
     const settled =
@@ -481,7 +431,6 @@ export class Spider {
     }
   }
 
-  /** After a few still seconds the deck rises and settles. It never sinks below the cleared pose. */
   #breathe(): void {
     const blend = Math.min(1, Math.max(0, (this.#stillFor - 4) / 1.5));
     const wave = (1 - Math.cos(this.time * 0.8)) * 0.5;
@@ -513,8 +462,6 @@ export class Spider {
     out.addScaledVector(worldRight, leg.spec.side * leg.spec.lateral);
     const water = this.#water(out.x, out.z);
     if (water.depth > 0 && floatHeight(water) > this.#ground(out.x, out.z)) {
-      // Paddling feet trail just under the surface instead of reaching for a
-      // seabed far below.
       out.y = water.surface - WATER.footDraft;
       return;
     }
@@ -538,7 +485,6 @@ export class Spider {
     else this.#held = null;
   }
 
-  /** True when the body, feet, and nearby loose bodies match the pose already drawn. */
   #poseHeld(): boolean {
     const held = this.#held;
     if (!held) return false;
@@ -621,8 +567,6 @@ export class Spider {
   }
 
   #poseLeg(leg: Leg): void {
-    // The claw is parented to the tarsus, so its tip is not straight under the
-    // anchor. Raise the planted foot until the posed claw meets the skin.
     this.#solveAndPlace(leg);
     const parts = footParts(leg);
     for (let pass = 0; pass < 2; pass++) {
@@ -664,11 +608,6 @@ export class Spider {
   }
 }
 
-/**
- * One drawn geometry, in the space of the claw group or the tarsus group.
- * Baked once: walking these meshes on every planted foot blew the frame budget
- * once coverage instrumentation was on.
- */
 type FootPart = {
   local: Matrix4;
   cx: number;
@@ -694,7 +633,6 @@ function collectParts(root: Object3D): FootPart[] {
     const geometry = (node as Mesh).geometry as BufferGeometry | undefined;
     if (!geometry) return;
     geometry.computeBoundingBox();
-    // computeBoundingBox always assigns the box, including an empty one.
     const box = geometry.boundingBox!;
     parts.push({
       local: new Matrix4().multiplyMatrices(inv, node.matrixWorld),
@@ -709,7 +647,6 @@ function collectParts(root: Object3D): FootPart[] {
   return parts;
 }
 
-/** Lowest world Y of baked part boxes. The oriented box matches the old 8-corner walk. */
 function partLowest(object: Object3D, parts: readonly FootPart[]): number {
   object.updateWorldMatrix(true, false);
   let lowest = Infinity;
@@ -727,7 +664,6 @@ function orientedMinY(matrix: Matrix4, part: FootPart): number {
   return worldY - half;
 }
 
-/** Keep a step inside the round island instead of the old square corners. */
 function clampToRadius(x: number, z: number, limit: number): { x: number; z: number } {
   const radius = Math.hypot(x, z);
   if (radius <= limit) return { x, z };
@@ -740,15 +676,11 @@ function placeBone(group: Group, a: Vector3, b: Vector3, radius: number, side: n
   const dist = Math.max(0.02, reachW.length());
   reachW.multiplyScalar(1 / dist);
   axisZ.copy(reachW).negate();
-  // Twist around the body's side, not world up. A near-vertical bone used to
-  // flip the tube's edges every frame, which reads as a ghost.
   axisX.copy(worldRight).multiplyScalar(side);
   axisX.addScaledVector(axisZ, -axisX.dot(axisZ));
   if (axisX.lengthSq() < 1e-4) {
     axisX.copy(UP).addScaledVector(axisZ, -UP.dot(axisZ));
   }
-  /* v8 ignore next */
-  if (axisX.lengthSq() < 1e-6) axisX.set(1, 0, 0);
   axisX.normalize();
   axisY.crossVectors(axisZ, axisX).normalize();
   basisM.makeBasis(axisX, axisY, axisZ);

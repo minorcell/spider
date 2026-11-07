@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vitest';
 import { GAIT } from '../../../src/shared/config.js';
 import type { Spider } from '../../../src/shared/sim/Spider.js';

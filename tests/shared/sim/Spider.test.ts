@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vitest';
 import { Matrix4, Vector3 } from 'three';
 import { BONES, CONTACT, GAIT } from '../../../src/shared/config.js';
@@ -503,7 +501,6 @@ describe('Spider', () => {
     );
     for (let i = 0; i < 90; i++) spider.update(1 / 60, IDLE);
     const foot = spider.legs[0].foot.clone();
-    // Each component has to differ on its own. A change to x hides y, z, and radius.
     sphere.x += 1;
     spider.update(0);
     sphere.y += 1;

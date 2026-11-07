@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import { BONES } from '../../../src/shared/config.js';

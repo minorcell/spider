@@ -73,7 +73,6 @@ describe('applyEcologyLighting', () => {
     const focus = new Vector3();
     for (const hour of [8, 12, 16]) {
       sky.update(worldClock(new Date(2026, 0, 1, hour)), focus, false);
-      // Lambert diffuse response on upward-facing paper, matching Three's BRDF.
       const shadow = sky.ambient.color.clone().multiplyScalar(sky.ambient.intensity / Math.PI);
       const altitude = sky.light.position.clone().sub(sky.light.target.position).normalize().y;
       const lit = shadow
@@ -108,7 +107,6 @@ describe('applyEcologyLighting', () => {
     const sky = new EcologySky();
     const focus = new Vector3();
     sky.update(worldClock(new Date(2026, 0, 1, 23)), focus, false);
-    // A white fill on the paper palette is the milky film. Night has to stay near black.
     const fill = sky.ambient.color.clone().multiplyScalar(sky.ambient.intensity / Math.PI);
     const altitude = sky.light.position.clone().sub(sky.light.target.position).normalize().y;
     const moon = sky.light.color.clone().multiplyScalar((sky.light.intensity * altitude) / Math.PI);

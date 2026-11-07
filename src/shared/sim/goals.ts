@@ -3,19 +3,13 @@ import type { Spider } from './Spider.js';
 import { IDLE_CONTROLS, type Controls } from '../../shared/types.js';
 import type { PlanPoint } from '../route.js';
 
-/**
- * A goal is a closed-loop controller: every fixed step it reads the body and
- * returns the inputs that move it toward a target, until done() or timeout.
- */
 export interface Goal {
   readonly timeout: number;
   controls(): Controls;
   done(): boolean;
-  /** Partial results, reported whether the goal finished or timed out. */
   result(): Record<string, unknown>;
 }
 
-/** How long a step may push against a wall or a slope before the goal gives up. */
 export const STUCK_LIMIT = 0.35;
 
 function clamp(value: number, min: number, max: number): number {
@@ -31,7 +25,6 @@ function forwardOf(spider: Spider): { x: number; z: number } {
   return { x: -Math.sin(spider.yaw), z: -Math.cos(spider.yaw) };
 }
 
-/** Walk a signed distance along the current heading, decelerating into it. */
 export function walkGoal(spider: Spider, distance: number, fast = false): Goal {
   const sign = Math.sign(distance) || 1;
   const start = { x: spider.root.position.x, z: spider.root.position.z };
@@ -48,7 +41,6 @@ export function walkGoal(spider: Spider, distance: number, fast = false): Goal {
     timeout: Math.max(4, target / (fast ? 2.4 : 1.2) + 3),
     controls() {
       const remaining = target - progress();
-      // Fast holds full throttle until the last stride, so the body actually reaches a run.
       const throttle = clamp(remaining / (fast ? 1.2 : 0.7), 0, 1) * sign;
       return { ...IDLE_CONTROLS, throttle, boost: fast ? 1 : 0 };
     },
@@ -64,7 +56,6 @@ export function walkGoal(spider: Spider, distance: number, fast = false): Goal {
   };
 }
 
-/** Turn a signed number of degrees; positive is clockwise (the body's right). */
 export function turnGoal(spider: Spider, degrees: number): Goal {
   const startYaw = spider.yaw;
   const targetYaw = startYaw - (degrees * Math.PI) / 180;
@@ -86,7 +77,6 @@ export function turnGoal(spider: Spider, degrees: number): Goal {
   };
 }
 
-/** Meters still ahead of the current waypoint along the segment that reaches it. Negative once past. */
 function segmentLeft(points: readonly PlanPoint[], index: number, place: PlanPoint): number {
   const point = points[Math.min(index, points.length - 1)];
   const prev = points[Math.max(0, index - 1)];
@@ -98,10 +88,6 @@ function segmentLeft(points: readonly PlanPoint[], index: number, place: PlanPoi
   return len - proj;
 }
 
-/**
- * Follow a path already planned around solids. This steers; it does not decide
- * where to go. Positive turn is clockwise, matching turnGoal.
- */
 export function routeGoal(spider: Spider, points: readonly PlanPoint[], fast = false): Goal {
   let index = points.length > 1 ? 1 : 0;
   const length = points.reduce(
@@ -127,8 +113,6 @@ export function routeGoal(spider: Spider, points: readonly PlanPoint[], fast = f
       const last = index >= points.length - 1;
       const left = segmentLeft(points, index, place);
       const distance = Math.hypot(dx, dz);
-      // Close enough, and slow. Cutting the throttle here and then turning
-      // back onto the point makes the last step pace past it.
       if (last && left < 0.2 && distance < 0.45 && Math.abs(spider.speed) < 0.45)
         return { ...IDLE_CONTROLS };
       const along = last ? Math.max(0, left) : distance;
@@ -160,7 +144,6 @@ export function routeGoal(spider: Spider, points: readonly PlanPoint[], fast = f
   };
 }
 
-/** Raise or lower the deck to a target height. */
 export function heightGoal(spider: Spider, level: number): Goal {
   const target = clamp(level, GAIT.heightMin, GAIT.heightMax);
   return {

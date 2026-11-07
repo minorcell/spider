@@ -9,7 +9,6 @@ export interface DiaryNote {
   usage?: LanguageModelUsage;
 }
 
-/** Turn a day's transcript into a directory line and a summary. Noted text stays put. */
 export async function summarizeDiary(input: {
   settings: PilotSettings;
   transcript: string;
@@ -55,9 +54,7 @@ export function readNote(text: string): DiaryNote {
       const line = typeof parsed.line === 'string' ? parsed.line.trim() : '';
       const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
       if (line || summary) return { line: line.slice(0, 80), summary };
-    } catch {
-      // The model answered in prose. Keep that prose.
-    }
+    } catch {}
   }
   const summary = text.trim();
   return { line: summary.slice(0, 40), summary };

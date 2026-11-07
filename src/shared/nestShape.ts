@@ -1,5 +1,3 @@
-// 巢穴土丘的高度。画面和腿的碰撞读同一份，避免腿按另一套形状插进看见的土坡。
-
 export const NEST_SCALE_XZ = 1.35;
 export const NEST_SCALE_Y = 1.15;
 export const NEST_RO = 3.1;
@@ -8,12 +6,10 @@ export const NEST_FLOOR = 0.16;
 export const NEST_DOOR = -Math.PI / 2;
 export const NEST_DOOR_HALF = 0.42;
 
-/** 把角度收进 -π..π。 */
 export function nestWrap(angle: number): number {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 
-/** 0 在门口，1 在背后。 */
 function back(angle: number): number {
   return 0.5 + 0.5 * Math.sin(angle);
 }
@@ -23,7 +19,6 @@ function smoothstep(from: number, to: number, value: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** 丘顶离圆心多远。背后堆得更开。 */
 export function nestRimRadius(angle: number): number {
   return (
     1.98 +
@@ -33,7 +28,6 @@ export function nestRimRadius(angle: number): number {
   );
 }
 
-/** 丘顶多高。门口放低，背后垒高。 */
 function rimHeight(angle: number): number {
   return (
     0.4 +
@@ -43,16 +37,11 @@ function rimHeight(angle: number): number {
   );
 }
 
-/** 1 是敞开的门口，0 是土墙。 */
 export function nestDoor(angle: number): number {
   const delta = Math.abs(nestWrap(angle - NEST_DOOR));
   return smoothstep(NEST_DOOR_HALF + 0.16, NEST_DOOR_HALF - 0.03, delta);
 }
 
-/**
- * 土丘在放大之前的高度。`radius` 和 `angle` 都在巢穴自己的水平面上，
- * 门口朝 −Z。
- */
 export function nestLocalHeight(radius: number, angle: number): number {
   const rim = nestRimRadius(angle);
   const crest = rimHeight(angle);
@@ -70,10 +59,6 @@ export function nestLocalHeight(radius: number, angle: number): number {
   return y * (1 - open) + (0.055 + 0.012 * (radius / NEST_RO)) * open;
 }
 
-/**
- * 世界高度。巢穴范围外是 −∞，调用方就当这里没有土丘。
- * 外圈正好落在网格最后一环上，仍然算土丘。
- */
 export function nestSurface(
   origin: { x: number; y: number; z: number },
   x: number,

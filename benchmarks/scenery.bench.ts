@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, test } from 'vitest';
 import { Mesh, type Object3D } from 'three';
 import { buildProp, drapeGrass } from '../src/client/props.js';
@@ -41,14 +39,12 @@ const clump = grassClumps(radius, grassSeed(grass.id))[0];
 const grassX = grass.x + clump.x;
 const grassZ = grass.z + clump.z;
 const targets = world.entities.filter((entity) => entity.kind === 'apple');
-// Select a real reachable detour once; a blocked goal must not masquerade as fast routing.
 const target = targets.find((entity) => {
   const plan = planRoute(0, 0, entity.x, entity.z, world.blocks, surface, WORLD_RADIUS);
   return plan && !plan.direct && plan.points.length > 2;
 });
 if (!target) throw new Error('Scenery benchmark requires a reachable detour');
 
-/** Release per-sample geometry; shared palette materials belong to the app. */
 function release(root: Object3D): void {
   root.traverse((node) => {
     const geometry = (node as Mesh).geometry;
@@ -115,7 +111,6 @@ describe('scenery persistence', () => {
   ] as const) {
     test(`restore ${name}`, async ({ bench }) => {
       const session = new SimSession(SEED);
-      // Reuse baked terrain to isolate restore/migration from terrain generation.
       await bench(`restore ${name} with baked terrain`, () => {
         applyBody(session, body, terrain);
       }).run();

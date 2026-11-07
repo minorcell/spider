@@ -20,12 +20,9 @@ import type { Stage } from './stage.js';
 import type { SimSession } from '../shared/sim/session.js';
 
 const BUBBLE_MS = 5000;
-/** How long the page must go untouched before auto memory may run. */
 export const AUTO_MEMORY_IDLE_MS = 30 * 60 * 1000;
-/** How often to check whether that idle stretch has passed. */
 const AUTO_MEMORY_CHECK_MS = 60 * 1000;
 
-/** Settings, the instruction box, and the bubble that follows the spider. */
 export function mountPanel(
   doc: Document,
   session: SimSession,
@@ -125,7 +122,6 @@ export function mountPanel(
   });
 
   let current: AbortController | null = null;
-  /** Runs replaced by a new message. They stop quietly, without a "已停止" note. */
   const replaced = new WeakSet<AbortController>();
   let live: HTMLLIElement | null = null;
   let hideAt = 0;
@@ -181,7 +177,6 @@ export function mountPanel(
       live.textContent = '';
       trace.append(live);
     }
-    /* v8 ignore next */
     live.textContent = `${live.textContent ?? ''}${chunk}`;
     touch();
     stage.voice();
@@ -390,7 +385,6 @@ export function mountPanel(
   let journal: Journal | null = null;
   let lastActivity = Date.now();
   let digesting = false;
-  /** When a failed digest may be tried again. */
   let digestRetryAt = 0;
   const journalReady = Promise.resolve(injected ?? openJournal())
     .then((opened) => {
@@ -410,7 +404,6 @@ export function mountPanel(
     window.addEventListener(type, noteActivity, { passive: true });
   }
 
-  /** Write the day into the diary once the page has been quiet long enough. */
   const rememberIfIdle = (): void => {
     if (current || digesting) return;
     const settings = readPilot();
@@ -577,8 +570,6 @@ export function mountPanel(
     }
   };
 
-  // A click on 停止 aborts. Enter submits, and a typed message replaces the run.
-  // Keyboard activation of this button reports detail 0, so Enter still submits.
   send.addEventListener('click', (event) => {
     if (!current || event.detail === 0) return;
     event.preventDefault();
@@ -634,7 +625,6 @@ export function mountPanel(
       tailNode.hidden = true;
       return;
     }
-    /* v8 ignore next */
     const text = trace.textContent ?? '';
     if (trace.hidden || text !== bubbleText) {
       trace.hidden = false;

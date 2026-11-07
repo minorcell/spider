@@ -119,7 +119,6 @@ async function drain(): Promise<void> {
   for (let i = 0; i < 20; i++) await new Promise((resolve) => originalSetTimeout(resolve, 0));
 }
 
-/** Wait until a cloud pass has stopped issuing requests. */
 async function quiet(cloud: CloudFake): Promise<void> {
   let stable = 0;
   let last = -1;

@@ -1,6 +1,5 @@
 import { paintFps } from '../ui/dress.js';
 
-/** Count actual rendered frames; simulation dt is deliberately capped elsewhere. */
 export class FpsDisplay {
   readonly element: HTMLSpanElement;
   #last: number | null = null;

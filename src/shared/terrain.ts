@@ -1,61 +1,37 @@
 import { createNoise } from './noise.js';
 
-/** The island sits inside this square. Past the rim the ground is flat at 0. */
 export const TERRAIN = {
   half: 52,
-  /** Radius at which the hills have faded out. */
   island: 50,
-  /** Hills are back to full height past this radius. */
   pad: 8,
-  /**
-   * Level disk around the birth nest. The mound now reaches about 4.2 from the
-   * middle, so this has to clear that rim or the nest sits inside the hill.
-   */
   flat: 5.2,
-  /** Ground mesh divisions. `surfaceAt` has to use this same grid. */
   segments: 104,
-  /** Still water fills every hollow below this height. */
   water: -0.8,
-  /** The main river meanders around this distance from the nest. */
   river: 14,
-  /** Half-width of the river channel before the banks rise. */
   riverWidth: 3.2,
 } as const;
 
 const GRID_VERTS = (TERRAIN.segments + 1) ** 2;
 
-/** The smallest coast any seed can make. A round bound inside it is always land. */
 export const WORLD_RADIUS = TERRAIN.island * 0.86;
 
-/** A world that can say whether a point is still on the island. */
 export interface Land {
   inside?: (x: number, z: number, margin?: number) => boolean;
 }
 
-/** True when the point is on land. A hand-built world without a shore is open. */
 export function insideLand(land: Land, x: number, z: number, margin = 0): boolean {
   return land.inside ? land.inside(x, z, margin) : true;
 }
 
-/** A world that can say where its ground and water line are. */
 export interface Ground {
   height(x: number, z: number): number;
   surface?(x: number, z: number): number;
 }
 
-/**
- * The surface a route follows: the solid ground, or the still water line over
- * a hollow. This is not a floor; the body solver decides whether a support is
- * ground or buoyancy.
- */
 export function surfaceOf(ground: Ground, x: number, z: number): number {
   return ground.surface ? ground.surface(x, z) : ground.height(x, z);
 }
 
-/**
- * The nearest water within `reach`, sampled in rings around the body. Null when
- * the body is on dry ground with no pond close enough to touch.
- */
 export function nearestWater(
   ground: Ground,
   x: number,
@@ -78,11 +54,9 @@ export function nearestWater(
   return null;
 }
 
-/** Noise at every ground vertex. The page asks the world worker for this. */
 export function bakeTerrainGrid(seed: number): Float32Array {
   const noise = createNoise(seed);
   const warp = createNoise(seed ^ 0x9e3779b9);
-  // 直接从种子里取一个方向；不要再开一条随机流，地形构造要保持纯函数。
   const angle = ((seed * 2654435761) % 6283) / 1000;
   const cols = TERRAIN.segments + 1;
   const grid = new Float32Array(cols * cols);
@@ -98,9 +72,7 @@ export function bakeTerrainGrid(seed: number): Float32Array {
 
 export class Terrain {
   readonly seed: number;
-  /** Analytic height at each ground vertex. Lookups interpolate this grid. */
   readonly #grid: Float32Array;
-  /** The same low-frequency noise that carves the coast. */
   readonly #noise: (x: number, y: number) => number;
 
   constructor(seed: number, grid?: Float32Array) {
@@ -110,11 +82,6 @@ export class Terrain {
     this.#noise = createNoise(this.seed);
   }
 
-  /**
-   * World height at a horizontal point. This is the rendered triangle, not the
-   * raw noise: the mesh, the body, and loose props all read this grid.
-   * The noise is evaluated once, at the vertices, when the island is built.
-   */
   height(x: number, z: number): number {
     const half = TERRAIN.half;
     const segments = TERRAIN.segments;
@@ -131,24 +98,14 @@ export class Terrain {
     const h10 = this.#grid[iz * cols + ix + 1];
     const h01 = this.#grid[(iz + 1) * cols + ix];
     const h11 = this.#grid[(iz + 1) * cols + ix + 1];
-    // Same split as PlaneGeometry: a-b-d when fx + fz <= 1, otherwise b-c-d.
     if (fx + fz <= 1) return h00 * (1 - fx - fz) + h01 * fz + h10 * fx;
     return h01 * (1 - fx) + h11 * (fx + fz - 1) + h10 * (1 - fz);
   }
 
-  /**
-   * The travel surface used by route and sight probes: the ground, or the flat
-   * water line over a hollow. A body crossing this point still floats or wades
-   * according to the water depth under it.
-   */
   surface(x: number, z: number): number {
     return Math.max(this.height(x, z), TERRAIN.water);
   }
 
-  /**
-   * True when the point is inside the actual coast. `margin` keeps a body's
-   * radius clear of the water. This is the round world bound every mover uses.
-   */
   inside(x: number, z: number, margin = 0): boolean {
     const radius = Math.hypot(x, z);
     const coast =
@@ -157,12 +114,6 @@ export class Terrain {
   }
 }
 
-/**
- * Analytic height. The origin is flattened.
- *
- * 种子决定山地、坑洼低地和开阔平地的方向。区域之间平滑过渡，
- * 河道穿过低处；海岸与巢穴周围再单独收平。
- */
 function sample(
   noise: (x: number, y: number) => number,
   warp: (x: number, y: number) => number,
@@ -172,7 +123,6 @@ function sample(
 ): number {
   const radius = Math.hypot(x, z);
   if (radius >= TERRAIN.island) return 0;
-  // 海岸只往里收，保证 island 之外永远是平的。
   const coast =
     TERRAIN.island * (0.86 + 0.11 * (noise(x * 0.016 + 11.3, z * 0.016 - 7.7) * 0.5 + 0.5));
   const rim = radius / coast;
@@ -200,23 +150,11 @@ function sample(
   const base = noise(wx * 0.032, wz * 0.032);
   const detail = noise(wx * 0.095 + 13.1, wz * 0.095 - 5.7);
   const ridge = 1 - Math.abs(noise(wx * 0.06 - 4.3, wz * 0.06 + 8.1));
-  // Plains keep only a small ripple. Local relief belongs to the mountains
-  // and lowlands instead of repeating the same hills over the whole island.
   const rolling = (base * 1.5 + detail * 0.12) * (1 - plain * 0.95);
   const h = rolling + mountain * (3.8 + ridge * 3.8) + lowland * (-1.8 + detail * 1.8);
-  // 不把低处压成 0：留出真正的谷地，巢穴外面才不是一圈等高的环。
   return carveRiver(x, z, angle, pad === 0 ? 0 : h * mask * pad);
 }
 
-/**
- * Cut one continuous, meandering channel through the lowlands. The channel
- * keeps a bed below the water line, so hollows fill and connect instead of
- * reading as a scattered set of round pits.
- *
- * The curve lives in coordinates rotated with the seed. It stays off the nest
- * disk, and its width/depth breathe slowly along the flow so the banks do not
- * look like a canal.
- */
 function carveRiver(x: number, z: number, angle: number, height: number): number {
   const bearing = angle + 1.37;
   const cos = Math.cos(bearing);
@@ -234,7 +172,6 @@ function carveRiver(x: number, z: number, angle: number, height: number): number
     Math.sin(along * 0.31 - phase) * 0.25;
   const edge = 1 - Math.abs(across - center) / width;
   if (edge <= 0) return height;
-  // Smooth the bank into the old terrain instead of leaving a sharp trench.
   const profile = edge * edge * (3 - 2 * edge);
   const bed =
     TERRAIN.water -
@@ -242,13 +179,6 @@ function carveRiver(x: number, z: number, angle: number, height: number): number
   return Math.min(height, height + (bed - height) * profile);
 }
 
-/**
- * Height of the rendered ground triangle at a point.
- * PlaneGeometry lays a grid on xz; each cell is split a-b-d and b-c-d
- * (a at the -x/-z corner, b at -x/+z, d at +x/-z, c at +x/+z).
- * The raw noise sits under that triangle on a concave patch, which is how a
- * prop seated on the noise ends up inside the mesh.
- */
 export function surfaceAt(
   height: (x: number, z: number) => number,
   x: number,

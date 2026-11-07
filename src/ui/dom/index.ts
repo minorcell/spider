@@ -1,4 +1,3 @@
-/** Create one element. `class` and `hidden` are applied as properties; other keys become attributes. */
 export function h<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
   tag: K,

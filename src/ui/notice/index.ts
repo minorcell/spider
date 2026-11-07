@@ -2,7 +2,6 @@ import { h } from '../dom/index.js';
 import { paint } from '../style.js';
 import { border, color } from '../token.js';
 
-/** A quiet aside that names the rule behind the numbers. */
 export function notice(doc: Document, options: { label: string; text: string }): HTMLElement {
   const label = h(doc, 'b', {}, options.label);
   paint(label, { flex: '0 0 auto', fontWeight: '500' });

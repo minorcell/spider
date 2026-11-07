@@ -11,7 +11,6 @@ export interface CloudSettings {
   bucket: string;
   accessKeyId: string;
   secretAccessKey: string;
-  /** True only after a probe succeeded for these exact fields. */
   ready: boolean;
 }
 
@@ -118,7 +117,6 @@ export function cloudComplete(settings: CloudInput): boolean {
   );
 }
 
-/** `ready` sticks only when the fields did not change, or this write is a successful probe. */
 export function writeCloud(input: CloudInput, ready = false): CloudSettings {
   const previous = readCloud();
   const next: CloudSettings = {

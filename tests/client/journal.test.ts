@@ -40,7 +40,6 @@ const settings: PilotSettings = {
   thinking: true,
 };
 
-/** Long enough that 1k tokens (80% of a 1k window) is already full. */
 const LONG = '一'.repeat(1600);
 
 function session(turns: ChatSession['turns'], summary = ''): ChatSession {

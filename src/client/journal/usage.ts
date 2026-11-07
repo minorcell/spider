@@ -74,23 +74,18 @@ export interface UsageToolRow {
 export interface UsageSnapshot {
   today: UsageDay;
   sum: UsageDay;
-  /** Stored days in the range, newest first. */
   days: UsageDay[];
   range: UsageRange;
   chart: UsageDay[];
   kpis: UsageKpis;
   models: UsageModelRow[];
   tools: UsageToolRow[];
-  /** Newest request records in the range, capped for the detail list. */
   requests: UsageCall[];
-  /** Request records in the range before the cap. */
   requestTotal: number;
 }
 
-/** How many request records the detail list keeps; older rows stay in the ledger. */
 const REQUEST_LIMIT = 200;
 
-/** Add one model call to the local day of `now`. Missing usage is ignored. */
 export async function recordUsage(
   usage: LanguageModelUsage | null | undefined,
   now = new Date(),
@@ -103,7 +98,6 @@ export async function recordUsage(
 
 type SpiderDb = Awaited<ReturnType<typeof openSpiderDb>>;
 
-/** Persist several model steps in one transaction. A failed write does not affect the conversation. */
 export async function recordUsageCalls(calls: UsageCall[]): Promise<void> {
   if (calls.length === 0) return;
   const next = calls.map(normalizeCall);
@@ -125,22 +119,17 @@ export async function recordUsageCalls(calls: UsageCall[]): Promise<void> {
       await dayStore.put(aggregateDay(date, [...stored.values()]));
     }
     await tx.done;
-  } catch {
-    // The conversation still stands when the ledger cannot be written.
-  }
+  } catch {}
 }
 
-/** Persist one model step. */
 export async function recordUsageCall(call: UsageCall): Promise<void> {
   await recordUsageCalls([call]);
 }
 
-/** Today's row, the sum of stored days in range, and those days newest first. */
 export async function readUsage(today: string, range: UsageRange = 'all'): Promise<UsageSnapshot> {
   const db = await openSpiderDb();
   const span = range === '7' ? 7 : range === '30' ? 30 : 0;
   const currentFrom = span === 0 ? null : shiftDate(today, 1 - span);
-  // The previous period feeds the "compared with last week" KPI.
   const loadFrom = span === 0 ? null : shiftDate(today, 1 - span * 2);
   const [storedRows, callRows] = await Promise.all([
     readDays(db, loadFrom, today),

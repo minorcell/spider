@@ -2,10 +2,6 @@ import { h } from '../dom/index.js';
 import { paint } from '../style.js';
 import { color } from '../token.js';
 
-/**
- * A summary that reveals its body the first time it opens. The body is built
- * lazily, so a long list of closed rows costs nothing until someone expands one.
- */
 export function disclosure(
   doc: Document,
   options: {

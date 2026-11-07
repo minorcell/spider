@@ -11,14 +11,12 @@ import { inkMat } from '../../shared/sim/parts.js';
 
 const TAU = Math.PI * 2;
 
-/** 浮点坐标转墨线，和苹果、巢穴用同一套语言。 */
 export function lineFrom(flat: readonly number[], material: Material = inkMat): LineSegments {
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(flat, 3));
   return new LineSegments(geometry, material);
 }
 
-/** 沿骨架环出一根渐细的圆杆：树干、树枝都用它。 */
 export function tubeGeometry(
   spine: readonly Vector3[],
   radiusAt: (t: number) => number,
@@ -63,7 +61,6 @@ export function tubeGeometry(
     }
   }
 
-  // 两端封口，枝梢伸进树冠时不会从管口看见背面。
   const start = positions.length / 3;
   positions.push(spine[0].x, spine[0].y, spine[0].z);
   const end = positions.length / 3;
@@ -82,7 +79,6 @@ export function tubeGeometry(
   return geometry;
 }
 
-/** 把一条折线压进墨线数组。 */
 export function pushLine(out: number[], points: readonly Vector3[]): void {
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i];
@@ -91,7 +87,6 @@ export function pushLine(out: number[], points: readonly Vector3[]): void {
   }
 }
 
-/** 一件模型从脚到顶的高度，给标签和镜头用。 */
 export function groupHeight(group: Group): number {
   group.updateMatrixWorld(true);
   const at = new Vector3();

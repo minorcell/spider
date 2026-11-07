@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vitest';
 import { localDate } from '../../../src/shared/dates.js';
 import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '../../../src/shared/config.js';
@@ -205,7 +203,6 @@ describe('snapshot', () => {
     expect(first.spider.speed).toBe(0);
     expect(first.spider.legs[0].lifted).toBe(false);
 
-    // The blocked predicate bound by applyBody is the restored world's walls.
     first.spider.root.position.set(0, first.spider.root.position.y, 2);
     first.spider.yaw = Math.PI;
     first.spider.root.rotation.y = Math.PI;
@@ -214,7 +211,6 @@ describe('snapshot', () => {
     }
     expect(first.spider.halt).toBe('solid');
 
-    // The same predicate also asks the restored shore whether the step is on land.
     first.spider.root.position.set(0, first.spider.root.position.y, 0);
     first.spider.yaw = 0;
     first.spider.update(0.05, { throttle: 1, turn: 0, lift: 0, boost: 1 });

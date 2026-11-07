@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { Quaternion, Vector3 } from 'three';
 import { groundSupport } from '../../../src/shared/contact.js';
@@ -141,7 +140,6 @@ describe('stepPhysics', () => {
     const floated = pond.entities[0];
     expect(floated).toMatchObject({ x: 2, z: 3, vx: 0, vz: 0 });
     expect(floated.y).toBeCloseTo(-1.17, 1);
-    // The apple's center sits just below the water line, not well above it.
     expect(floated.y + APPLE_RADIUS).toBeLessThan(-0.8);
   });
 

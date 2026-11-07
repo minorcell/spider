@@ -13,9 +13,6 @@ import { mulberry32 } from '../../shared/noise.js';
 import { growShell, inkMat, inkSolidMat, stemMat } from '../../shared/sim/parts.js';
 import { groupHeight, lineFrom, pushLine, tubeGeometry } from './geometry.js';
 
-// 纸和墨的树：弯曲的树干、几根抬起的枝、压扁的纸团树冠。
-// 树冠用平滑球体加一层墨壳勾外轮廓；材质开 flatShading，面片自己就是纸折痕。
-
 const TAU = Math.PI * 2;
 
 const foliageMat = new MeshLambertMaterial({
@@ -26,7 +23,6 @@ const foliageMat = new MeshLambertMaterial({
   polygonOffsetUnits: 1,
 });
 
-// Build the seam lookup once, rather than formatting every vertex of every crown.
 const crownTemplate = new SphereGeometry(1, 9, 6);
 const crownPositions = crownTemplate.getAttribute('position');
 const crownVertexIds: number[] = [];
@@ -37,7 +33,6 @@ for (let i = 0; i < crownPositions.count; i++) {
   crownVertexIds.push(crownIds.get(key)!);
 }
 
-/** Seam vertices share their jitter, keeping the original crown shape. */
 function blobGeometry(rand: () => number, radius: number, squash: number): SphereGeometry {
   const geometry = crownTemplate.clone();
   const position = geometry.getAttribute('position');
@@ -55,7 +50,6 @@ function blobGeometry(rand: () => number, radius: number, squash: number): Spher
   return geometry;
 }
 
-/** 一片树冠：纸团加墨壳。 */
 function blob(rand: () => number, at: Vector3, radius: number, squash: number): Mesh {
   const geometry = blobGeometry(rand, radius, squash);
   const mesh = new Mesh(geometry, foliageMat);
@@ -65,7 +59,6 @@ function blob(rand: () => number, at: Vector3, radius: number, squash: number): 
   return mesh;
 }
 
-/** 树根处的几道抓地墨线。 */
 function rootInk(rand: () => number): number[] {
   const out: number[] = [];
   for (let k = 0; k < 4; k++) {
@@ -88,10 +81,6 @@ function rootInk(rand: () => number): number[] {
   return out;
 }
 
-/**
- * 一棵树。`height` 是从地面到树冠顶的近似高度；`seed` 决定歪斜、枝数和树冠形状。
- * 原点在树干底部，树根埋进地面一点。
- */
 export function buildTree(seed = 1, height = 3.4): Group {
   const rand = mulberry32(seed >>> 0);
   const group = new Group();
@@ -118,7 +107,6 @@ export function buildTree(seed = 1, height = 3.4): Group {
   trunk.add(new Mesh(growShell(trunkGeometry, 0.01), inkSolidMat));
   group.add(trunk);
 
-  // 树皮纹：顺着树干走的几道淡墨线。
   const bark: number[] = [];
   for (let k = 0; k < 3; k++) {
     const phi = (k / 3) * TAU + rand() * 0.7;
@@ -140,7 +128,6 @@ export function buildTree(seed = 1, height = 3.4): Group {
   bark.push(...rootInk(rand));
   group.add(lineFrom(bark, inkMat));
 
-  // 枝：从树干中上部抽出，向外弯再抬起来。
   const branchCount = 3 + Math.floor(rand() * 2);
   const tips: Vector3[] = [];
   for (let b = 0; b < branchCount; b++) {
@@ -174,7 +161,6 @@ export function buildTree(seed = 1, height = 3.4): Group {
     const limb = new Mesh(geometry, stemMat);
     limb.add(new Mesh(growShell(geometry, 0.006), inkSolidMat));
     group.add(limb);
-    // 枝顶的一道亮线，给细枝一点体积。
     const crest: number[] = [];
     pushLine(
       crest,
@@ -186,7 +172,6 @@ export function buildTree(seed = 1, height = 3.4): Group {
     tips.push(tip);
   }
 
-  // 树冠：树干顶端一簇，四周再围一圈，枝梢各顶一团。
   const crown = trunkCurve.getPointAt(1);
   const blobs: { at: Vector3; radius: number }[] = [
     { at: new Vector3(crown.x, crown.y + 0.16 * s, crown.z), radius: 0.62 * s },
@@ -211,7 +196,6 @@ export function buildTree(seed = 1, height = 3.4): Group {
   }
   for (const item of blobs) group.add(blob(rand, item.at, item.radius, 0.86));
 
-  // One draw per material instead of a draw for each branch, crown and shell.
   group.updateMatrixWorld(true);
   const stems: (typeof trunkGeometry)[] = [];
   const leaves: (typeof trunkGeometry)[] = [];

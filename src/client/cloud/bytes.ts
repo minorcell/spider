@@ -1,4 +1,3 @@
-/** Stable JSON. Object keys are sorted; array order is kept. */
 export function canonicalBytes(value: unknown): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(canonicalize(value)));
 }
@@ -17,7 +16,6 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-/** Hash the world and diary only. The writing device id is not part of the progress. */
 export async function progressHash(world: unknown, memories: unknown): Promise<string> {
   return sha256Hex(canonicalBytes({ memories, world }));
 }

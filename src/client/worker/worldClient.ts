@@ -4,7 +4,6 @@ import { islandBuffers } from '../../shared/island.js';
 import { bakeTerrainGrid, Terrain } from '../../shared/terrain.js';
 import type { PreparedBuffers, WorldReply, WorldRequest } from './worldProtocol.js';
 
-/** The slice of Worker the client needs. Tests supply their own. */
 export interface WorldPort {
   postMessage(message: WorldRequest): void;
   onmessage: ((event: MessageEvent<WorldReply>) => void) | null;
@@ -22,7 +21,6 @@ export interface PreparedWorld {
   island: Group;
 }
 
-/** Messages to the world worker. One island at a time. */
 export class WorldClient {
   readonly #port: WorldPort;
   readonly #pending = new Map<number, Waiter>();
@@ -85,7 +83,6 @@ export function assemble(data: PreparedBuffers): PreparedWorld {
   };
 }
 
-/** The same bake, on this thread. Used when the worker cannot start. */
 export function prepareLocal(seed: number): PreparedWorld {
   return assemble(localBuffers(seed));
 }
@@ -127,7 +124,6 @@ async function loadBuffers(
   }
 }
 
-/** Bake one island beside the page when a worker is available. Same seed reuses the grid. */
 export async function prepareWorld(
   seed: number,
   open: () => Promise<WorldClient | null> = openWorldWorker,

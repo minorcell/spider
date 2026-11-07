@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vitest';
 import { planRoute } from '../../src/shared/route.js';
 import { block, flat } from '../helpers.js';

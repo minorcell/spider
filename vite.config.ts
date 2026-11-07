@@ -18,8 +18,6 @@ export default defineConfig({
     emptyOutDir: true,
     minify: 'oxc',
     cssMinify: true,
-    // three/webgpu carries the core plus the node-material graph.
-    // Keep the warning above that chunk.
     chunkSizeWarningLimit: 900,
     rolldownOptions: {
       output: {
@@ -50,10 +48,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}', 'worker/src/**/*.js'],
-      // Type-only modules carry no runtime statements. The worker entry is the
-      // one-line binding to a real Worker global; its handler and transport are tested.
       exclude: [
-        // Standalone development model sheet; not a production entry point.
         'src/client/models/page.ts',
         'src/client/worker/journal.worker.ts',
         'src/client/worker/world.worker.ts',

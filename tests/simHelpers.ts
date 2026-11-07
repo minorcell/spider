@@ -2,7 +2,6 @@ import { STUCK_LIMIT } from '../src/shared/sim/goals.js';
 import type { GoalOutcome, SimSession } from '../src/shared/sim/session.js';
 import type { Controls } from '../src/shared/types.js';
 
-/** Apply raw controls for a fixed time; resolves when the time is up or the body stalls. */
 export function drive(
   session: SimSession,
   seconds: number,

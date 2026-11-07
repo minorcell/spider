@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vitest';
 import { visualRange, worldClock } from '../../src/shared/ecology.js';
 

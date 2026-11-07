@@ -1,7 +1,6 @@
 import { mulberry32 } from './noise.js';
 import { TERRAIN } from './terrain.js';
 
-/** Check the whole patch, including the ground under its outermost leaves. */
 export function grassOnDryGround(
   height: (x: number, z: number) => number,
   x: number,
@@ -28,13 +27,11 @@ export interface GrassClump {
   height: number;
 }
 
-/** Stable across saves, and shared by the drawn blades and sight tests. */
 export function grassSeed(id: string): number {
   const suffix = id.includes('-') ? Number(id.slice(id.lastIndexOf('-') + 1)) : 0;
   return ((Number.isFinite(suffix) ? suffix : 0) * 977 + 13) >>> 0;
 }
 
-/** Small tufts, broad patches, and tall grass heaps alternate naturally. */
 export function grassRadius(id: string): number {
   return 0.65 + ((Math.imul(grassSeed(id), 2654435761) >>> 0) / 4294967296) * 1.25;
 }

@@ -13,20 +13,10 @@ function stateOf(diary: Diary): JournalState {
   };
 }
 
-/**
- * All journal and snapshot work runs here. The page only sends requests and
- * receives plain values; IndexedDB and the daily summary never touch its thread.
- */
 export function createHandler(): Handler {
   let diary: Diary | null = null;
   let snapshots: SnapshotStore | null = null;
 
-  // A worker can receive the next message while an earlier handler is
-  // waiting on IndexedDB (or the summarizer). Diary is mutable, so allowing
-  // those requests to overlap can lose a turn or return a stale state. Keep
-  // each mutable resource ordered; snapshots do not have to wait for a long
-  // model summary in the diary queue. Failed work must not block the next
-  // request in the same queue.
   let diaryQueue = Promise.resolve();
   let snapshotQueue = Promise.resolve();
 

@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
   NEST_DOOR,
@@ -22,7 +21,6 @@ describe('nest shape', () => {
     expect(nestDoor(NEST_DOOR)).toBe(1);
     expect(nestDoor(back)).toBe(0);
     expect(door).toBeLessThan(rim);
-    // Halfway across the door lip, the opening is only partly cut.
     expect(nestDoor(NEST_DOOR + 0.5)).toBeGreaterThan(0);
     expect(nestDoor(NEST_DOOR + 0.5)).toBeLessThan(1);
   });

@@ -36,7 +36,6 @@ class Port implements WorkerPort {
   }
 }
 
-/** Fire one call, take the request it posted, and answer it. */
 function call<T>(port: Port, start: () => Promise<T>, value: unknown): Promise<T> {
   const pending = start();
   port.respond({ id: port.last.id, ok: true, value });

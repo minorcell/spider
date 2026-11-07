@@ -2,18 +2,13 @@ import { GAIT } from './config.js';
 import { blockAt, BODY_RADIUS } from './sight.js';
 import type { Block } from './state.js';
 
-/** How far a look along the heading bothers to check. */
 const AHEAD = 8;
 const STEP = 0.25;
-/** Solids reported around the body. */
 const NEAR = 6;
 
 export interface Ahead {
-  /** Meters you can still walk along your heading. 0 means you are against it. */
   open: number;
-  /** clear: nothing in that stretch. wall: a solid. slope: the ground rises too fast. */
   by: 'clear' | 'wall' | 'slope' | 'edge';
-  /** The solid's id, when by is wall. */
   id: string | null;
   kind: 'nest' | 'solid' | null;
 }
@@ -21,9 +16,7 @@ export interface Ahead {
 export interface NearbySolid {
   id: string;
   kind: 'nest' | 'solid';
-  /** Distance from you to the nearest point of it. */
   distance: number;
-  /** Degrees off your heading, clockwise positive. 0 is straight ahead. */
   bearing: number;
 }
 
@@ -44,11 +37,6 @@ interface Probe {
   kind: 'nest' | 'solid' | null;
 }
 
-/**
- * What the heading runs into. One probe, without the nearby list or the
- * turn-by-turn sentences: an action that only reports the body does not need
- * to scan 24 headings.
- */
 export function aheadAt(
   x: number,
   z: number,
@@ -62,7 +50,6 @@ export function aheadAt(
   return probe(x, z, heading, height, blocks, inside);
 }
 
-/** Heading 0 faces world -Z. Clockwise is positive, matching the body's turn. */
 function headingStep(heading: number): { x: number; z: number } {
   const rad = (heading * Math.PI) / 180;
   return { x: Math.sin(rad), z: -Math.cos(rad) };
@@ -98,11 +85,9 @@ function wrap(degrees: number): number {
   return wrapped === -180 ? 180 : wrapped;
 }
 
-/** A clear place the body can pass to `go`. Heading 0 is world -Z. */
 export interface Waypoint {
   x: number;
   z: number;
-  /** Clear meters from where you stand to this point. */
   open: number;
 }
 
@@ -123,7 +108,6 @@ function waypoint(x: number, z: number, sample: WaySample): Waypoint {
   };
 }
 
-/** Clear places around the body. Used when a move is blocked. */
 export function waysAt(
   x: number,
   z: number,
@@ -135,7 +119,6 @@ export function waysAt(
   return waysFrom(x, z, heading, height, blocks, inside);
 }
 
-/** Points the agent can pass to `go`: which way is walkable, and how far. */
 function waysFrom(
   x: number,
   z: number,
@@ -177,11 +160,6 @@ function waysFrom(
   return chosen.map((sample) => waypoint(x, z, sample));
 }
 
-/**
- * What is in front of the body, which solids stand nearby, and which
- * places are walkable. The same probe covers every solid. Forward matches
- * the spider: yaw 0 faces world -Z.
- */
 export function senseBody(
   x: number,
   z: number,

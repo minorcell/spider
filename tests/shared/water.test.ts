@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vitest';
 import { SPIDER_BODY } from '../../src/shared/config.js';
 import { TERRAIN } from '../../src/shared/terrain.js';

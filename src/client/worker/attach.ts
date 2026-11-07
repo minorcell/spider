@@ -1,7 +1,6 @@
 import { createHandler, type Handler } from './handler.js';
 import type { JournalReply, JournalRequest } from './protocol.js';
 
-/** The slice of a DedicatedWorkerGlobalScope the transport needs. */
 export interface WorkerScope {
   onmessage: ((event: MessageEvent<JournalRequest>) => void) | null;
   postMessage(message: JournalReply): void;

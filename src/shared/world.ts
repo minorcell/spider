@@ -8,16 +8,12 @@ import { stepPhysics } from './sim/physics.js';
 import type { Block, EntityState, Footprint, WorldState } from './state.js';
 import { Terrain, TERRAIN } from './terrain.js';
 
-/** How close you must be, horizontally, to act on something. */
 export const REACH = 1.2;
 
-/** How far a look reaches when you do not ask for less. There is no farther look. */
 export const VIEW_DISTANCE = 16;
 
-/** How far you see once you have walked into grass. */
 export const GRASS_VIEW = 4.5;
 
-/** Something this far above or below you cannot be acted on. */
 export const REACH_Y = 1.6;
 
 const APPLES = 20;
@@ -27,7 +23,6 @@ const STONES = 10;
 const BOG_STONES = 5;
 const MIN_GAP = 3.4;
 
-/** Trees need room for a crown; stones only for the boulder and its satellites. */
 const TREE_GAP = 2.6;
 const STONE_GAP = 2.8;
 const BOG_GAP = 2.4;
@@ -35,24 +30,18 @@ const TREE_RADIUS = [0.32, 0.56] as const;
 const STONE_RADIUS = [0.5, 1.15] as const;
 const BOG_RADIUS = [0.55, 0.95] as const;
 
-/** Water fills every hollow below this level, so dry things are not placed in it. */
 const WATER = TERRAIN.water;
 
-/** A bog stone's foot sits this far under the water line, and no deeper. */
 const BOG_DEPTH_MIN = 0.05;
 const BOG_DEPTH_MAX = 0.34;
 
 interface ScatterOptions {
-  /** Center-to-center spacing from every earlier prop. */
   readonly gap?: number;
-  /** Circle footprint radius range. One value is drawn when a spot is accepted. */
   readonly radius?: readonly [number, number];
 }
 
-/** Quiet seconds after the ground is short an apple, before one more grows. */
 export const APPLE_EVERY = 24;
 
-/** Do not grow an apple into the spider's reach. */
 const SPROUT_CLEAR = 2.2;
 
 const SPROUT_TRIES = 40;
@@ -62,10 +51,6 @@ const quantize = (value: number): number => {
   return rounded === 0 ? 0 : rounded;
 };
 
-/**
- * Height to sit a prop on. A kind with no contact radius anchors at the center
- * sample. A round body uses the same sphere-on-ground rule as the solver.
- */
 export function restingY(
   terrain: { height(x: number, z: number): number },
   kind: string,
@@ -86,12 +71,6 @@ export function restingY(
   return groundSupport((px, pz) => terrain.height(px, pz), x, z, radius) + rest;
 }
 
-/**
- * A seeded island. You are born in the nest. Apples can be eaten or carried.
- * Grass can be walked through. The nest walls cannot.
- * The same seed builds the same place. Eaten apples stay gone; the island
- * grows a new one elsewhere once the ground has been short of them for a while.
- */
 export function createWorld(
   seed = Math.floor(Math.random() * 1_000_000_000),
   terrain = new Terrain(seed),
@@ -103,7 +82,6 @@ export function createWorld(
     { id: 'home', kind: 'nest', x: 0, y: 0.02, z: 0, stage: 0 },
     ...scatter(rng, terrain, placed, blocks, 'grass', GRASS, 6.5, { gap: 5 }),
     ...scatter(rng, terrain, placed, blocks, 'apple', APPLES, 6),
-    // 景色排在后面：先长草和苹果，树和石头再绕开已经放下的东西。
     ...scatter(rng, terrain, placed, blocks, 'tree', TREES, 8.5, {
       gap: TREE_GAP,
       radius: TREE_RADIUS,
@@ -130,11 +108,6 @@ export function createWorld(
   };
 }
 
-/**
- * Grow at most one apple when fewer than the original handful are on the ground.
- * Carried apples do not count: they have left the ground. The same seed and the
- * same number of tries put the new apple in the same place.
- */
 export function grow(world: WorldState, dt: number, avoid?: { x: number; z: number }): void {
   if (world.appleIn == null || world.sprouts == null) return;
   let onGround = 0;
@@ -154,7 +127,6 @@ export function grow(world: WorldState, dt: number, avoid?: { x: number; z: numb
     const spot = roll(rng, world.terrain, placed, world.blocks, 'apple', 6, avoid);
     if (!spot) continue;
     const settled = settle(world.terrain, world.blocks, 'apple', spot, placed, avoid);
-    /* v8 ignore next */
     if (!settled) continue;
     world.entities.push({
       id: nextPropId(world, 'apple'),
@@ -168,7 +140,6 @@ export function grow(world: WorldState, dt: number, avoid?: { x: number; z: numb
   }
 }
 
-/** The next `kind-N` id, looking at the ground and the back. Non-numeric suffixes are skipped. */
 export function nextPropId(world: Pick<WorldState, 'entities' | 'carrying'>, kind: string): string {
   const taken = [...world.entities, ...world.carrying].filter((item) => item.kind === kind);
   const next =
@@ -179,12 +150,6 @@ export function nextPropId(world: Pick<WorldState, 'entities' | 'carrying'>, kin
   return `${kind}-${next}`;
 }
 
-/**
- * The nest is a round earth bank with a door on -Z, the way you face at birth.
- * The visual mound is built from the same radius, so the wall you hit sits at
- * the foot of the slope. A ring of AABBs is the cheapest way to keep the
- * serialized world the same shape it always was.
- */
 export function nestBlocks(): Block[] {
   const segments = 22;
   const radius = 2.62;
@@ -213,7 +178,6 @@ export function nestBlocks(): Block[] {
   return blocks;
 }
 
-/** Walls of every fixed kind that declares one. The nest is added separately. */
 export function propBlocks(entities: readonly EntityState[]): Block[] {
   const blocks: Block[] = [];
   for (const entity of entities) {
@@ -239,7 +203,6 @@ export function propBlocks(entities: readonly EntityState[]): Block[] {
   return blocks;
 }
 
-/** Add scenery to a saved island without replacing its food, cargo, or landmarks. */
 export function populateScenery(
   world: WorldState,
   avoid: { x: number; z: number },
@@ -327,11 +290,6 @@ function scatter(
 const SETTLE_STEPS = 30;
 const SETTLE_DT = 1 / 15;
 
-/**
- * Where a placed thing comes to rest. Fixed kinds stay on the spot they were
- * given. Loose kinds run the same solver the island steps every frame, then
- * the spot is kept only if it is dry, on land, clear of walls and neighbors.
- */
 export function settle(
   terrain: { height(x: number, z: number): number },
   blocks: readonly Block[],
@@ -350,8 +308,6 @@ export function settle(
     id: 'settle',
     kind,
     x: start.x,
-    // Start in contact with the ground, not in the air above it; otherwise a
-    // zero horizontal velocity can look like rest before gravity gets a step.
     y: terrain.height(start.x, start.z),
     z: start.z,
     stage: 0,
@@ -375,7 +331,6 @@ export function settle(
     }
   };
   run();
-  // A crest is flat in the center and lower all around. Step off it and settle again.
   const lower = lowerAround(terrain, entity.x, entity.z);
   if (lower) {
     entity.x = lower.x;
@@ -389,9 +344,6 @@ export function settle(
 
   const x = quantize(entity.x);
   const z = quantize(entity.z);
-  // A wall stops a loose body while the ground under it is still steep.
-  // That is not a rest. A slope it is still crossing can be placed; the solver
-  // keeps moving it after the world starts.
   const slope = Math.hypot(
     terrain.height(x + 0.5, z) - terrain.height(x - 0.5, z),
     terrain.height(x, z + 0.5) - terrain.height(x, z - 0.5),
@@ -407,7 +359,6 @@ export function settle(
   return { x, z };
 }
 
-/** The lowest neighbor when the center is a crest. Null on a hollow or a plain. */
 function lowerAround(
   terrain: { height(x: number, z: number): number },
   x: number,
@@ -427,7 +378,6 @@ function lowerAround(
   return spot;
 }
 
-/** One scatter try. Null when the point is home, steep, crowded, or under the spider. */
 function roll(
   rng: () => number,
   terrain: { height(x: number, z: number): number },
@@ -453,7 +403,6 @@ function roll(
   if (placed.some((point) => Math.hypot(point.x - x, point.z - z) < gap)) return null;
   if (avoid && Math.hypot(avoid.x - x, avoid.z - z) < SPROUT_CLEAR) return null;
   const probe = kind === 'grass' ? 3.2 : 0.2;
-  /* v8 ignore next */
   if (blockedAt(x, z, blocks, probe)) return null;
   return { x, z };
 }

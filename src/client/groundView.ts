@@ -58,8 +58,6 @@ interface Swell {
   readonly steepness: number;
 }
 
-// Gerstner swells for ponds and the river. Peaks stay near a couple of centimeters
-// so the sheet stirs without rocking the shoreline.
 const SWELLS: readonly Swell[] = [
   { dirX: 1, dirZ: 0.15, amplitude: 0.016, wavelength: 16, steepness: 0.32 },
   { dirX: -0.2, dirZ: 1, amplitude: 0.011, wavelength: 9, steepness: 0.34 },
@@ -93,7 +91,6 @@ function gerstner(x: FloatNode, z: FloatNode, time: FloatNode) {
   return { dx, dy, dz };
 }
 
-/** Damped radial waves, one per recent hit. Fine rings are drawn as ink on top. */
 function radialWakes(x: FloatNode, z: FloatNode, time: FloatNode) {
   let sum: FloatNode = float(0);
   for (let i = 0; i < WAKE_COUNT; i++) {
@@ -110,7 +107,6 @@ function radialWakes(x: FloatNode, z: FloatNode, time: FloatNode) {
   return sum;
 }
 
-/** A dent under the body and a short trail behind it while it is moving. */
 function bow(x: FloatNode, z: FloatNode, time: FloatNode) {
   const dx = x.sub(waterBodyX);
   const dz = z.sub(waterBodyZ);
@@ -160,7 +156,6 @@ waterMaterial.userData.uTime = waterTime;
 const waterBase = new Color(PALETTE.water);
 const coverMaterial = new MeshLambertMaterial({ vertexColors: true, side: DoubleSide });
 
-/** Apply the current ecology tint without rebuilding the baked island. */
 export function setGroundLight(red: number, green: number, blue: number): void {
   waterShallow.value
     .copy(waterBase)
@@ -172,7 +167,6 @@ export function setGroundLight(red: number, green: number, blue: number): void {
 
 let waterClock = Number.NaN;
 
-/** Advance the swells, and record a body or a footstep when one is passed in. */
 export function tickWater(seconds: number, contact?: WaterContact): void {
   const dt =
     Number.isNaN(waterClock) || seconds < waterClock ? 0 : Math.min(0.05, seconds - waterClock);
@@ -181,12 +175,10 @@ export function tickWater(seconds: number, contact?: WaterContact): void {
   applyWaterMotion(seconds, dt, contact);
 }
 
-/** Paper island with low grass, moss and exposed soil. */
 export function buildIsland(height: (x: number, z: number) => number): Group {
   return islandGroup(islandBuffers(height));
 }
 
-/** Upload buffers the world worker already filled. */
 export function islandGroup(buffers: IslandBuffers): Group {
   const group = new Group();
   const geo = new BufferGeometry();
@@ -204,9 +196,6 @@ export function islandGroup(buffers: IslandBuffers): Group {
   vegetation.name = 'ground-cover';
   group.add(vegetation);
 
-  // One sheet at the water line. Every hollow below it shows the sheet;
-  // the ground above it hides the sheet, so the shoreline is the real contour.
-  // The grid is fine enough for the pond swells. Tighter ripples are ink rings.
   const water = new Mesh(
     new PlaneGeometry(TERRAIN.half * 2, TERRAIN.half * 2, 112, 112),
     waterMaterial,
@@ -219,7 +208,6 @@ export function islandGroup(buffers: IslandBuffers): Group {
   return group;
 }
 
-/** Plane in the x/z ground, displaced by `height`. The normal faces up. */
 export function groundGeometry(
   height: (x: number, z: number) => number,
   half: number,

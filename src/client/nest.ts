@@ -29,7 +29,6 @@ import { lineFrom, pushLine, tubeGeometry } from './models/geometry.js';
 
 const TAU = Math.PI * 2;
 
-/** A silk-lined retreat under roots and stones. The entrance faces -Z. */
 export function buildNest(): Group {
   const group = new Group();
   group.name = 'nest';
@@ -40,7 +39,6 @@ export function buildNest(): Group {
   const rings = 26;
   const angles = 128;
 
-  // The chamber floor and earth bank use the exact surface the feet stand on.
   for (let i = 0; i <= rings; i++) {
     const radius = 0.04 + (i / rings) * (NEST_RO - 0.04);
     for (let j = 0; j < angles; j++) {
@@ -69,8 +67,6 @@ export function buildNest(): Group {
   floor.name = 'chamber-floor';
   group.add(floor);
 
-  // Overlapping stones form an irregular shelter, with a broad open doorway.
-  // The rear stays open from above so the resident remains visible to the player.
   for (let k = 0; k < 15; k++) {
     const angle = NEST_DOOR + 0.68 + (k / 14) * (TAU - 1.36);
     const radius = nestRimRadius(angle);
@@ -88,7 +84,6 @@ export function buildNest(): Group {
     group.add(stone);
   }
 
-  // Long roots hold the rear bank, rather than the regular rings of a mound.
   for (let k = 0; k < 9; k++) {
     const angle = (k / 9) * TAU + 0.3;
     if (nestDoor(angle) > 0.2) continue;
@@ -112,8 +107,6 @@ export function buildNest(): Group {
     group.add(root);
   }
 
-  // A loose silk sheet lines the chamber, with threads drawn into the entrance.
-  // Ground-dwelling retreats do not need a radial orb web on the floor.
   for (let k = 0; k < 38; k++) {
     const z = -1.45 + (k / 37) * 2.7;
     const half = Math.sqrt(Math.max(0, 1 - (z / 1.65) ** 2)) * 1.25;
@@ -140,7 +133,6 @@ export function buildNest(): Group {
     ]);
   }
 
-  // Leaf litter and grass hide the outer join; the entrance remains clear.
   const styles = ['thin', 'seed', 'broad'] as const;
   for (let k = 0; k < 12; k++) {
     const angle = 0.1 + (k / 12) * TAU;

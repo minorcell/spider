@@ -16,7 +16,6 @@ function paintControl(node: HTMLElement): void {
   bindFocus(node);
 }
 
-/** A labeled text control, area, or select. The control keeps `name` for the form. */
 export function field(
   doc: Document,
   options: {

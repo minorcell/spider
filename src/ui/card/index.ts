@@ -2,7 +2,6 @@ import { h } from '../dom/index.js';
 import { paint } from '../style.js';
 import { border, color } from '../token.js';
 
-/** A bordered section with a title, a hint, and its body. */
 export function card(
   doc: Document,
   options: { title: string; hint: string; spaced?: boolean },

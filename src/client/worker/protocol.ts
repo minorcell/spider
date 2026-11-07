@@ -6,7 +6,6 @@ import type { MemoryView, MemoryWrite } from '../journal/diary.js';
 import type { ChatSession, Trace } from '../journal/session.js';
 import type { UsageCall, UsageCallMeta, UsageRange, UsageSnapshot } from '../journal/usage.js';
 
-/** The small, cloneable part of a Diary the page mirrors for synchronous reads. */
 export interface JournalState {
   date: string;
   session: ChatSession;

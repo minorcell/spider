@@ -9,7 +9,6 @@ const earth = new Color(PALETTE.earth);
 const stone = new Color(PALETTE.stone);
 const scratch = new Color();
 
-/** 地势越低越像水，越高越像石头；陡坡再压一点石头色。 */
 function terrainColor(h: number, slope: number, out: Color): void {
   if (h < -1) out.copy(water);
   else if (h < -0.2) out.copy(water).lerp(lowland, MathUtils.smoothstep(h, -1, -0.2));
@@ -28,7 +27,6 @@ export interface IslandBuffers {
   coverColor: Float32Array;
 }
 
-/** Terrain and low ground cover, baked off the main thread. */
 export function islandBuffers(
   height: (x: number, z: number) => number,
   half: number = TERRAIN.half,
@@ -40,7 +38,6 @@ export function islandBuffers(
   };
 }
 
-/** The displaced plane. Vertex order matches PlaneGeometry after rotateX(-90°). */
 export function groundAttributes(
   height: (x: number, z: number) => number,
   half: number,
@@ -90,9 +87,6 @@ export function groundAttributes(
   return { groundPosition: position, groundColor: color, groundIndex: index };
 }
 
-/** Small grass blades, moss rosettes and soil flecks share one colored mesh.
- * These are scenery, not grass entities, so they never change sight or collision.
- */
 function groundCover(
   height: (x: number, z: number) => number,
   half: number,
@@ -113,7 +107,6 @@ function groundCover(
       const x = gx + rand() * 0.85;
       const z = gz + rand() * 0.85;
       const y = height(x, z);
-      // Leave the coast, water and the nest interior clear.
       if (
         Math.hypot(x, z) > TERRAIN.island * 0.86 ||
         Math.hypot(x, z) < 4.6 ||
