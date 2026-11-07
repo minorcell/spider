@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.82",
+    "@mlc-ai/web-llm": "0.2.87",
     "ai": "^7.0.159",
     "idb": "^8.0.4",
     "three": "^0.187.0",

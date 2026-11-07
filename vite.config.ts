@@ -1,3 +1,4 @@
+import { offlinePlugin } from './build/offline.js';
 import { defineConfig } from 'vitest/config';
 
 const inferenceProxy = {
@@ -12,6 +13,8 @@ const inferenceProxy = {
 };
 
 export default defineConfig({
+  plugins: [offlinePlugin()],
+  worker: { format: 'es' },
   base: './',
   build: {
     outDir: 'dist/client',

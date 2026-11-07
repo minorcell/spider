@@ -11,6 +11,7 @@ const aiControl = vi.hoisted(() => ({
 vi.mock('ai', () => ({
   streamText: aiControl.streamText,
   isLoopFinished: aiControl.isLoopFinished,
+  isStepCount: (count: number) => ({ count }),
   tool: (config: unknown) => config,
 }));
 
@@ -374,4 +375,30 @@ describe('runAgent', () => {
     ]);
     expect(answer.calls[1].tools[0]).toMatchObject({ name: 'wait', ok: false });
   });
+});
+
+it('uses local transport with bounded basic actions and a fresh instruction context', async () => {
+  stream([{ type: 'text-delta', text: '好了' }]);
+  await runAgent({
+    goal: '前进一步',
+    session: fakeSession(),
+    settings: { ...settings, mode: 'local' },
+    chat: {
+      date: '2026-11-06',
+      summary: '',
+      turns: [{ role: 'user', text: 'old instruction' }],
+      updatedAt: 0,
+      digestedAt: 0,
+    },
+  });
+  expect(aiControl.providerOptions).toMatchObject({
+    baseURL: 'http://local.invalid/v1',
+    fetch: expect.any(Function),
+  });
+  expect(aiControl.provider).toHaveBeenCalledWith('Qwen3-0.6B-q4f16_1-MLC');
+  const options = aiControl.streamText.mock.calls[0][0];
+  expect(Object.keys(options.tools)).toEqual(['observe', 'go', 'set_height']);
+  expect(options.stopWhen).toEqual([{ until: 'finished' }, { count: 6 }]);
+  expect(options.maxRetries).toBe(0);
+  expect(JSON.stringify(options.messages)).not.toContain('old instruction');
 });

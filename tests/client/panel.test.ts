@@ -4,6 +4,7 @@ import { Diary } from '../../src/client/journal/diary.js';
 import { localDate, shiftDate } from '../../src/shared/dates.js';
 import * as usageLedger from '../../src/client/journal/usage.js';
 import { summarizeDiary } from '../../src/client/journal/summarize.js';
+import { useLocalBackend } from '../../src/client/local/backend.js';
 import { buildChrome } from '../../src/client/panel/chrome.js';
 import { readCloud, resetCloudSettings } from '../../src/client/cloud/settings.js';
 import { AUTO_MEMORY_IDLE_MS, mountPanel } from '../../src/client/panel.js';
@@ -2111,4 +2112,100 @@ describe('quick providers', () => {
     expect(providerStatus()).toBe('找到 3 个模型，点一个填进 Model ID。');
     expect(providerModels()).toHaveLength(3);
   });
+});
+
+it('switches between local inference and the saved API configuration', () => {
+  writePilot({ baseURL: 'https://example.com', model: 'cloud-model', apiKey: 'secret' });
+  mount();
+  clickButton('#settings-open');
+  field('localModel').checked = true;
+  field('localModel').dispatchEvent(new Event('change', { bubbles: true }));
+  expect(readPilot().mode).toBe('local');
+  expect(document.querySelector<HTMLElement>('#online-model-panel')!.hidden).toBe(true);
+  expect(document.querySelector('#pilot-model')!.textContent).toBe('');
+  expect(document.querySelector<HTMLInputElement>('#goal')!.placeholder).toContain('未就绪');
+  expect(field('apiKey').disabled).toBe(true);
+  clickButton('#settings-close');
+  clickButton('#settings-open');
+  expect(field('localModel').checked).toBe(true);
+  field('localModel').checked = false;
+  field('localModel').dispatchEvent(new Event('change', { bubbles: true }));
+  expect(readPilot().mode).toBeUndefined();
+  expect(field('apiKey').value).toBe('secret');
+  expect(field('apiKey').disabled).toBe(false);
+  expect(document.querySelector<HTMLElement>('#online-model-panel')!.hidden).toBe(false);
+});
+
+it('opens local setup on reload and preserves unsent input until the model is loaded', async () => {
+  vi.stubGlobal('navigator', { gpu: {} });
+  let loaded = false;
+  let finish!: () => void;
+  const load = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = () => {
+          loaded = true;
+          resolve();
+        };
+      }),
+  );
+  const unload = vi.fn(async () => {
+    loaded = false;
+  });
+  useLocalBackend({
+    localLoad: load,
+    localUnload: unload,
+    localStatus: async () => ({ ready: loaded, text: loaded ? '本机模型已就绪' : '正在加载模型' }),
+    localComplete: vi.fn(),
+    localCancel: vi.fn(),
+  });
+  writePilot({ ...readPilot(), mode: 'local' });
+  mount();
+  const dialog = document.querySelector<HTMLDialogElement>('#settings')!;
+  const goal = document.querySelector<HTMLInputElement>('#goal')!;
+  const badge = document.querySelector<HTMLElement>('#pilot-model')!;
+  expect(dialog.open).toBe(true);
+  expect(document.querySelector<HTMLElement>('#local-model-panel')!.hidden).toBe(false);
+  expect(badge.style.display).toBe('none');
+  expect(load).not.toHaveBeenCalled();
+  clickButton('#settings-close');
+  goal.value = '向前走一米';
+  submit();
+  expect(dialog.open).toBe(true);
+  expect(goal.value).toBe('向前走一米');
+  expect(loop.runAgent).not.toHaveBeenCalled();
+  expect(pendingNow()).toBeNull();
+  clickButton('#local-load');
+  await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
+  clickButton('#settings-close');
+  submit();
+  expect(dialog.open).toBe(true);
+  expect(goal.value).toBe('向前走一米');
+  expect(loop.runAgent).not.toHaveBeenCalled();
+  finish();
+  await vi.waitFor(() => expect(badge.textContent).toBe('Qwen3 · 本机'));
+  expect(goal.placeholder).toBe('让它去做一件事');
+  clickButton('#settings-close');
+  loop.runAgent.mockResolvedValue({ text: '好' });
+  submit();
+  await flush();
+  expect(loop.runAgent).toHaveBeenCalledOnce();
+  expect(dialog.open).toBe(false);
+  expect(goal.value).toBe('');
+  clickButton('#settings-open');
+  clickButton('#local-unload');
+  await vi.waitFor(() => expect(unload).toHaveBeenCalledOnce());
+  expect(badge.style.display).toBe('none');
+  clickButton('#settings-close');
+  goal.value = '右转';
+  submit();
+  expect(dialog.open).toBe(true);
+  expect(goal.value).toBe('右转');
+  expect(loop.runAgent).toHaveBeenCalledOnce();
+  load.mockRejectedValueOnce(new Error('download failed'));
+  clickButton('#local-load');
+  await vi.waitFor(() =>
+    expect(document.querySelector('#local-status')!.textContent).toContain('加载失败'),
+  );
+  expect(badge.style.display).toBe('none');
 });

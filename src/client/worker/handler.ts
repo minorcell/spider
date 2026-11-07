@@ -93,6 +93,21 @@ export function createHandler(): Handler {
   };
 
   return (request) => {
+    if (request.method.startsWith('local'))
+      return import('../local/runtime.js').then<unknown>(({ localRuntime }) => {
+        switch (request.method) {
+          case 'localLoad':
+            return localRuntime.localLoad();
+          case 'localStatus':
+            return localRuntime.localStatus();
+          case 'localUnload':
+            return localRuntime.localUnload();
+          case 'localComplete':
+            return localRuntime.localComplete(...request.args);
+          case 'localCancel':
+            return localRuntime.localCancel(...request.args);
+        }
+      });
     const snapshotsOnly = request.method.startsWith('snapshot');
     const task = (snapshotsOnly ? snapshotQueue : diaryQueue).then(() => dispatch(request));
     const settled = task.then(

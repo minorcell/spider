@@ -87,3 +87,19 @@ describe('summarizeDiary', () => {
     expect(note).toMatchObject({ line: '散文', summary: '散文', usage: reported });
   });
 });
+
+it('keeps diary inference on the local model when local mode is selected', async () => {
+  const provider = vi.fn(() => 'local-model');
+  compat.create.mockReturnValue(provider);
+  await summarizeDiary({
+    settings: { ...settings, mode: 'local' },
+    transcript: '我往前走了',
+    noted: '',
+    prior: '',
+  });
+  expect(compat.create).toHaveBeenCalledWith(
+    expect.objectContaining({ baseURL: 'http://local.invalid/v1', fetch: expect.any(Function) }),
+  );
+  expect(provider).toHaveBeenCalledWith('Qwen3-0.6B-q4f16_1-MLC');
+  expect(ai.generateText.mock.calls[0][0].maxRetries).toBe(0);
+});

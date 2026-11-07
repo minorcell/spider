@@ -8,6 +8,7 @@ import { dressChrome, paintTrace } from '../../ui/dress.js';
 import { bindFocus, paint } from '../../ui/style.js';
 import { border, color, font } from '../../ui/token.js';
 import { switchField } from '../../ui/switch/index.js';
+import { localModelPanel } from '../local/view.js';
 import { QUICK_PROVIDERS } from '../providers.js';
 import { REPO, REPO_STARS } from '../stars.js';
 
@@ -224,42 +225,49 @@ export function buildChrome(doc: Document): DocumentFragment {
   settingsForm.append(
     eyebrow(doc, '设置 / 模型'),
     pageTitle(doc, '模型'),
-    field(doc, {
-      label: 'Base URL',
-      name: 'baseURL',
-      kind: 'url',
-      autocomplete: 'off',
-      spellcheck: false,
-      placeholder: 'https://api.deepseek.com/v1',
-    }),
-    field(doc, {
-      label: 'Model ID',
-      name: 'model',
-      autocomplete: 'off',
-      spellcheck: false,
-      placeholder: 'deepseek-flash',
-    }),
-    field(doc, {
-      label: 'API Key',
-      name: 'apiKey',
-      kind: 'password',
-      autocomplete: 'off',
-      spellcheck: false,
-    }),
-    field(doc, {
-      label: '上下文长度 k token',
-      name: 'contextTokens',
-      kind: 'number',
-      min: 1,
-      step: 1,
-      placeholder: '不限制',
-    }),
-    switchField(doc, { name: 'thinking', label: '思考', checked: true }),
-    note(
+    switchField(doc, { name: 'localModel', label: '本机模型（实验性，可离线）' }),
+    localModelPanel(doc),
+    h(
       doc,
-      '填地址、模型名和 Key，兼容 OpenAI 的接口就行。三项都留下它才会走，留空就站着。地址填到 /v1 为止。底部可以少填几项：Ollama 在本机不用 Key，DeepSeek 只要 Key。上下文长度按 k 填：8 就是 8k token。留空则不限制。对话写到窗口的 80% 时，会自动收成一段摘要。关掉思考会让模型直接回答，模型不支持时可能报错。',
+      'div',
+      { id: 'online-model-panel' },
+      field(doc, {
+        label: 'Base URL',
+        name: 'baseURL',
+        kind: 'url',
+        autocomplete: 'off',
+        spellcheck: false,
+        placeholder: 'https://api.deepseek.com/v1',
+      }),
+      field(doc, {
+        label: 'Model ID',
+        name: 'model',
+        autocomplete: 'off',
+        spellcheck: false,
+        placeholder: 'deepseek-flash',
+      }),
+      field(doc, {
+        label: 'API Key',
+        name: 'apiKey',
+        kind: 'password',
+        autocomplete: 'off',
+        spellcheck: false,
+      }),
+      field(doc, {
+        label: '上下文长度 k token',
+        name: 'contextTokens',
+        kind: 'number',
+        min: 1,
+        step: 1,
+        placeholder: '不限制',
+      }),
+      switchField(doc, { name: 'thinking', label: '思考', checked: true }),
+      note(
+        doc,
+        '填地址、模型名和 Key，兼容 OpenAI 的接口就行。三项都留下它才会走，留空就站着。地址填到 /v1 为止。底部可以少填几项：Ollama 在本机不用 Key，DeepSeek 只要 Key。上下文长度按 k 填：8 就是 8k token。留空则不限制。对话写到窗口的 80% 时，会自动收成一段摘要。关掉思考会让模型直接回答，模型不支持时可能报错。',
+      ),
+      quick,
     ),
-    quick,
   );
   model.append(settingsForm);
 

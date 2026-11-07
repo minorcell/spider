@@ -1,3 +1,5 @@
+import { useLocalBackend } from '../local/backend.js';
+import type { LocalBackend, LocalMessage, LocalReply, LocalStatus } from '../local/types.js';
 import type { LanguageModelUsage } from 'ai';
 import type { WorldRecord } from '../../shared/sim/snapshot.js';
 import type { Journal } from '../journal/api.js';
@@ -20,7 +22,7 @@ interface Waiter {
   reject(error: Error): void;
 }
 
-export class WorkerJournal implements Journal, SnapshotStore {
+export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
   readonly #port: WorkerPort;
   readonly #pending = new Map<number, Waiter>();
   #seq = 0;
@@ -31,6 +33,26 @@ export class WorkerJournal implements Journal, SnapshotStore {
     this.#port = port;
     port.onmessage = (event) => this.#receive(event.data);
     port.onerror = (event) => this.#fail(new Error(event.message));
+  }
+
+  localLoad(): Promise<void> {
+    return this.#call<'localLoad'>((id) => ({ id, method: 'localLoad' }));
+  }
+  localStatus(): Promise<LocalStatus> {
+    return this.#call<'localStatus'>((id) => ({ id, method: 'localStatus' }));
+  }
+  localUnload(): Promise<void> {
+    return this.#call<'localUnload'>((id) => ({ id, method: 'localUnload' }));
+  }
+  localComplete(id: string, messages: LocalMessage[]): Promise<LocalReply> {
+    return this.#call<'localComplete'>((seq) => ({
+      id: seq,
+      method: 'localComplete',
+      args: [id, messages],
+    }));
+  }
+  localCancel(id: string): Promise<void> {
+    return this.#call<'localCancel'>((seq) => ({ id: seq, method: 'localCancel', args: [id] }));
   }
 
   async open(): Promise<void> {
@@ -207,5 +229,6 @@ export async function createWorkerJournal(): Promise<WorkerJournal> {
   const worker = new Worker(new URL('./journal.worker.ts', import.meta.url), { type: 'module' });
   const journal = new WorkerJournal(worker as unknown as WorkerPort);
   await journal.open();
+  useLocalBackend(journal);
   return journal;
 }

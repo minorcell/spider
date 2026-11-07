@@ -1,3 +1,4 @@
+import { bindLocalPanel } from './local/panel.js';
 import { closeDialog, showDialog } from '../ui/dialog/index.js';
 import { h } from '../ui/dom/index.js';
 import { placeTail } from '../ui/dress.js';
@@ -131,12 +132,18 @@ export function mountPanel(
     touched = true;
   });
 
+  let localReady = false;
   const paint = (): void => {
     const settings = readPilot();
-    const ready = pilotReady(settings);
-    model.textContent = ready ? settings.model : '';
+    const local = settings.mode === 'local';
+    const ready = local ? localReady : pilotReady(settings);
+    model.textContent = ready ? (local ? 'Qwen3 · 本机' : settings.model) : '';
     model.style.display = ready ? '' : 'none';
-    goal.placeholder = ready ? '让它去做一件事' : '未填写模型';
+    goal.placeholder = ready
+      ? '让它去做一件事'
+      : local
+        ? '本机模型未就绪，发送后打开加载面板'
+        : '未填写模型';
   };
 
   const touch = (): void => {
@@ -182,6 +189,11 @@ export function mountPanel(
     stage.voice();
   };
 
+  const localPanel = bindLocalPanel(doc, (ready) => {
+    localReady = ready;
+    paint();
+  });
+
   const field = (name: string): HTMLInputElement => {
     const element = settingsForm.elements.namedItem(name);
     if (!(element instanceof HTMLInputElement)) throw new Error(`Missing settings field ${name}`);
@@ -198,12 +210,14 @@ export function mountPanel(
     apiKey: string;
     contextTokens: string;
     thinking: boolean;
+    localModel: boolean;
   } => ({
     baseURL: field('baseURL').value,
     model: field('model').value,
     apiKey: field('apiKey').value,
     contextTokens: field('contextTokens').value,
     thinking: field('thinking').checked,
+    localModel: field('localModel').checked,
   });
   let shownFields: ReturnType<typeof modelFields> | null = null;
 
@@ -217,6 +231,9 @@ export function mountPanel(
   };
 
   const fill = (settings: PilotSettings): void => {
+    field('localModel').checked = settings.mode === 'local';
+    reflectSwitch(field('localModel'));
+    localPanel(settings.mode === 'local');
     field('baseURL').value = settings.baseURL;
     field('model').value = settings.model;
     field('apiKey').value = settings.apiKey;
@@ -358,6 +375,11 @@ export function mountPanel(
     }
     if (values.contextTokens !== shownFields.contextTokens) {
       next.contextTokens = numberOrNull(values.contextTokens);
+      changed = true;
+    }
+    if (values.localModel !== shownFields.localModel) {
+      next.mode = values.localModel ? 'local' : 'api';
+      localPanel(values.localModel);
       changed = true;
     }
     if (values.thinking !== shownFields.thinking) {
@@ -590,6 +612,11 @@ export function mountPanel(
       return;
     }
     const settings = readPilot();
+    if (settings.mode === 'local' && !localReady) {
+      fill(settings);
+      showPage('model');
+      return;
+    }
     if (!pilotReady(settings)) {
       show('还没有填写模型', 'note');
       fill(settings);
@@ -652,4 +679,8 @@ export function mountPanel(
   });
 
   paint();
+  if (readPilot().mode === 'local') {
+    fill(readPilot());
+    showPage('model');
+  }
 }

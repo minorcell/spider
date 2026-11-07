@@ -1,3 +1,4 @@
+import { LOCAL_MODEL } from '../local/types.js';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, type LanguageModelUsage } from 'ai';
 import { apiKeyFor } from '../providers.js';
@@ -15,13 +16,16 @@ export async function summarizeDiary(input: {
   noted: string;
   prior: string;
 }): Promise<DiaryNote> {
+  const local = input.settings.mode === 'local';
   const provider = createOpenAICompatible({
     name: 'openai-compatible',
-    baseURL: input.settings.baseURL,
+    baseURL: local ? 'http://local.invalid/v1' : input.settings.baseURL,
+    ...(local ? { fetch: (await import('../local/fetch.js')).localFetch } : {}),
     apiKey: apiKeyFor(input.settings),
   });
   const result = await generateText({
-    model: provider(input.settings.model),
+    model: provider(local ? LOCAL_MODEL : input.settings.model),
+    ...(local ? { maxRetries: 0 } : {}),
     system:
       '你在整理一只蜘蛛某一天的日记。只根据给出的对话，不要编造。不要写坐标。用 JSON 回答，不要写别的。',
     prompt: [

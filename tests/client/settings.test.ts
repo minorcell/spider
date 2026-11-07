@@ -3,6 +3,7 @@ import {
   contextTokensOf,
   flushSettings,
   pilotReady,
+  modelIdOf,
   readPilot,
   reasoningOf,
   resetPilotStore,
@@ -363,4 +364,32 @@ describe('persistent settings', () => {
     await restoring;
     expect(readPilot()).toEqual(EMPTY);
   });
+});
+
+it('opts into local inference without credentials and restores the saved API setup', async () => {
+  writePilot({
+    baseURL: 'https://example.com',
+    model: 'cloud-model',
+    apiKey: 'secret',
+    mode: 'local',
+  });
+  await flushSettings();
+  resetPilotStore();
+  expect(readPilot().mode).toBe('local');
+  expect(pilotReady({ baseURL: '', model: '', apiKey: '', mode: 'local' })).toBe(true);
+  writePilot({ ...readPilot(), autoMemory: true });
+  expect(readPilot().mode).toBe('local');
+  writePilot({ ...readPilot(), mode: 'api' });
+  expect(readPilot()).toMatchObject({
+    baseURL: 'https://example.com',
+    model: 'cloud-model',
+    apiKey: 'secret',
+  });
+  expect(readPilot().mode).toBeUndefined();
+});
+
+it('attributes local usage independently of saved API credentials', () => {
+  const cloud = { baseURL: 'url', model: 'cloud', apiKey: 'key' };
+  expect(modelIdOf(cloud)).toBe('cloud');
+  expect(modelIdOf({ ...cloud, mode: 'local' })).toBe('Qwen3-0.6B-q4f16_1-MLC');
 });

@@ -248,3 +248,35 @@ describe('journal worker handler', () => {
     expect(await handle({ id: 6, method: 'snapshotRead' })).toBeNull();
   });
 });
+
+it('allows model status and cancellation while a local inference is pending', async () => {
+  const { localRuntime } = await import('../../../src/client/local/runtime.js');
+  const load = vi.spyOn(localRuntime, 'localLoad').mockResolvedValue();
+  vi.spyOn(localRuntime, 'localStatus').mockResolvedValue({ ready: true, text: 'ready' });
+  let finish!: (value: { text: string; input: number; output: number }) => void;
+  const complete = vi.spyOn(localRuntime, 'localComplete').mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const cancel = vi.spyOn(localRuntime, 'localCancel').mockResolvedValue();
+  const unload = vi.spyOn(localRuntime, 'localUnload').mockResolvedValue();
+  const handle = createHandler();
+  await handle({ id: 1, method: 'localLoad' });
+  expect(load).toHaveBeenCalledOnce();
+  const pending = handle({ id: 2, method: 'localComplete', args: ['one', []] });
+  await vi.waitFor(() => expect(complete).toHaveBeenCalled());
+  expect(await handle({ id: 3, method: 'localStatus' })).toEqual({ ready: true, text: 'ready' });
+  await handle({ id: 4, method: 'localCancel', args: ['one'] });
+  expect(cancel).toHaveBeenCalledWith('one');
+  finish({ text: 'ok', input: 1, output: 1 });
+  await pending;
+  await handle({ id: 5, method: 'localUnload' });
+  expect(unload).toHaveBeenCalledOnce();
+  await handle({
+    id: 6,
+    method: 'record',
+    args: ['走', '好了', [], { ...SETTINGS, mode: 'local' }],
+  });
+});

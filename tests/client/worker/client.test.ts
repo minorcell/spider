@@ -258,3 +258,27 @@ describe('WorkerJournal', () => {
     expect(FakeWorker.last?.options).toEqual({ type: 'module' });
   });
 });
+
+it('routes local model lifecycle and inference through the existing worker', async () => {
+  const port = new Port();
+  const journal = new WorkerJournal(port);
+  await call(port, () => journal.localLoad(), undefined);
+  expect(port.last.method).toBe('localLoad');
+  expect(await call(port, () => journal.localStatus(), { ready: true, text: 'ready' })).toEqual({
+    ready: true,
+    text: 'ready',
+  });
+  const messages = [{ role: 'user' as const, content: '走' }];
+  expect(
+    await call(port, () => journal.localComplete('one', messages), {
+      text: 'ok',
+      input: 1,
+      output: 1,
+    }),
+  ).toMatchObject({ text: 'ok' });
+  expect(port.last).toMatchObject({ method: 'localComplete', args: ['one', messages] });
+  await call(port, () => journal.localCancel('one'), undefined);
+  expect(port.last).toMatchObject({ method: 'localCancel', args: ['one'] });
+  await call(port, () => journal.localUnload(), undefined);
+  expect(port.last.method).toBe('localUnload');
+});

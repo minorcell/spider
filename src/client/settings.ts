@@ -1,3 +1,4 @@
+import { LOCAL_MODEL } from './local/types.js';
 import { openSpiderDb, type PreferenceRecord } from './journal/db.js';
 import { providerById, providerNeedsKey } from './providers.js';
 import { PersistentCache } from './store/cache.js';
@@ -6,6 +7,7 @@ const STORAGE_KEY = 'spider.pilot';
 const OPEN_MS = 1500;
 
 export interface PilotSettings {
+  mode?: 'api' | 'local';
   provider: string;
   baseURL: string;
   model: string;
@@ -16,6 +18,7 @@ export interface PilotSettings {
 }
 
 export type PilotInput = {
+  mode?: 'api' | 'local';
   provider?: string;
   baseURL: string;
   model: string;
@@ -77,6 +80,7 @@ function parsePilot(raw: unknown): PilotSettings | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const parsed = raw as Partial<PilotSettings>;
   return {
+    ...(parsed.mode === 'local' ? { mode: 'local' as const } : {}),
     provider: knownProvider(parsed.provider, 'custom'),
     baseURL: typeof parsed.baseURL === 'string' ? parsed.baseURL : '',
     model: typeof parsed.model === 'string' ? parsed.model : '',
@@ -117,6 +121,7 @@ export function readPilot(): PilotSettings {
 export function writePilot(settings: PilotInput): void {
   const previous = readPilot();
   const next: PilotSettings = {
+    ...((settings.mode ?? previous.mode) === 'local' ? { mode: 'local' as const } : {}),
     provider:
       settings.provider === undefined
         ? previous.provider
@@ -174,9 +179,10 @@ export function resetPilotStore(): void {
 
 export function pilotReady(settings: PilotInput): boolean {
   return (
-    settings.baseURL !== '' &&
-    settings.model !== '' &&
-    (settings.apiKey !== '' || !providerNeedsKey(settings.provider))
+    settings.mode === 'local' ||
+    (settings.baseURL !== '' &&
+      settings.model !== '' &&
+      (settings.apiKey !== '' || !providerNeedsKey(settings.provider)))
   );
 }
 
@@ -198,4 +204,9 @@ function positiveInt(value: unknown): number | null {
     typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
   if (!Number.isInteger(number) || number <= 0) return null;
   return number;
+}
+
+/** Keep local usage separate from the saved API model's account. */
+export function modelIdOf(settings: PilotInput): string {
+  return settings.mode === 'local' ? LOCAL_MODEL : settings.model;
 }
