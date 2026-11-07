@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseInlineCalls } from '../../src/client/agent/inline.js';
 import { islandGroup } from '../../src/client/groundView.js';
 import {
   blankSession,
@@ -69,6 +70,17 @@ function recordOf(seed = 7): WorldRecord {
 
 const record = recordOf();
 const wire = JSON.stringify(record);
+
+describe('local model message budgets', () => {
+  it('rejects 25 incomplete 4 KiB replies without a quadratic brace scan', () => {
+    const malformed = '{'.repeat(4096);
+    expect(
+      bestOf(5, () => {
+        for (let i = 0; i < 25; i++) parseInlineCalls(malformed, ['observe', 'go', 'set_height']);
+      }),
+    ).toBeLessThan(25);
+  });
+});
 
 describe('frame and boot budgets', () => {
   it('builds a seeded island in under 120 ms', () => {

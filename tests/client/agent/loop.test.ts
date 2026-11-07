@@ -25,6 +25,7 @@ vi.mock('@ai-sdk/openai-compatible', () => ({
 }));
 
 import { runAgent, type AgentEvent } from '../../../src/client/agent/loop.js';
+import { useLocalBackend } from '../../../src/client/local/backend.js';
 
 function stream(parts: unknown[], usage: unknown = undefined, failUsage = false): void {
   aiControl.streamText.mockReturnValue({
@@ -52,6 +53,14 @@ const settings = {
 };
 
 beforeEach(() => {
+  useLocalBackend({
+    localLoad: vi.fn(),
+    localUnload: vi.fn(),
+    localStatus: vi.fn(),
+    localComplete: vi.fn(),
+    localCancel: vi.fn(),
+    localSession: vi.fn().mockResolvedValue(undefined),
+  });
   aiControl.streamText.mockReset();
   aiControl.providerOptions = null;
   aiControl.provider = null;

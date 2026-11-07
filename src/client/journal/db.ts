@@ -61,6 +61,7 @@ export interface UsageCall {
   output: { total: number; text: number; reasoning: number };
   tools: UsageTool[];
   timing: { ttftMs?: number; responseMs?: number; stepMs?: number };
+  local?: import('../local/types.js').LocalMetrics;
   finishReason: string;
 }
 

@@ -2,7 +2,10 @@ import { Diary } from '../journal/diary.js';
 import { dbSnapshotStore, type SnapshotStore } from '../journal/store.js';
 import type { JournalRequest, JournalState } from './protocol.js';
 
-export type Handler = (request: JournalRequest) => Promise<unknown>;
+export type Handler = (
+  request: JournalRequest,
+  onDelta?: (text: string) => void,
+) => Promise<unknown>;
 
 function stateOf(diary: Diary): JournalState {
   return {
@@ -92,10 +95,12 @@ export function createHandler(): Handler {
     }
   };
 
-  return (request) => {
+  return (request, onDelta) => {
     if (request.method.startsWith('local'))
       return import('../local/runtime.js').then<unknown>(({ localRuntime }) => {
         switch (request.method) {
+          case 'localSession':
+            return localRuntime.localSession!(...request.args);
           case 'localLoad':
             return localRuntime.localLoad();
           case 'localStatus':
@@ -103,7 +108,12 @@ export function createHandler(): Handler {
           case 'localUnload':
             return localRuntime.localUnload();
           case 'localComplete':
-            return localRuntime.localComplete(...request.args);
+            return localRuntime.localComplete(
+              request.args[0],
+              request.args[1],
+              request.args[2],
+              onDelta,
+            );
           case 'localCancel':
             return localRuntime.localCancel(...request.args);
         }

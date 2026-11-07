@@ -20,7 +20,9 @@ export async function summarizeDiary(input: {
   const provider = createOpenAICompatible({
     name: 'openai-compatible',
     baseURL: local ? 'http://local.invalid/v1' : input.settings.baseURL,
-    ...(local ? { fetch: (await import('../local/fetch.js')).localFetch } : {}),
+    ...(local
+      ? { fetch: (await import('../local/fetch.js')).createLocalFetch({ kind: 'summary' }) }
+      : {}),
     apiKey: apiKeyFor(input.settings),
   });
   const result = await generateText({

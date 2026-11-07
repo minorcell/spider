@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { blankSession } from '../../../src/client/journal/session.js';
+import { onLocalBusy } from '../../../src/client/local/activity.js';
 import {
   createWorkerJournal,
   WorkerJournal,
@@ -262,6 +263,8 @@ describe('WorkerJournal', () => {
 it('routes local model lifecycle and inference through the existing worker', async () => {
   const port = new Port();
   const journal = new WorkerJournal(port);
+  await call(port, () => journal.localSession('turn', true), undefined);
+  expect(port.last).toMatchObject({ method: 'localSession', args: ['turn', true] });
   await call(port, () => journal.localLoad(), undefined);
   expect(port.last.method).toBe('localLoad');
   expect(await call(port, () => journal.localStatus(), { ready: true, text: 'ready' })).toEqual({
@@ -281,4 +284,23 @@ it('routes local model lifecycle and inference through the existing worker', asy
   expect(port.last).toMatchObject({ method: 'localCancel', args: ['one'] });
   await call(port, () => journal.localUnload(), undefined);
   expect(port.last.method).toBe('localUnload');
+});
+
+it('routes only matching stream deltas and resets rendering activity on worker failure', async () => {
+  const port = new Port();
+  const journal = new WorkerJournal(port);
+  const delta = vi.fn();
+  const activity = vi.fn();
+  const stop = onLocalBusy(activity);
+  const pending = journal.localComplete('one', [], { kind: 'action' }, delta);
+  expect(port.last).toMatchObject({ stream: true, args: ['one', [], { kind: 'action' }] });
+  port.respond({ event: 'localActivity', busy: true });
+  port.respond({ event: 'localDelta', id: port.last.id + 1, text: 'other request' });
+  port.respond({ event: 'localDelta', id: port.last.id, text: '答：好了' });
+  expect(delta).toHaveBeenCalledExactlyOnceWith('答：好了');
+  const failed = expect(pending).rejects.toThrow('worker failed');
+  port.onerror?.({ message: 'worker failed' } as ErrorEvent);
+  await failed;
+  expect(activity.mock.calls.map((call) => call[0])).toEqual([false, true, false]);
+  stop();
 });

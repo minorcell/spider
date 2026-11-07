@@ -264,6 +264,8 @@ it('allows model status and cancellation while a local inference is pending', as
   const unload = vi.spyOn(localRuntime, 'localUnload').mockResolvedValue();
   const handle = createHandler();
   await handle({ id: 1, method: 'localLoad' });
+  await handle({ id: 7, method: 'localSession', args: ['turn', true] });
+  await handle({ id: 8, method: 'localSession', args: ['turn', false] });
   expect(load).toHaveBeenCalledOnce();
   const pending = handle({ id: 2, method: 'localComplete', args: ['one', []] });
   await vi.waitFor(() => expect(complete).toHaveBeenCalled());

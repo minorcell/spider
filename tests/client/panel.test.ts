@@ -1410,6 +1410,15 @@ describe('usage dialog', () => {
             model: { provider: 'openai-compatible', modelId: 'deepseek-chat' },
             usage: reported,
             finishReason: 'tool-calls',
+            providerMetadata: {
+              webllm: {
+                queueMs: 2,
+                generationMs: 30,
+                firstTokenMs: 5,
+                prefillTokensPerSecond: 100,
+                decodeTokensPerSecond: 25,
+              },
+            },
             toolCalls: [{ toolCallId: 't1', toolName: 'observe', input: {} }],
             toolResults: [{ toolCallId: 't1', output: { ok: true } }],
             performance: {
@@ -1476,6 +1485,12 @@ describe('usage dialog', () => {
     const values = [...document.querySelectorAll('.kpi-value')].map((node) => node.textContent);
     expect(values[0]).toBe('3');
     expect(document.querySelectorAll('.request')).toHaveLength(3);
+    for (const summary of document.querySelectorAll('.request summary')) {
+      summary.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+    await flush();
+    expect(document.querySelector('#usage')!.textContent).toContain('本机排队');
+    expect(document.querySelector('#usage')!.textContent).toContain('100.0 / 25.0 token/s');
   });
 
   it('keeps tokens from a stopped reply', async () => {

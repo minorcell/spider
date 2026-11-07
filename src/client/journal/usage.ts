@@ -21,6 +21,7 @@ export interface UsageCallMeta {
 }
 
 export interface StepUsageSource {
+  providerMetadata?: Record<string, Record<string, unknown>>;
   callId?: string;
   stepNumber?: number;
   model?: { provider?: string; modelId?: string };
@@ -289,6 +290,9 @@ export function usageCallFromStep(
       stepMs: optionalCount(step.performance?.stepTimeMs),
     },
     finishReason: step.finishReason ?? '',
+    ...(localMetrics(step.providerMetadata?.webllm)
+      ? { local: localMetrics(step.providerMetadata?.webllm) }
+      : {}),
   };
 }
 
@@ -408,7 +412,30 @@ function normalizeCall(value: UsageCall): UsageCall {
       stepMs: optionalCount(timing.stepMs),
     },
     finishReason: value.finishReason ?? '',
+    ...(localMetrics(value.local) ? { local: localMetrics(value.local) } : {}),
   };
+}
+
+function localMetrics(value: unknown): UsageCall['local'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const metrics = value as Record<string, unknown>;
+  const keys = [
+    'queueMs',
+    'generationMs',
+    'firstTokenMs',
+    'prefillTokensPerSecond',
+    'decodeTokensPerSecond',
+  ] as const;
+  if (
+    !keys.every(
+      (key) =>
+        typeof metrics[key] === 'number' && Number.isFinite(metrics[key]) && metrics[key] >= 0,
+    )
+  )
+    return undefined;
+  return Object.fromEntries(
+    keys.map((key) => [key, metrics[key]]),
+  ) as unknown as UsageCall['local'];
 }
 
 function normalizeTool(tool: UsageTool): UsageTool {

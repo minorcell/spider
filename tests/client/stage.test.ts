@@ -5,6 +5,7 @@ import { Spider as RealSpider } from '../../src/shared/sim/Spider.js';
 import type { EntityState, WorldState } from '../../src/shared/state.js';
 import { Stage } from '../../src/client/stage.js';
 import { flat } from '../helpers.js';
+import { setLocalBusy } from '../../src/client/local/activity.js';
 import { ResizeObserverStub } from '../stubs.js';
 
 const threeControl = vi.hoisted(() => ({
@@ -130,6 +131,26 @@ beforeEach(() => {
 });
 
 describe('Stage setup', () => {
+  it('reduces inference rendering without slowing simulation and restores quality afterward', () => {
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 2 });
+    const stage = new Stage(makeHost(), new RealSpider());
+    const step = vi.fn();
+    stage.bind(step, () => makeWorld());
+    stage.start();
+    const draw = renderer();
+    const start = performance.now();
+    setLocalBusy(true);
+    expect(draw.setPixelRatio).toHaveBeenLastCalledWith(1);
+    for (const dt of [0, 16, 34, 50, 68]) draw.loop!(start + dt);
+    expect(step).toHaveBeenCalledTimes(5);
+    expect(draw.render).toHaveBeenCalledTimes(3);
+    setLocalBusy(false);
+    expect(draw.setPixelRatio).toHaveBeenLastCalledWith(2);
+    draw.loop!(start + 84);
+    expect(draw.render).toHaveBeenCalledTimes(4);
+    stage.dispose();
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 1 });
+  });
   it('shows the pack at night only while the spider leaves the lamp on', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 0, 1, 23));

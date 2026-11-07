@@ -29,6 +29,7 @@ vi.mock('@mlc-ai/web-llm', () => ({
   },
 }));
 import { createLocalRuntime } from '../../../src/client/local/runtime.js';
+import { onLocalBusy } from '../../../src/client/local/activity.js';
 const reply = {
   choices: [{ message: { content: '<think>hidden</think> done' } }],
   usage: { prompt_tokens: 5, completion_tokens: 2 },
@@ -36,6 +37,7 @@ const reply = {
 beforeEach(() => {
   vi.resetAllMocks();
   mock.unload.mockResolvedValue(undefined);
+  mock.interrupt.mockResolvedValue(undefined);
   mock.create.mockResolvedValue(reply);
 });
 it('loads once, shares the model, strips reasoning and releases GPU memory without deleting caches', async () => {
@@ -46,12 +48,235 @@ it('loads once, shares the model, strips reasoning and releases GPU memory witho
   await Promise.all([runtime.localLoad(), runtime.localLoad()]);
   expect(mock.reload).toHaveBeenCalledTimes(1);
   expect((await runtime.localStatus()).ready).toBe(true);
-  expect(await runtime.localComplete('one', [])).toEqual({ text: 'done', input: 5, output: 2 });
+  expect(await runtime.localComplete('one', [])).toMatchObject({
+    text: 'done',
+    input: 5,
+    output: 2,
+    rawText: '<think>hidden</think> done',
+  });
   mock.create.mockResolvedValueOnce({ ...reply, choices: [{ message: { content: null } }] });
   expect((await runtime.localComplete('empty', [])).text).toBe('');
   await runtime.localUnload();
   expect(mock.unload).toHaveBeenCalledTimes(1);
   expect((await runtime.localStatus()).ready).toBe(false);
+});
+
+it('streams token deltas and returns actual engine timings and the unmodified reply', async () => {
+  const runtime = createLocalRuntime();
+  await runtime.localLoad();
+  mock.create.mockResolvedValueOnce(
+    (async function* () {
+      yield { choices: [{ delta: { content: '答：到了' }, finish_reason: null }] };
+      yield {
+        choices: [{ delta: {}, finish_reason: 'stop' }],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 4,
+          extra: { time_to_first_token_s: 0.2, prefill_tokens_per_s: 500, decode_tokens_per_s: 30 },
+        },
+      };
+    })(),
+  );
+  const delta = vi.fn();
+  const result = await runtime.localComplete('stream', [], { kind: 'action' }, delta);
+  expect(delta).toHaveBeenCalledWith('答：到了');
+  expect(result).toMatchObject({
+    rawText: '答：到了',
+    input: 10,
+    output: 4,
+    metrics: { firstTokenMs: 200, prefillTokensPerSecond: 500, decodeTokensPerSecond: 30 },
+  });
+  expect(mock.create.mock.calls[0][0]).toMatchObject({
+    stream: true,
+    stream_options: { include_usage: true },
+  });
+});
+
+it('preempts a summary, keeps action history together, then retries the summary', async () => {
+  const runtime = createLocalRuntime();
+  await runtime.localLoad();
+  let finish!: (value: typeof reply) => void;
+  mock.create.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const summary = runtime.localComplete('summary', [{ role: 'user', content: 'diary' }], {
+    kind: 'summary',
+  });
+  await vi.waitFor(() => expect(finish).toBeDefined());
+  await runtime.localSession!('turn', true);
+  const action = runtime.localComplete('action', [{ role: 'user', content: 'action' }]);
+  expect(mock.interrupt).toHaveBeenCalledOnce();
+  finish(reply);
+  await action;
+  expect(mock.create).toHaveBeenCalledTimes(2);
+  await runtime.localComplete('next-tool', []);
+  expect(mock.create).toHaveBeenCalledTimes(3);
+  await runtime.localSession!('turn', false);
+  await summary;
+  expect(mock.create).toHaveBeenCalledTimes(4);
+  expect(mock.create.mock.calls[3][0].messages[0].content).toBe('diary');
+});
+
+it('restores rendering during tool execution even while the action session reserves the model', async () => {
+  const runtime = createLocalRuntime();
+  await runtime.localLoad();
+  const activity = vi.fn();
+  const stop = onLocalBusy(activity);
+  await runtime.localSession!('turn', true);
+  expect(activity.mock.calls.map((call) => call[0])).toEqual([false]);
+  let finish!: (value: typeof reply) => void;
+  mock.create.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const first = runtime.localComplete('observe', []);
+  expect(activity).toHaveBeenLastCalledWith(true);
+  finish(reply);
+  await first;
+  await vi.waitFor(() => expect(activity).toHaveBeenLastCalledWith(false));
+  // The spider is now executing a tool. A queued diary must not reduce clarity.
+  const summary = runtime.localComplete('diary', [], { kind: 'summary' });
+  expect(activity).toHaveBeenLastCalledWith(false);
+  expect(mock.create).toHaveBeenCalledTimes(1);
+  mock.create.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const next = runtime.localComplete('next', []);
+  expect(activity).toHaveBeenLastCalledWith(true);
+  finish(reply);
+  await next;
+  await vi.waitFor(() => expect(activity).toHaveBeenLastCalledWith(false));
+  await runtime.localSession!('turn', false);
+  await summary;
+  stop();
+});
+
+it('does not retry a cancelled summary after preemption', async () => {
+  const runtime = createLocalRuntime();
+  await runtime.localLoad();
+  let finish!: (value: typeof reply) => void;
+  mock.create.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const summary = runtime.localComplete('summary', [], { kind: 'summary' });
+  const rejected = expect(summary).rejects.toMatchObject({ name: 'AbortError' });
+  await vi.waitFor(() => expect(finish).toBeDefined());
+  const action = runtime.localComplete('action', []);
+  await runtime.localCancel('summary');
+  finish(reply);
+  await action;
+  await rejected;
+  expect(mock.create).toHaveBeenCalledTimes(2);
+});
+
+it('coalesces stream chunks and tolerates a missing optional usage report', async () => {
+  const runtime = createLocalRuntime();
+  await runtime.localLoad();
+  let now = 0;
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
+  mock.create.mockResolvedValueOnce(
+    (async function* () {
+      now = 5;
+      yield { choices: [{ delta: { content: '答：' } }] };
+      now = 10;
+      yield { choices: [{ delta: { content: '好了' } }] };
+      now = 15;
+      yield { choices: [] };
+    })(),
+  );
+  const delta = vi.fn();
+  const result = await runtime.localComplete('chunks', [], {}, delta);
+  expect(delta.mock.calls.map((call) => call[0])).toEqual(['答：', '好了']);
+  expect(result).toMatchObject({ input: 0, output: 0, metrics: { firstTokenMs: 5 } });
+});
+
+it('drops buffered stream chunks when cancelled between engine steps', async () => {
+  const runtime = createLocalRuntime();
+  await runtime.localLoad();
+  vi.spyOn(performance, 'now').mockReturnValue(0);
+  mock.create.mockResolvedValueOnce(
+    (async function* () {
+      yield { choices: [{ delta: { content: 'first' } }] };
+      yield { choices: [{ delta: { content: 'buffered' } }] };
+      await runtime.localCancel('cancel-stream');
+      yield { choices: [], usage: { prompt_tokens: 0, completion_tokens: 0 } };
+    })(),
+  );
+  const delta = vi.fn();
+  await expect(runtime.localComplete('cancel-stream', [], {}, delta)).rejects.toMatchObject({
+    name: 'AbortError',
+  });
+  expect(delta.mock.calls.map((call) => call[0])).toEqual(['first']);
+});
+
+it('retries a streamed background request after yielding the engine to an action', async () => {
+  const runtime = createLocalRuntime();
+  await runtime.localLoad();
+  vi.spyOn(performance, 'now').mockReturnValue(0);
+  mock.interrupt.mockRejectedValueOnce(new Error('interrupt race'));
+  let action!: Promise<unknown>;
+  mock.create
+    .mockResolvedValueOnce(
+      (async function* () {
+        yield { choices: [{ delta: { content: 'first' } }] };
+        yield { choices: [{ delta: { content: 'buffered' } }] };
+        action = runtime.localComplete('priority', []);
+        yield { choices: [] };
+      })(),
+    )
+    .mockResolvedValueOnce(reply)
+    .mockResolvedValueOnce(
+      (async function* () {
+        yield { choices: [{ delta: { content: 'finished' }, finish_reason: 'stop' }] };
+      })(),
+    );
+  const delta = vi.fn();
+  expect(await runtime.localComplete('background', [], { kind: 'summary' }, delta)).toMatchObject({
+    text: 'finished',
+  });
+  await action;
+  expect(delta.mock.calls.map((call) => call[0])).toEqual(['first', 'finished']);
+});
+
+it('retries a summary whose engine rejects the interrupted generation', async () => {
+  const runtime = createLocalRuntime();
+  await runtime.localLoad();
+  let fail!: (error: Error) => void;
+  mock.create.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+  );
+  const summary = runtime.localComplete('background', [], { kind: 'summary' });
+  await vi.waitFor(() => expect(fail).toBeDefined());
+  const action = runtime.localComplete('priority', []);
+  fail(new Error('interrupted'));
+  await action;
+  await expect(summary).resolves.toMatchObject({ text: 'done' });
+});
+
+it('does not deadlock unloading behind a paused summary', async () => {
+  const runtime = createLocalRuntime();
+  await runtime.localLoad();
+  await runtime.localSession!('turn', true);
+  const rejected = expect(runtime.localComplete('diary', [], { kind: 'summary' })).rejects.toThrow(
+    '请先',
+  );
+  await runtime.localUnload();
+  await runtime.localSession!('turn', false);
+  await rejected;
 });
 it('reports progress and can retry after a failed download', async () => {
   const runtime = createLocalRuntime();

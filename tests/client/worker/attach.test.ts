@@ -11,6 +11,27 @@ async function settle(): Promise<void> {
 }
 
 describe('attachJournalWorker', () => {
+  it('sends stream deltas before the matching final reply', async () => {
+    const port = scope();
+    attachJournalWorker(port, async (_request, onDelta) => {
+      onDelta?.('答：好了');
+      return { text: '答：好了', input: 1, output: 2 };
+    });
+    port.onmessage?.({
+      data: { id: 4, method: 'localComplete', args: ['stream', []], stream: true },
+    } as MessageEvent<JournalRequest>);
+    await settle();
+    expect(port.postMessage).toHaveBeenNthCalledWith(1, {
+      event: 'localDelta',
+      id: 4,
+      text: '答：好了',
+    });
+    expect(port.postMessage).toHaveBeenNthCalledWith(2, {
+      id: 4,
+      ok: true,
+      value: { text: '答：好了', input: 1, output: 2 },
+    });
+  });
   it('answers a request with its value', async () => {
     const port = scope();
     attachJournalWorker(port, async () => ['a']);
