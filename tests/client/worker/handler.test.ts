@@ -13,6 +13,7 @@ vi.mock('../../../src/client/journal/summarize.js', () => ({
 }));
 
 const SETTINGS: PilotSettings = {
+  provider: 'custom',
   baseURL: 'https://example.com',
   model: 'model-1',
   apiKey: 'key',

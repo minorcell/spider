@@ -1,12 +1,15 @@
 /** Model credentials live in this browser only. Empty means hand driving. */
 
 import { openSpiderDb, type PreferenceRecord } from './journal/db.js';
+import { providerById, providerNeedsKey } from './providers.js';
 import { PersistentCache } from './store/cache.js';
 
 const STORAGE_KEY = 'spider.pilot';
 const OPEN_MS = 1500;
 
 export interface PilotSettings {
+  /** Which preset owns the connection. `custom` is any online endpoint. */
+  provider: string;
   baseURL: string;
   model: string;
   apiKey: string;
@@ -19,6 +22,7 @@ export interface PilotSettings {
 }
 
 export type PilotInput = {
+  provider?: string;
   baseURL: string;
   model: string;
   apiKey: string;
@@ -28,6 +32,7 @@ export type PilotInput = {
 };
 
 const EMPTY: PilotSettings = {
+  provider: 'custom',
   baseURL: '',
   model: '',
   apiKey: '',
@@ -78,6 +83,7 @@ function parsePilot(raw: unknown): PilotSettings | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const parsed = raw as Partial<PilotSettings>;
   return {
+    provider: knownProvider(parsed.provider, 'custom'),
     baseURL: typeof parsed.baseURL === 'string' ? parsed.baseURL : '',
     model: typeof parsed.model === 'string' ? parsed.model : '',
     apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
@@ -117,6 +123,10 @@ export function readPilot(): PilotSettings {
 export function writePilot(settings: PilotInput): void {
   const previous = readPilot();
   const next: PilotSettings = {
+    provider:
+      settings.provider === undefined
+        ? previous.provider
+        : knownProvider(settings.provider, 'custom'),
     baseURL: settings.baseURL.trim().replace(/\/+$/, ''),
     model: settings.model.trim(),
     apiKey: settings.apiKey.trim(),
@@ -168,9 +178,13 @@ export function resetPilotStore(): void {
   edits = 0;
 }
 
-/** All three fields are required before the page will call a model. */
+/** Address and model are required. A Key is required unless the preset runs keyless. */
 export function pilotReady(settings: PilotInput): boolean {
-  return settings.baseURL !== '' && settings.model !== '' && settings.apiKey !== '';
+  return (
+    settings.baseURL !== '' &&
+    settings.model !== '' &&
+    (settings.apiKey !== '' || !providerNeedsKey(settings.provider))
+  );
 }
 
 /** Off asks the provider to skip reasoning; on leaves the model's default alone. */
@@ -182,6 +196,11 @@ export function reasoningOf(settings: PilotInput): 'provider-default' | 'none' {
 export function contextTokensOf(k: number | null): number | null {
   if (k == null) return null;
   return k * 1000;
+}
+
+/** Drop an id this page does not know, so an old page still treats it as custom. */
+function knownProvider(value: unknown, fallback: string): string {
+  return typeof value === 'string' && providerById(value) !== null ? value : fallback;
 }
 
 function positiveInt(value: unknown): number | null {

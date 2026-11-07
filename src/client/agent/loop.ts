@@ -6,6 +6,7 @@ import type { MemoryApi } from '../journal/diary.js';
 import { toMessages, type ChatSession } from '../journal/session.js';
 import { byteSize, usageCallFromStep, type UsageCall, type UsageTool } from '../journal/usage.js';
 import { localDate } from '../../shared/dates.js';
+import { apiKeyFor } from '../providers.js';
 import { reasoningOf, type PilotSettings } from '../settings.js';
 import { withInlineCalls } from './inline.js';
 import { spiderTools } from './tools.js';
@@ -76,7 +77,7 @@ export async function runAgent({
   const provider = createOpenAICompatible({
     name: 'openai-compatible',
     baseURL: settings.baseURL,
-    apiKey: settings.apiKey,
+    apiKey: apiKeyFor(settings),
     includeUsage: true,
   });
 

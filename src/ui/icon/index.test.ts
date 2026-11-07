@@ -19,6 +19,18 @@ describe('icon', () => {
     expect(star.querySelector('path')?.getAttribute('d')).toContain('M8 1.6');
   });
 
+  it('draws a terminal for local providers', () => {
+    const svg = icon(document, 'terminal');
+    expect(svg.querySelector('path')?.getAttribute('d')).toContain('M1 3h14v10');
+    expect(svg.querySelector('path')?.getAttribute('fill-rule')).toBe('evenodd');
+  });
+
+  it('draws a cloud for online providers', () => {
+    const svg = icon(document, 'cloud');
+    expect(svg.querySelector('path')?.getAttribute('d')).toContain('M4.5 12.5');
+    expect(svg.querySelector('path')?.getAttribute('fill-rule')).toBe('nonzero');
+  });
+
   it('builds an icon button with or without an id', () => {
     const named = iconButton(document, 'gear', { id: 'settings-open', label: '设置' });
     const plain = iconButton(document, 'gear', { label: '设置' });

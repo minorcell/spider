@@ -1,5 +1,6 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, type LanguageModelUsage } from 'ai';
+import { apiKeyFor } from '../providers.js';
 import { reasoningOf, type PilotSettings } from '../settings.js';
 
 export interface DiaryNote {
@@ -18,7 +19,7 @@ export async function summarizeDiary(input: {
   const provider = createOpenAICompatible({
     name: 'openai-compatible',
     baseURL: input.settings.baseURL,
-    apiKey: input.settings.apiKey,
+    apiKey: apiKeyFor(input.settings),
   });
   const result = await generateText({
     model: provider(input.settings.model),

@@ -19,6 +19,7 @@ beforeEach(async () => {
 });
 
 const EMPTY = {
+  provider: 'custom',
   baseURL: '',
   model: '',
   apiKey: '',
@@ -134,11 +135,50 @@ describe('pilot settings', () => {
     expect(readPilot()).toMatchObject({ contextTokens: null, autoMemory: false });
   });
 
-  it('needs all three fields', () => {
+  it('needs an address, a model, and a Key for an online provider', () => {
     expect(pilotReady({ baseURL: 'a', model: 'b', apiKey: 'c' })).toBe(true);
     expect(pilotReady({ baseURL: '', model: 'b', apiKey: 'c' })).toBe(false);
     expect(pilotReady({ baseURL: 'a', model: '', apiKey: 'c' })).toBe(false);
     expect(pilotReady({ baseURL: 'a', model: 'b', apiKey: '' })).toBe(false);
+  });
+
+  it('lets Ollama run without a Key', () => {
+    expect(
+      pilotReady({
+        provider: 'ollama',
+        baseURL: 'http://localhost:11434/v1',
+        model: 'qwen',
+        apiKey: '',
+      }),
+    ).toBe(true);
+    expect(
+      pilotReady({ provider: 'custom', baseURL: 'https://example.com', model: 'gpt', apiKey: '' }),
+    ).toBe(false);
+    expect(
+      pilotReady({ provider: 'unknown', baseURL: 'https://example.com', model: 'gpt', apiKey: '' }),
+    ).toBe(false);
+  });
+
+  it('stores a known provider and drops an unknown one', () => {
+    writePilot({
+      provider: 'ollama',
+      baseURL: ' http://localhost:11434/v1/ ',
+      model: 'qwen',
+      apiKey: '',
+    });
+    expect(readPilot()).toMatchObject({
+      provider: 'ollama',
+      baseURL: 'http://localhost:11434/v1',
+    });
+    writePilot({
+      provider: 'ollama',
+      baseURL: 'http://localhost:11434/v1',
+      model: 'next',
+      apiKey: '',
+    });
+    expect(readPilot().provider).toBe('ollama');
+    writePilot({ provider: 'future', baseURL: 'https://example.com', model: 'gpt', apiKey: 'key' });
+    expect(readPilot().provider).toBe('custom');
   });
 
   it('turns k token into tokens on the 1000 scale vendors publish', () => {

@@ -23,13 +23,20 @@ pnpm dev
 
 ## 让它走
 
-点右上角的「设置」，填三项：
+点右上角的「设置」，按原来的方式填三项也行：
 
 - Base URL，填到 `/v1` 为止
 - Model ID
 - API Key
 
-兼容 OpenAI 的接口就行。这三项只留在这台浏览器里。没填的时候，它就站在巢门口。
+兼容 OpenAI 的接口就行。模型页底部还有几个快速接入：
+
+- **Ollama**：本机跑着 Ollama 时，点一下会填好地址并列出本机模型，点一个模型就填进表单，不需要 Key。
+- **DeepSeek**：点一下会填好地址和 `deepseek-flash`，只要再填上 API Key。
+
+Ollama 没装的话，先装好并在终端运行 `ollama serve`，再 `ollama pull` 一个模型。浏览器直连本机 Ollama 要是被跨域挡住，启动时带上 `OLLAMA_ORIGINS=*`。
+
+地址、模型名和 Key 只留在这台浏览器里。没填好或没选模型时，它就站在巢门口。
 
 「思考」开关默认开启；关掉后请求会带上 `reasoning_effort: none`，让模型直接回答。模型或接口不支持这个值时可能报错。
 

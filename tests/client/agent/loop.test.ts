@@ -161,6 +161,24 @@ describe('runAgent', () => {
     expect(options.tools).toBeTypeOf('object');
   });
 
+  it('gives a keyless Ollama endpoint a placeholder Key', async () => {
+    stream([]);
+    await runAgent({
+      goal: 'go',
+      session: fakeSession(),
+      settings: {
+        ...settings,
+        provider: 'ollama',
+        baseURL: 'http://localhost:11434/v1',
+        apiKey: '',
+      },
+    });
+    expect(aiControl.providerOptions).toMatchObject({
+      baseURL: 'http://localhost:11434/v1',
+      apiKey: 'ollama',
+    });
+  });
+
   it('asks the model not to reason when thinking is off', async () => {
     stream([]);
     await runAgent({

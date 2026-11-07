@@ -8,6 +8,7 @@ import { dressChrome, paintTrace } from '../../ui/dress.js';
 import { bindFocus, paint } from '../../ui/style.js';
 import { border, color, font } from '../../ui/token.js';
 import { switchField } from '../../ui/switch/index.js';
+import { QUICK_PROVIDERS } from '../providers.js';
 import { REPO, REPO_STARS } from '../stars.js';
 
 function eyebrow(doc: Document, text: string): HTMLParagraphElement {
@@ -38,6 +39,49 @@ function note(doc: Document, text: string): HTMLParagraphElement {
   const node = h(doc, 'p', {}, text);
   paint(node, { margin: '0 0 14px', opacity: '0.8' });
   return node;
+}
+
+/** A quiet label above a group of controls. */
+function groupLabel(doc: Document, text: string): HTMLParagraphElement {
+  const node = h(doc, 'p', {}, text);
+  paint(node, { margin: '0 0 7px', color: color.muted, fontSize: '12px', letterSpacing: '0.04em' });
+  return node;
+}
+
+/** Small entry points at the foot of the form. Each opens its own flow. */
+function quickProviders(doc: Document): HTMLElement {
+  const row = h(doc, 'div', { id: 'providers' });
+  paint(row, { display: 'flex', flexWrap: 'wrap', gap: '8px' });
+  for (const provider of QUICK_PROVIDERS) {
+    const card = h(
+      doc,
+      'button',
+      {
+        type: 'button',
+        class: 'provider-card',
+        'data-provider': provider.id,
+        'aria-pressed': 'false',
+        title: provider.summary,
+      },
+      icon(doc, provider.icon),
+      h(doc, 'span', {}, provider.name),
+    );
+    paint(card, {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '7px',
+      border: border.hairline,
+      padding: '7px 11px',
+      background: color.paper,
+      color: color.ink,
+      font: 'inherit',
+      letterSpacing: 'inherit',
+      cursor: 'pointer',
+    });
+    bindFocus(card);
+    row.append(card);
+  }
+  return row;
 }
 
 /** Top-left link to the repo: GitHub mark, a star, and the live count. */
@@ -155,6 +199,22 @@ export function buildChrome(doc: Document): DocumentFragment {
   const body = h(doc, 'div', { class: 'settings-body' });
   const model = h(doc, 'section', { id: 'panel-model' });
   const settingsForm = h(doc, 'form', { id: 'settings-form' });
+  const quick = h(doc, 'div', { class: 'quick-providers' });
+  paint(quick, {
+    marginTop: '22px',
+    paddingTop: '18px',
+    borderTop: border.hairline,
+  });
+  const quickStatus = h(doc, 'p', { id: 'quick-status' });
+  paint(quickStatus, {
+    margin: '10px 0 8px',
+    color: color.muted,
+    fontSize: '12px',
+    lineHeight: '1.6',
+  });
+  const quickModels = h(doc, 'div', { id: 'quick-models' });
+  paint(quickModels, { display: 'flex', flexWrap: 'wrap', gap: '6px' });
+  quick.append(groupLabel(doc, '快速接入'), quickProviders(doc), quickStatus, quickModels);
   settingsForm.append(
     eyebrow(doc, '设置 / 模型'),
     pageTitle(doc, '模型'),
@@ -171,7 +231,7 @@ export function buildChrome(doc: Document): DocumentFragment {
       name: 'model',
       autocomplete: 'off',
       spellcheck: false,
-      placeholder: 'deepseek-chat',
+      placeholder: 'deepseek-flash',
     }),
     field(doc, {
       label: 'API Key',
@@ -191,8 +251,9 @@ export function buildChrome(doc: Document): DocumentFragment {
     switchField(doc, { name: 'thinking', label: '思考', checked: true }),
     note(
       doc,
-      '地址、模型名和 Key 保存在当前浏览器里。三项都留下它才会走，留空就站着。地址填到 /v1 为止。上下文长度按 k 填：8 就是 8k token。留空则不限制。对话写到窗口的 80% 时，会自动收成一段摘要。关掉思考会让模型直接回答，模型不支持时可能报错。',
+      '填地址、模型名和 Key，兼容 OpenAI 的接口就行。三项都留下它才会走，留空就站着。地址填到 /v1 为止。底部可以少填几项：Ollama 在本机不用 Key，DeepSeek 只要 Key。上下文长度按 k 填：8 就是 8k token。留空则不限制。对话写到窗口的 80% 时，会自动收成一段摘要。关掉思考会让模型直接回答，模型不支持时可能报错。',
     ),
+    quick,
   );
   model.append(settingsForm);
 

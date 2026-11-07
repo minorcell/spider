@@ -10,6 +10,7 @@ import { summarizeDiary } from '../../src/client/journal/summarize.js';
 import type { PilotSettings } from '../../src/client/settings.js';
 
 const settings: PilotSettings = {
+  provider: 'custom',
   baseURL: 'https://example.com',
   model: 'model-1',
   apiKey: 'key',

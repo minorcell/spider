@@ -10,6 +10,7 @@ import { AUTO_MEMORY_IDLE_MS, mountPanel } from '../../src/client/panel.js';
 import { pendingNow, resetWorldStore, type BootNote } from '../../src/client/worldStore.js';
 import {
   flushSettings,
+  pilotReady,
   readPilot,
   resetPilotStore,
   writePilot,
@@ -130,6 +131,28 @@ async function waitForStatus(text: string): Promise<void> {
     if (document.querySelector('#cloud-status')?.textContent === text) return;
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
+}
+
+function modelList(ids: string[]): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ data: ids.map((id) => ({ id })) }),
+  } as unknown as Response;
+}
+
+function providerStatus(): string {
+  return document.querySelector('#quick-status')!.textContent ?? '';
+}
+
+function providerModels(): NodeListOf<HTMLElement> {
+  return document.querySelectorAll<HTMLElement>('#quick-models [data-quick-model]');
+}
+
+function clickModel(id: string): void {
+  document
+    .querySelector(`#quick-models [data-quick-model="${id}"]`)!
+    .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 }
 
 /** Let promises started by a timer callback settle while the clock is fake. */
@@ -712,6 +735,7 @@ describe('speech bubble follow', () => {
 });
 
 const PILOT: PilotSettings = {
+  provider: 'custom',
   baseURL: 'https://example.com',
   model: 'model-1',
   apiKey: 'key',
@@ -1846,5 +1870,208 @@ describe('cloud panel', () => {
     submit();
     expect(document.querySelector('#trace')!.textContent).toBe('另一台电脑正在玩');
     expect(loop.runAgent).not.toHaveBeenCalled();
+  });
+});
+
+describe('quick providers', () => {
+  it('fills Ollama into the form and lets a model be picked', async () => {
+    const fetchMock = vi.fn(async () => modelList(['llama3.2:latest', 'qwen2.5:7b']));
+    vi.stubGlobal('fetch', fetchMock);
+    mount();
+    clickButton('#settings-open');
+    expect(document.querySelector('[data-provider="ollama"]')!.textContent).toContain('Ollama');
+    clickButton('[data-provider="ollama"]');
+    await flush();
+
+    expect(readPilot()).toMatchObject({
+      provider: 'ollama',
+      baseURL: 'http://localhost:11434/v1',
+      model: '',
+      apiKey: '',
+    });
+    expect(field('baseURL').value).toBe('http://localhost:11434/v1');
+    expect(field('model').value).toBe('');
+    expect(pilotReady(readPilot())).toBe(false);
+    expect(providerStatus()).toBe('找到 2 个模型，点一个填进 Model ID。');
+    expect(providerModels()).toHaveLength(2);
+
+    clickModel('qwen2.5:7b');
+
+    expect(readPilot().model).toBe('qwen2.5:7b');
+    expect(field('model').value).toBe('qwen2.5:7b');
+    expect(pilotReady(readPilot())).toBe(true);
+    expect(document.querySelector('#pilot-model')!.textContent).toBe('qwen2.5:7b');
+    expect(document.querySelector('[data-provider="ollama"]')!.getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect(
+      document.querySelector('[data-quick-model="qwen2.5:7b"]')!.getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(
+      document.querySelector('[data-quick-model="llama3.2:latest"]')!.getAttribute('aria-pressed'),
+    ).toBe('false');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:11434/v1/models',
+      expect.objectContaining({ headers: {} }),
+    );
+
+    clickButton('[data-provider="ollama"]');
+    await flush();
+    expect(readPilot().model).toBe('qwen2.5:7b');
+    expect(field('model').value).toBe('qwen2.5:7b');
+  });
+
+  it('keeps Ollama while the model is edited, and returns to the manual path on an address edit', () => {
+    writePilot({
+      provider: 'ollama',
+      baseURL: 'http://localhost:11434/v1',
+      model: 'llama3.2:latest',
+      apiKey: '',
+    });
+    mount();
+    clickButton('#settings-open');
+    const link = document.querySelector('[data-provider="ollama"]')!;
+
+    field('model').value = 'other';
+    field('model').dispatchEvent(new Event('input', { bubbles: true }));
+    expect(readPilot().model).toBe('other');
+    expect(readPilot().provider).toBe('ollama');
+    expect(link.getAttribute('aria-pressed')).toBe('true');
+
+    field('baseURL').value = 'https://example.com/v1';
+    field('baseURL').dispatchEvent(new Event('input', { bubbles: true }));
+    expect(readPilot().provider).toBe('custom');
+    expect(link.getAttribute('aria-pressed')).toBe('false');
+    expect(providerStatus()).toBe('');
+    expect(providerModels()).toHaveLength(0);
+  });
+
+  it('fills DeepSeek into the form and asks only for the Key', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    mount();
+    clickButton('#settings-open');
+    clickButton('[data-provider="deepseek"]');
+
+    expect(readPilot()).toMatchObject({
+      provider: 'deepseek',
+      baseURL: 'https://api.deepseek.com/v1',
+      model: 'deepseek-flash',
+      apiKey: '',
+    });
+    expect(field('baseURL').value).toBe('https://api.deepseek.com/v1');
+    expect(field('model').value).toBe('deepseek-flash');
+    expect(field('apiKey').value).toBe('');
+    expect(document.activeElement).toBe(field('apiKey'));
+    expect(pilotReady(readPilot())).toBe(false);
+    expect(providerStatus()).toBe('地址和模型已经填好，补上或确认 API Key 就能用。');
+    expect(document.querySelector('[data-provider="deepseek"]')!.getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    field('apiKey').value = ' sk-deepseek ';
+    field('apiKey').dispatchEvent(new Event('input', { bubbles: true }));
+    expect(readPilot()).toMatchObject({ provider: 'deepseek', apiKey: 'sk-deepseek' });
+    expect(pilotReady(readPilot())).toBe(true);
+    expect(document.querySelector('#pilot-model')!.textContent).toBe('deepseek-flash');
+
+    field('model').value = 'deepseek-reasoner';
+    field('model').dispatchEvent(new Event('input', { bubbles: true }));
+    clickButton('[data-provider="deepseek"]');
+    expect(readPilot().model).toBe('deepseek-reasoner');
+    expect(field('model').value).toBe('deepseek-reasoner');
+  });
+
+  it('keeps a Key already in the form when DeepSeek is chosen', () => {
+    writePilot({
+      provider: 'custom',
+      baseURL: 'https://example.com/v1',
+      model: 'model-1',
+      apiKey: 'saved-key',
+    });
+    mount();
+    clickButton('#settings-open');
+    clickButton('[data-provider="deepseek"]');
+
+    expect(field('apiKey').value).toBe('saved-key');
+    expect(readPilot()).toMatchObject({
+      provider: 'deepseek',
+      baseURL: 'https://api.deepseek.com/v1',
+      model: 'deepseek-flash',
+      apiKey: 'saved-key',
+    });
+  });
+
+  it('says when the endpoint has no models yet', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => modelList([])),
+    );
+    mount();
+    clickButton('#settings-open');
+    clickButton('[data-provider="ollama"]');
+    await flush();
+
+    expect(providerStatus()).toBe('连上了，但还没有模型。先在终端运行 ollama pull <模型名>。');
+    expect(providerModels()).toHaveLength(0);
+    expect(readPilot().model).toBe('');
+  });
+
+  it('says when the local endpoint cannot be reached, then reads again', async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('offline');
+        return modelList(['llama3.2:latest']);
+      }),
+    );
+    mount();
+    clickButton('#settings-open');
+    clickButton('[data-provider="ollama"]');
+    await flush();
+
+    expect(providerStatus()).toBe('没连上 Ollama。确认它已经运行，并允许这个页面访问。');
+    expect(providerModels()).toHaveLength(0);
+
+    clickButton('[data-provider="ollama"]');
+    await flush();
+    expect(providerStatus()).toBe('找到 1 个模型，点一个填进 Model ID。');
+    expect(providerModels()).toHaveLength(1);
+  });
+
+  it('ignores answers from earlier reads', async () => {
+    const pending: Array<{
+      resolve: (response: Response) => void;
+      reject: (error: unknown) => void;
+    }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve, reject) => {
+            pending.push({ resolve, reject });
+          }),
+      ),
+    );
+    mount();
+    clickButton('#settings-open');
+    clickButton('[data-provider="ollama"]');
+    clickButton('[data-provider="ollama"]');
+    clickButton('[data-provider="ollama"]');
+    expect(pending).toHaveLength(3);
+
+    pending[2]!.resolve(modelList(['a', 'b', 'c']));
+    await flush();
+    expect(providerStatus()).toBe('找到 3 个模型，点一个填进 Model ID。');
+
+    pending[0]!.resolve(modelList(['old']));
+    pending[1]!.reject(new Error('late failure'));
+    await flush();
+
+    expect(providerStatus()).toBe('找到 3 个模型，点一个填进 Model ID。');
+    expect(providerModels()).toHaveLength(3);
   });
 });
