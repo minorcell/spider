@@ -891,8 +891,19 @@ describe('carrying', () => {
   it('refuses to store with no room', () => {
     const session = new SimSession(9);
     session.world.carrying.push(fakeEntity({ id: 'apple-back' }));
-    session.world.blocks.push(block('fill', 0.5, 1.8, -2.5, 1.5));
+    session.world.blocks.push(block('fill', -3, 3, -3, 3));
     expect(session.store()).toMatchObject({ ok: false, reason: 'no-room' });
+  });
+
+  it('keeps storing after the first row is full', () => {
+    const session = new SimSession(9);
+    for (let index = 0; index < 9; index += 1) {
+      session.world.carrying.push(fakeEntity({ id: `kept-${index}` }));
+      expect(session.store(`kept-${index}`).ok).toBe(true);
+    }
+    const stored = session.world.entities.filter((entity) => entity.id.startsWith('kept-'));
+    expect(stored).toHaveLength(9);
+    expect(new Set(stored.map((entity) => `${entity.x},${entity.z}`)).size).toBe(9);
   });
 
   it('stores a carried thing in the nest', () => {

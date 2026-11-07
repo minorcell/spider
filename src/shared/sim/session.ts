@@ -574,11 +574,16 @@ export class SimSession {
   }
 
   #stash(): { x: number; z: number } | null {
-    for (let slot = 0; ; slot += 1) {
-      const x = 1.15;
-      const z = 1.15 - slot * 0.45;
-      if (!insideHome(x, z)) break;
-      if (this.#roomAt(x, z)) return { x, z };
+    const step = 0.45;
+    const start = 1.15;
+    for (let column = 0; ; column += 1) {
+      const x = start - column * step;
+      if (!insideHome(x, 0)) break;
+      for (let row = 0; ; row += 1) {
+        const z = start - row * step;
+        if (!insideHome(x, z)) break;
+        if (this.#roomAt(x, z)) return { x, z };
+      }
     }
     return null;
   }
