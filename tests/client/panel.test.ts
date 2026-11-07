@@ -249,6 +249,11 @@ describe('GitHub badge', () => {
       'settings-open',
     ]);
     expect(badge.querySelector('#github-stars-count')!.textContent).toBe('6');
+    for (const control of document.querySelector('#corner')!.children) {
+      expect((control as HTMLElement).style.height).toBe('32px');
+      expect((control as HTMLElement).style.boxSizing).toBe('border-box');
+      expect((control as HTMLElement).style.alignItems).toBe('center');
+    }
   });
 
   it('inverts on hover and outlines on focus', () => {

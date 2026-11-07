@@ -146,6 +146,22 @@ export function buildChrome(doc: Document): DocumentFragment {
   settingsOpen.setAttribute('aria-controls', 'settings');
   settingsOpen.setAttribute('aria-expanded', 'false');
   corner.append(observe, githubBadge(doc), settingsOpen);
+  for (const control of [
+    observe,
+    corner.querySelector<HTMLAnchorElement>('#github')!,
+    settingsOpen,
+  ]) {
+    paint(control, {
+      boxSizing: 'border-box',
+      height: '32px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      font: font.read,
+      lineHeight: '1',
+    });
+  }
+  paint(settingsOpen, { width: '32px' });
 
   const trace = h(doc, 'ol', { id: 'trace', hidden: true });
   const tail = h(doc, 'span', { id: 'trace-tail', hidden: true });
