@@ -12,9 +12,14 @@ export function localModelPanel(doc: Document): HTMLElement {
     border: border.hairline,
     background: color.paperDeep,
   });
-  const title = h(doc, 'h2', {}, 'Qwen3 0.6B');
+  const title = h(doc, 'h2', {}, 'Llama 3.2 1B');
   paint(title, { margin: '0 0 6px', fontSize: '21px', fontWeight: '400' });
-  const intro = h(doc, 'p', {}, '在这台电脑上运行，无需密钥。首次下载后可使用本地缓存。');
+  const intro = h(
+    doc,
+    'p',
+    {},
+    'Built with Llama。在这台电脑上运行，无需密钥。首次下载后可使用本地缓存。',
+  );
   paint(intro, { margin: '0', color: color.muted });
   const facts = h(doc, 'div');
   paint(facts, {
@@ -24,8 +29,8 @@ export function localModelPanel(doc: Document): HTMLElement {
     margin: '22px 0',
   });
   for (const [label, value] of [
-    ['首次下载', '数百 MB'],
-    ['显存占用', '约 1.4 GB'],
+    ['首次下载', '约 2.5 GB'],
+    ['显存占用', '约 2.6 GB'],
     ['运行环境', '支持 WebGPU 的桌面浏览器'],
   ]) {
     const labelNode = h(doc, 'p', {}, label);

@@ -404,7 +404,7 @@ it('uses local transport with bounded basic actions and a fresh instruction cont
     baseURL: 'http://local.invalid/v1',
     fetch: expect.any(Function),
   });
-  expect(aiControl.provider).toHaveBeenCalledWith('Qwen3-0.6B-q4f16_1-MLC');
+  expect(aiControl.provider).toHaveBeenCalledWith('Llama-3.2-1B-Instruct-q0f16-MLC');
   const options = aiControl.streamText.mock.calls[0][0];
   expect(Object.keys(options.tools)).toEqual(['observe', 'go', 'set_height']);
   expect(options.stopWhen).toEqual([{ until: 'finished' }, { count: 6 }]);

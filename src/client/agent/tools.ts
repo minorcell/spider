@@ -166,8 +166,13 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
     }),
     go: tool({
       description:
-        '移动或转身，一次只做一件事。point 走到 x、z，自动绕开固体，陡坡仍需自己爬。id 走到对象旁边并面向它。heading 或 degrees 只转身。',
+        '移动或转身，一次只做一件事。distance 沿当前朝向前进或后退。point 走到 x、z，自动绕开固体，陡坡仍需自己爬。id 走到对象旁边并面向它。heading 或 degrees 只转身。',
       inputSchema: z.discriminatedUnion('mode', [
+        call({
+          mode: z.literal('distance').describe('沿当前朝向前进或后退，无需计算目标坐标。'),
+          distance: z.number().describe('行走距离，正数前进，负数后退。'),
+          fast: z.boolean().optional().describe('跑起来。'),
+        }),
         call({
           mode: z.literal('point').describe('走到一个坐标。'),
           x: z.number().describe('目标 x。'),
@@ -190,6 +195,8 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         }),
       ]),
       execute: async (input) => {
+        if (input.mode === 'distance')
+          return finish(await session.walk(input.distance, input.fast ?? false));
         if (input.mode === 'point')
           return finish(await session.moveTo(input.x, input.z, input.fast ?? false));
         if (input.mode === 'id')

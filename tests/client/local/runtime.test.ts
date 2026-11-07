@@ -90,6 +90,7 @@ it('streams token deltas and returns actual engine timings and the unmodified re
     stream: true,
     stream_options: { include_usage: true },
   });
+  expect(mock.create.mock.calls[0][0].extra_body).not.toHaveProperty('enable_thinking');
 });
 
 it('preempts a summary, keeps action history together, then retries the summary', async () => {
@@ -398,6 +399,14 @@ it('loads immutable model and wasm URLs with the matching model id', async () =>
   expect(config.model_list).toHaveLength(1);
   expect(config.model_list[0].model).toMatch(/\/resolve\/[a-f0-9]{40}\/$/);
   expect(config.model_list[0].model_lib).toMatch(/\/[a-f0-9]{40}\/web-llm-models\/v0_2_87\/base\//);
+  expect(config.model_list[0]).toMatchObject({
+    model_id: 'Llama-3.2-1B-Instruct-q0f16-MLC',
+    required_features: ['shader-f16'],
+  });
+  expect(config.model_list[0].model).toContain(
+    '/Llama-3.2-1B-Instruct-q0f16-MLC/resolve/2c52165f529227534c21d83f140293d86f4eaaa3/',
+  );
+  expect(config.model_list[0].model_lib).toContain('Llama-3.2-1B-Instruct-q0f16_cs1k-webgpu.wasm');
   expect(mock.reload).toHaveBeenCalledWith(config.model_list[0].model_id, {
     context_window_size: 4096,
   });

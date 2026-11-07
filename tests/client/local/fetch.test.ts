@@ -42,6 +42,9 @@ it('turns tool results into chat messages and supplies executable tool schemas',
     ],
   });
   expect(messages[0].content).toContain('degrees');
+  expect(messages[0].content).toContain('前进一米');
+  expect(messages[0].content).toContain('"mode":"distance"');
+  expect(messages[0].content).toContain('set_height');
   expect(messages[2].content).toContain('"name":"go"');
   expect(messages[3]).toEqual({ role: 'user', content: '工具执行结果：{"ok":true}' });
   expect(messages[4].content).toBe('');

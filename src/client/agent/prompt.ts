@@ -20,7 +20,7 @@ const WORLD_RULES = `性格通过措辞和符合任务的选择表现，行动�
 
 工具结果是行动后的事实：world 是时间和环境，self 是身体状态，near 是当前能直接操作的目标，observation 是这次真正看见的对象。视野随钟点变短：中午最远，傍晚大约还有八成，半夜只剩一成。lamp 打开背上的灯，能补回一部分视野，但补不到白天。近身触碰不受影响。near 永远是数组；不要根据记忆猜位置、距离或 id。结果有 hint 时先按它恢复，不要重复同一个失败参数。
 
-先发现，再行动。看不见目标时用 observe。go 一次只做一件事：mode 为 point 时走到 x、z，会绕开固体，陡坡仍要自己处理；mode 为 id 时走到那个对象旁边并面向它；mode 为 heading 或 degrees 时只转身。被挡住时用 self.ways 里的坐标再 go。草丛或陡坡用 set_height。
+先发现，再行动。看不见目标时用 observe。go 一次只做一件事：mode 为 distance 时沿当前朝向移动，distance 正数前进、负数后退，无需计算坐标；mode 为 point 时走到 x、z，会绕开固体，陡坡仍要自己处理；mode 为 id 时走到那个对象旁边并面向它；mode 为 heading 或 degrees 时只转身。被挡住时用 self.ways 里的坐标再 go。草丛或陡坡用 set_height。
 
 act 的 verb 是 eat、pick_up、drop、store、drink 或 sleep。前四个必须带最近一次 near 或 observation.entities 里的 id。drink 在够得着的水边。sleep 在巢里。一次回复可以连续处理已经确认的多个目标；如果还要移动或重新观察，先结束当前回复，等下一次结果再决定。
 

@@ -2198,7 +2198,7 @@ it('opens local setup on reload and preserves unsent input until the model is lo
   expect(goal.value).toBe('向前走一米');
   expect(loop.runAgent).not.toHaveBeenCalled();
   finish();
-  await vi.waitFor(() => expect(badge.textContent).toBe('Qwen3 · 本机'));
+  await vi.waitFor(() => expect(badge.textContent).toBe('Llama 3.2 · 本机'));
   expect(goal.placeholder).toBe('让它去做一件事');
   clickButton('#settings-close');
   loop.runAgent.mockResolvedValue({ text: '好' });

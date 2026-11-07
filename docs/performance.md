@@ -34,6 +34,10 @@ pnpm exec vitest bench benchmarks/runtime.bench.ts benchmarks/frame.bench.ts --r
 
 本机推理和 Three.js 场景可能共用 GPU。Worker 隔离 JavaScript/WASM 工作，不隔离 GPU 资源。
 
+当前默认模型为官方预编译列表中的 `Llama-3.2-1B-Instruct-q0f16-MLC`，使用未做整数量化的 FP16 权重。权重与 WASM 固定版本，保留 4096 token 上下文。模型下载约 2.5 GB、官方估算显存约 2.6 GB，不含场景占用。默认模型不使用 Qwen 的关闭 thinking 参数，避免向 Llama 的回复头插入 `<think>` 模板。
+
+工具提供 `go` 的 `distance` 模式直接沿当前朝向前进或后退，复用模拟已有的行走与受阻检查。简单距离指令无需模型先观察、计算目标坐标；寻找目标和按坐标寻路仍通过观察与 `point` / `id` 模式完成。
+
 ### 当前策略
 
 - 使用一个 WebLLM 引擎。交互优先于日记摘要；交互到来时，中断摘要并在交互结束后重试。工具执行期间保留交互会话，避免日记提示词打断 KV cache。
@@ -65,7 +69,7 @@ pnpm exec vitest bench benchmarks/runtime.bench.ts benchmarks/frame.bench.ts --r
 pnpm exec vitest bench benchmarks/local.bench.ts --run --reporter=verbose
 ```
 
-这组基准使用真实三个工具的 Schema，测量提示词压缩、嵌套工具消息解析、4 KiB 未闭合 JSON 的扫描，以及每片 8 字符的工具消息流分类，不加载模型或使用 GPU。本地一次对照中，工具 Schema 从 3102 B 减至 1513 B（51.2%）；未闭合 JSON 扫描从约 15.6ms 降至 0.0076ms，修复了重复扫描嵌套括号的问题。普通嵌套消息解析约 0.001ms，流分类约 0.0055ms。这些数字是当前机器的 Node 测量，不能解释为 GPU 推理提速倍数。
+这组基准使用真实三个工具的 Schema，测量提示词压缩、嵌套工具消息解析、4 KiB 未闭合 JSON 的扫描，以及每片 8 字符的工具消息流分类，不加载模型或使用 GPU。本地一次对照中，包含 distance 模式的工具 Schema 从 3624 B 减至 1751 B（51.7%）；未闭合 JSON 扫描从约 15.6ms 降至 0.0073ms，修复了重复扫描嵌套括号的问题。普通嵌套消息解析约 0.001ms，流分类约 0.0055ms。这些数字是当前机器的 Node 测量，不能解释为 GPU 推理提速倍数。
 
 `tests/perf/budget.test.ts` 另检查连续处理 25 条此类异常消息在 25ms 内完成，防止平方级扫描回归；与其他依赖机器的预算一样，仅在本地运行。
 

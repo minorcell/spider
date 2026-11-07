@@ -128,7 +128,7 @@ export function createLocalRuntime(): LocalBackend {
               messages,
               temperature: 0,
               max_tokens: options?.kind === 'summary' ? 384 : 256,
-              extra_body: { enable_thinking: false, enable_latency_breakdown: true },
+              extra_body: { enable_latency_breakdown: true },
             };
             let rawText = '';
             let usage;
