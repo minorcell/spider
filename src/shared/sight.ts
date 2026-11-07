@@ -1,3 +1,4 @@
+import { grassClumps, grassSeed } from './grass.js';
 import type { Block, EntityState } from './state.js';
 
 /** Interior of the nest. You start here. */
@@ -170,8 +171,11 @@ export function grassHere(
     (entity) =>
       entity.kind === 'grass' &&
       entity.footprint?.kind === 'circle' &&
-      Math.hypot(entity.x - x, entity.z - z) <= entity.footprint.r &&
-      eye < entity.y + GRASS_HEIGHT,
+      grassClumps(entity.footprint.r, grassSeed(entity.id)).some(
+        (clump) =>
+          Math.hypot(entity.x + clump.x - x, entity.z + clump.z - z) <= clump.radius &&
+          eye < entity.y + clump.height,
+      ),
   );
 }
 

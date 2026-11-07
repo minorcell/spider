@@ -17,6 +17,7 @@ export interface CloudLease {
 
 export function worldOf(record: WorldRecord): SimBody {
   return {
+    scenery: record.scenery,
     seed: record.seed,
     appleIn: record.appleIn,
     sprouts: record.sprouts,

@@ -53,6 +53,8 @@ export default defineConfig({
       // Type-only modules carry no runtime statements. The worker entry is the
       // one-line binding to a real Worker global; its handler and transport are tested.
       exclude: [
+        // Standalone development model sheet; not a production entry point.
+        'src/client/models/page.ts',
         'src/client/worker/journal.worker.ts',
         'src/client/worker/world.worker.ts',
         'src/client/worker/protocol.ts',

@@ -5,9 +5,8 @@ import {
   DoubleSide,
   Float32BufferAttribute,
   Group,
-  LineBasicMaterial,
-  LineSegments,
   Mesh,
+  MeshLambertMaterial,
   PlaneGeometry,
 } from 'three';
 import {
@@ -43,13 +42,6 @@ import {
   waterWake,
   type WaterContact,
 } from './waterMotion.js';
-
-const contourInk = new LineBasicMaterial({ color: PALETTE.ink, transparent: true, opacity: 0.2 });
-const contourMajor = new LineBasicMaterial({
-  color: PALETTE.ink,
-  transparent: true,
-  opacity: 0.34,
-});
 
 const waterTime = uniform(0);
 const waterShallow = uniform(new Color(PALETTE.water));
@@ -165,16 +157,11 @@ waterMaterial.positionNode = vec3(
 );
 waterMaterial.userData.uTime = waterTime;
 
-const contourBase = new Color(PALETTE.ink);
 const waterBase = new Color(PALETTE.water);
-const gridBase = new Color(PALETTE.grid);
-const gridInk = new LineBasicMaterial({ color: PALETTE.grid });
+const coverMaterial = new MeshLambertMaterial({ vertexColors: true, side: DoubleSide });
 
 /** Apply the current ecology tint without rebuilding the baked island. */
 export function setGroundLight(red: number, green: number, blue: number): void {
-  contourInk.color.copy(contourBase);
-  contourMajor.color.copy(contourBase);
-  gridInk.color.setRGB(gridBase.r * red, gridBase.g * green, gridBase.b * blue);
   waterShallow.value
     .copy(waterBase)
     .setRGB(waterBase.r * red, waterBase.g * green, waterBase.b * blue);
@@ -194,7 +181,7 @@ export function tickWater(seconds: number, contact?: WaterContact): void {
   applyWaterMotion(seconds, dt, contact);
 }
 
-/** Paper island. Ink follows the slope in curves, plus the contour lines. */
+/** Paper island with low grass, moss and exposed soil. */
 export function buildIsland(height: (x: number, z: number) => number): Group {
   return islandGroup(islandBuffers(height));
 }
@@ -209,17 +196,13 @@ export function islandGroup(buffers: IslandBuffers): Group {
   geo.computeVertexNormals();
   group.add(new Mesh(geo, groundMat));
 
-  const grid = new BufferGeometry();
-  grid.setAttribute('position', new Float32BufferAttribute(buffers.grid, 3));
-  group.add(new LineSegments(grid, gridInk));
-
-  const minor = new BufferGeometry();
-  minor.setAttribute('position', new Float32BufferAttribute(buffers.contourMinor, 3));
-  const major = new BufferGeometry();
-  major.setAttribute('position', new Float32BufferAttribute(buffers.contourMajor, 3));
-  const contours = new Group();
-  contours.add(new LineSegments(minor, contourInk), new LineSegments(major, contourMajor));
-  group.add(contours);
+  const cover = new BufferGeometry();
+  cover.setAttribute('position', new Float32BufferAttribute(buffers.coverPosition, 3));
+  cover.setAttribute('color', new Float32BufferAttribute(buffers.coverColor, 3));
+  cover.computeVertexNormals();
+  const vegetation = new Mesh(cover, coverMaterial);
+  vegetation.name = 'ground-cover';
+  group.add(vegetation);
 
   // One sheet at the water line. Every hollow below it shows the sheet;
   // the ground above it hides the sheet, so the shoreline is the real contour.

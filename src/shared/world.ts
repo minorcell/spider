@@ -1,3 +1,4 @@
+import { grassOnDryGround, grassRadius } from './grass.js';
 import { groundSupport } from './contact.js';
 import { PHYSICS } from './config.js';
 import { kindOf } from './kinds.js';
@@ -20,8 +21,33 @@ export const GRASS_VIEW = 4.5;
 export const REACH_Y = 1.6;
 
 const APPLES = 20;
-const GRASS = 24;
+export const GRASS = 32;
+const TREES = 32;
+const STONES = 10;
+const BOG_STONES = 5;
 const MIN_GAP = 3.4;
+
+/** Trees need room for a crown; stones only for the boulder and its satellites. */
+const TREE_GAP = 2.6;
+const STONE_GAP = 2.8;
+const BOG_GAP = 2.4;
+const TREE_RADIUS = [0.32, 0.56] as const;
+const STONE_RADIUS = [0.5, 1.15] as const;
+const BOG_RADIUS = [0.55, 0.95] as const;
+
+/** Water fills every hollow below this level, so dry things are not placed in it. */
+const WATER = TERRAIN.water;
+
+/** A bog stone's foot sits this far under the water line, and no deeper. */
+const BOG_DEPTH_MIN = 0.05;
+const BOG_DEPTH_MAX = 0.34;
+
+interface ScatterOptions {
+  /** Center-to-center spacing from every earlier prop. */
+  readonly gap?: number;
+  /** Circle footprint radius range. One value is drawn when a spot is accepted. */
+  readonly radius?: readonly [number, number];
+}
 
 /** Quiet seconds after the ground is short an apple, before one more grows. */
 export const APPLE_EVERY = 24;
@@ -75,14 +101,27 @@ export function createWorld(
   const placed: { x: number; z: number }[] = [];
   const entities: EntityState[] = [
     { id: 'home', kind: 'nest', x: 0, y: 0.02, z: 0, stage: 0 },
-    ...scatter(rng, terrain, placed, blocks, 'grass', GRASS, 6.5),
+    ...scatter(rng, terrain, placed, blocks, 'grass', GRASS, 6.5, { gap: 5 }),
     ...scatter(rng, terrain, placed, blocks, 'apple', APPLES, 6),
+    // 景色排在后面：先长草和苹果，树和石头再绕开已经放下的东西。
+    ...scatter(rng, terrain, placed, blocks, 'tree', TREES, 8.5, {
+      gap: TREE_GAP,
+      radius: TREE_RADIUS,
+    }),
+    ...scatter(rng, terrain, placed, blocks, 'stone', STONES, 6.2, {
+      gap: STONE_GAP,
+      radius: STONE_RADIUS,
+    }),
+    ...scatter(rng, terrain, placed, blocks, 'bog-stone', BOG_STONES, 7, {
+      gap: BOG_GAP,
+      radius: BOG_RADIUS,
+    }),
   ];
   return {
     seed: terrain.seed,
     terrain,
     entities,
-    blocks,
+    blocks: [...blocks, ...propBlocks(entities)],
     marks: [],
     carrying: [],
     appleIn: APPLE_EVERY,
@@ -173,24 +212,103 @@ export function nestBlocks(): Block[] {
   return blocks;
 }
 
+/** Walls of every fixed kind that declares one. The nest is added separately. */
+export function propBlocks(entities: readonly EntityState[]): Block[] {
+  const blocks: Block[] = [];
+  for (const entity of entities) {
+    const spec = kindOf(entity.kind)?.block;
+    if (!spec) continue;
+    const footprint = entity.footprint;
+    const radius =
+      footprint == null
+        ? 0.4
+        : footprint.kind === 'circle'
+          ? footprint.r
+          : Math.min(footprint.hx, footprint.hz);
+    const half = spec.radius * radius;
+    blocks.push({
+      id: entity.id,
+      minX: entity.x - half,
+      maxX: entity.x + half,
+      minZ: entity.z - half,
+      maxZ: entity.z + half,
+      height: entity.y + spec.height,
+    });
+  }
+  return blocks;
+}
+
+/** Add scenery to a saved island without replacing its food, cargo, or landmarks. */
+export function populateScenery(
+  world: WorldState,
+  avoid: { x: number; z: number },
+  capacity: number,
+): void {
+  const rng = mulberry32(world.seed ^ 0x7363656e);
+  const placed = [...world.entities, ...world.carrying, avoid];
+  const families = [
+    { kind: 'grass', count: GRASS, home: 6.5, gap: 5, radius: undefined },
+    { kind: 'tree', count: TREES, home: 8.5, gap: TREE_GAP, radius: TREE_RADIUS },
+    { kind: 'stone', count: STONES, home: 6.2, gap: STONE_GAP, radius: STONE_RADIUS },
+    { kind: 'bog-stone', count: BOG_STONES, home: 7, gap: BOG_GAP, radius: BOG_RADIUS },
+  ];
+  for (const family of families) {
+    const existing = world.entities.filter((entity) => entity.kind === family.kind).length;
+    const count = Math.min(
+      family.count - existing,
+      capacity - world.entities.length - world.carrying.length,
+    );
+    const added = scatter(
+      rng,
+      world.terrain,
+      placed,
+      world.blocks,
+      family.kind,
+      count,
+      family.home,
+      family,
+    );
+    for (const entity of added) {
+      entity.id = nextPropId(world, family.kind);
+      world.entities.push(entity);
+    }
+    world.blocks.push(...propBlocks(added));
+  }
+}
+
 function scatter(
   rng: () => number,
-  terrain: Terrain,
+  terrain: WorldState['terrain'],
   placed: { x: number; z: number }[],
   blocks: readonly Block[],
   kind: string,
   count: number,
   minFromHome: number,
+  options: ScatterOptions = {},
 ): EntityState[] {
   const entities: EntityState[] = [];
   let guard = 0;
   while (entities.length < count && guard < 1000) {
     guard += 1;
-    const spot = roll(rng, terrain, placed, blocks, kind, minFromHome);
+    const spot = roll(rng, terrain, placed, blocks, kind, minFromHome, undefined, options);
     if (!spot) continue;
     const settled = settle(terrain, blocks, kind, spot, placed);
     if (!settled) continue;
-    const footprint = kind === 'grass' ? { kind: 'circle' as const, r: 3.2 } : undefined;
+    const footprint =
+      options.radius != null
+        ? {
+            kind: 'circle' as const,
+            r: quantize(options.radius[0] + rng() * (options.radius[1] - options.radius[0])),
+          }
+        : kind === 'grass'
+          ? { kind: 'circle' as const, r: grassRadius(`grass-${entities.length + 1}`) }
+          : undefined;
+    if (
+      kind === 'grass' &&
+      footprint?.kind === 'circle' &&
+      !grassOnDryGround((x, z) => terrain.height(x, z), settled.x, settled.z, footprint.r)
+    )
+      continue;
     placed.push(settled);
     entities.push({
       id: `${kind}-${entities.length + 1}`,
@@ -205,8 +323,6 @@ function scatter(
   return entities;
 }
 
-/** Water fills every hollow below this level, so nothing is placed in it. */
-const WATER = TERRAIN.water;
 const SETTLE_STEPS = 30;
 const SETTLE_DT = 1 / 15;
 
@@ -224,7 +340,9 @@ export function settle(
   avoid?: { x: number; z: number },
 ): { x: number; z: number } | null {
   const spec = kindOf(kind)?.physics;
-  if (terrain.height(start.x, start.z) <= WATER) return null;
+  const depth = WATER - terrain.height(start.x, start.z);
+  const wet = kindOf(kind)?.wet === true;
+  if (wet ? depth < BOG_DEPTH_MIN || depth > BOG_DEPTH_MAX : depth >= 0) return null;
   if (!spec?.loose) return { x: start.x, z: start.z };
 
   const entity: EntityState = {
@@ -279,7 +397,8 @@ export function settle(
   );
   const asleep = entity.vx === 0 && entity.vz === 0;
   if (asleep && slope > PHYSICS.sleepSlope) return null;
-  if (terrain.height(x, z) <= WATER) return null;
+  const restDepth = WATER - terrain.height(x, z);
+  if (restDepth >= 0) return null;
   if (Math.hypot(x, z) > TERRAIN.island * 0.7) return null;
   if (avoid && Math.hypot(avoid.x - x, avoid.z - z) < SPROUT_CLEAR) return null;
   if (placed.some((point) => Math.hypot(point.x - x, point.z - z) < MIN_GAP)) return null;
@@ -316,17 +435,20 @@ function roll(
   kind: string,
   minFromHome: number,
   avoid?: { x: number; z: number },
+  options: ScatterOptions = {},
 ): { x: number; z: number } | null {
   const x = quantize((rng() * 2 - 1) * TERRAIN.island * 0.8);
   const z = quantize((rng() * 2 - 1) * TERRAIN.island * 0.8);
   const radius = Math.hypot(x, z);
   if (radius < minFromHome || radius > TERRAIN.island * 0.72) return null;
   const ground = terrain.height(x, z);
-  if (ground <= WATER) return null;
+  const depth = WATER - ground;
+  const wet = kindOf(kind)?.wet === true;
+  if (wet ? depth < BOG_DEPTH_MIN || depth > BOG_DEPTH_MAX : depth >= 0) return null;
   const slope =
     Math.hypot(terrain.height(x + 0.8, z) - ground, terrain.height(x, z + 0.8) - ground) / 0.8;
   if (slope > 0.32) return null;
-  const gap = kind === 'grass' ? 6 : MIN_GAP;
+  const gap = options.gap ?? MIN_GAP;
   if (placed.some((point) => Math.hypot(point.x - x, point.z - z) < gap)) return null;
   if (avoid && Math.hypot(avoid.x - x, avoid.z - z) < SPROUT_CLEAR) return null;
   const probe = kind === 'grass' ? 3.2 : 0.2;

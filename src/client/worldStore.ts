@@ -228,7 +228,7 @@ export async function restoreWorld(
   await adoptBody(session, strip(chosen));
   pending = chosen.pending;
   seenSeq = chosen.seq;
-  lastBody = captureBody(session, pending);
+  lastBody = strip(chosen);
   cache.hydrate(chosen);
   if (dbOpen && !dbDeferred) await mirror(chosen, ls, idb);
   return {
@@ -621,6 +621,7 @@ async function adoptBody(session: Restorable, body: SimBody): Promise<void> {
 
 function strip(record: WorldRecord): SimBody {
   return {
+    scenery: record.scenery,
     seed: record.seed,
     appleIn: record.appleIn,
     sprouts: record.sprouts,

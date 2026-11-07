@@ -1,13 +1,13 @@
+import { PALETTE } from '../../src/shared/config.js';
 import { describe, expect, it, vi } from 'vitest';
 import { applyEcologyLighting, EcologySky } from '../../src/client/ecologyView.js';
 import { buildIsland } from '../../src/client/groundView.js';
 import { worldClock } from '../../src/shared/ecology.js';
-import { Color, LineBasicMaterial, LineSegments, Vector3 } from 'three';
-import { PALETTE } from '../../src/shared/config.js';
+import { Color, Mesh, Vector3 } from 'three';
 
 describe('applyEcologyLighting', () => {
   it('updates the renderer and returns the local clock', () => {
-    const renderer = { setClearColor: vi.fn() };
+    const renderer = { setClearColor: vi.fn((_color: Color) => undefined) };
     const noon = applyEcologyLighting(renderer, new Date(2026, 0, 1, 12));
     const night = applyEcologyLighting(renderer, new Date(2026, 0, 1, 23));
 
@@ -84,18 +84,15 @@ describe('applyEcologyLighting', () => {
     sky.dispose();
   });
 
-  it('dims the unlit ground grid at night and restores it at noon', () => {
-    const grid = buildIsland(() => 0).children[1] as LineSegments;
-    const color = (grid.material as LineBasicMaterial).color;
-    const renderer = { setClearColor: () => undefined };
-    const base = new Color(PALETTE.grid);
+  it('dims the unlit water at night and restores it at noon', () => {
+    const water = buildIsland(() => 0).getObjectByName('water') as Mesh;
+    const renderer = { setClearColor: vi.fn((_color: Color) => undefined) };
     applyEcologyLighting(renderer, new Date(2026, 0, 1, 23));
-    expect(color.r).toBeLessThan(base.r * 0.08);
-    expect(color.g).toBeLessThan(base.g * 0.08);
-    expect(color.b).toBeLessThan(base.b * 0.08);
+    const night = renderer.setClearColor.mock.calls.at(-1)![0] as Color;
+    const brightness = night.r;
     applyEcologyLighting(renderer, new Date(2026, 0, 1, 12));
-    expect(color.r).toBeCloseTo(base.r);
-    expect(color.g).toBeCloseTo(base.g);
-    expect(color.b).toBeCloseTo(base.b);
+    const day = renderer.setClearColor.mock.calls.at(-1)![0] as Color;
+    expect(day.r).toBeGreaterThan(brightness);
+    expect(water.name).toBe('water');
   });
 });

@@ -10,6 +10,7 @@ import {
   Vector2,
   Vector3,
 } from 'three';
+import { APPLE_SCALE } from '../shared/config.js';
 import {
   appleMat,
   growShell,
@@ -352,5 +353,6 @@ export function buildApple(stage: number): Group {
   leaf.rotation.x = -0.2;
   group.add(leaf);
 
+  group.scale.setScalar(APPLE_SCALE);
   return group;
 }

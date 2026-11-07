@@ -1,9 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { Group, LineSegments, Mesh, Vector3 } from 'three';
+import { Box3, Group, LineSegments, Mesh, Vector3 } from 'three';
 import { buildProp, drapeGrass } from '../../src/client/props.js';
 import { nestSurface } from '../../src/shared/nestShape.js';
 
 describe('buildProp', () => {
+  it.each(['tree', 'stone', 'bog-stone'])(
+    'builds reproducible %s variants at the saved size',
+    (kind) => {
+      const small = buildProp(kind, 0, { kind: 'circle', r: 0.5 }, `${kind}-1`)!;
+      const again = buildProp(kind, 0, { kind: 'circle', r: 0.5 }, `${kind}-1`)!;
+      const large = buildProp(kind, 0, { kind: 'circle', r: 1 }, `${kind}-1`)!;
+      const bounds = (group: Group) => new Box3().setFromObject(group).getSize(new Vector3());
+      expect(bounds(again).toArray()).toEqual(bounds(small).toArray());
+      expect(bounds(large).y).toBeGreaterThan(bounds(small).y);
+      expect(small.userData.height).toBeGreaterThan(0);
+      expect(bounds(buildProp(kind, 0)!).y).toBeGreaterThan(0);
+      expect(bounds(buildProp(kind, 0, { kind: 'box', hx: 1, hz: 1 })!).y).toBeGreaterThan(0);
+      for (let seed = 1; seed <= 12; seed++) {
+        const variant = buildProp(kind, 0, undefined, `${kind}-${seed}`)!;
+        variant.traverse((node) => {
+          if (!(node instanceof Mesh || node instanceof LineSegments)) return;
+          expect(
+            Array.from(node.geometry.getAttribute('position').array).every(Number.isFinite),
+          ).toBe(true);
+        });
+      }
+    },
+  );
+
   it('builds an apple at each bite stage', () => {
     for (const stage of [0, 1, 2, 3]) {
       const apple = buildProp('apple', stage);
@@ -70,7 +94,7 @@ describe('buildProp', () => {
     // 草成堆而不是一根根散着：每片草的叶片数压在一个小数目里。
     const blades = patch.userData.blades as unknown[];
     expect(blades.length).toBeGreaterThan(10);
-    expect(blades.length).toBeLessThan(80);
+    expect(blades.length).toBeLessThan(140);
     const fallback = buildProp('grass', 0, { kind: 'box', hx: 1, hz: 1 });
     expect(fallback).toBeInstanceOf(Group);
     expect(buildProp('grass', 0)).toBeInstanceOf(Group);

@@ -1,4 +1,4 @@
-import { createNoise, fbm } from './noise.js';
+import { createNoise } from './noise.js';
 
 /** The island sits inside this square. Past the rim the ground is flat at 0. */
 export const TERRAIN = {
@@ -160,8 +160,8 @@ export class Terrain {
 /**
  * Analytic height. The origin is flattened.
  *
- * 三层地形：扭曲过的 fbm 做缓坡，脊线噪声做山脊，再加一条随种子转向的
- * 长坡，岛的边缘用低频噪声咬出不规则的海岸。近处压平给巢穴，远处收到 0。
+ * 种子决定山地、坑洼低地和开阔平地的方向。区域之间平滑过渡，
+ * 河道穿过低处；海岸与巢穴周围再单独收平。
  */
 function sample(
   noise: (x: number, y: number) => number,
@@ -188,12 +188,24 @@ function sample(
 
   const wx = x + 6 * warp(x * 0.027 + 4.1, z * 0.027 - 3.7);
   const wz = z + 6 * warp(x * 0.027 - 7.3, z * 0.027 + 5.9);
-  const base = fbm(noise, wx * 0.045, wz * 0.045);
-  const ridge = 1 - Math.abs(fbm(noise, wx * 0.075 + 13.1, wz * 0.075 - 5.7));
-  const axis = (x * Math.cos(angle) + z * Math.sin(angle)) / TERRAIN.island;
-  const h = base * 7 + (ridge - 0.5) * 3.4 + axis * 2.4;
+  const along = x * Math.cos(angle) + z * Math.sin(angle);
+  const across = -x * Math.sin(angle) + z * Math.cos(angle);
+  const region = (cx: number, cz: number, width: number): number => {
+    const t = Math.max(0, 1 - Math.hypot(along - cx, across - cz) / width);
+    return t * t * (3 - 2 * t);
+  };
+  const mountain = region(-12, -24, 20);
+  const lowland = region(16, 15, 20);
+  const plain = region(17, -16, 20);
+  const base = noise(wx * 0.032, wz * 0.032);
+  const detail = noise(wx * 0.095 + 13.1, wz * 0.095 - 5.7);
+  const ridge = 1 - Math.abs(noise(wx * 0.06 - 4.3, wz * 0.06 + 8.1));
+  // Plains keep only a small ripple. Local relief belongs to the mountains
+  // and lowlands instead of repeating the same hills over the whole island.
+  const rolling = (base * 1.5 + detail * 0.12) * (1 - plain * 0.95);
+  const h = rolling + mountain * (3.8 + ridge * 3.8) + lowland * (-1.8 + detail * 1.8);
   // 不把低处压成 0：留出真正的谷地，巢穴外面才不是一圈等高的环。
-  return carveRiver(x, z, angle, h * mask * pad);
+  return carveRiver(x, z, angle, pad === 0 ? 0 : h * mask * pad);
 }
 
 /**
@@ -227,7 +239,7 @@ function carveRiver(x: number, z: number, angle: number, height: number): number
   const bed =
     TERRAIN.water -
     (0.95 + Math.sin(along * 0.19 + phase * 0.6) * 0.25 + Math.sin(along * 0.047) * 0.3);
-  return height > bed ? height + (bed - height) * profile : height;
+  return Math.min(height, height + (bed - height) * profile);
 }
 
 /**

@@ -1,11 +1,7 @@
 import { Color, MathUtils } from 'three';
 import { PALETTE } from './config.js';
+import { mulberry32 } from './noise.js';
 import { TERRAIN } from './terrain.js';
-
-/** 等高线间距。地形越高，线越密，噪声的形状就露出来了。 */
-const CONTOUR_STEP = 0.6;
-const CONTOUR_TOP = 6.4;
-const CONTOUR_BOTTOM = -3;
 
 const water = new Color(PALETTE.water);
 const lowland = new Color(PALETTE.ground);
@@ -28,21 +24,19 @@ export interface IslandBuffers {
   groundPosition: Float32Array;
   groundColor: Float32Array;
   groundIndex: Uint32Array;
-  grid: Float32Array;
-  contourMinor: Float32Array;
-  contourMajor: Float32Array;
+  coverPosition: Float32Array;
+  coverColor: Float32Array;
 }
 
-/** Ground, slope curves, and contours. Plain arrays so a worker can transfer them. */
+/** Terrain and low ground cover, baked off the main thread. */
 export function islandBuffers(
   height: (x: number, z: number) => number,
-  half = TERRAIN.half,
-  segments = TERRAIN.segments,
+  half: number = TERRAIN.half,
+  segments: number = TERRAIN.segments,
 ): IslandBuffers {
   return {
     ...groundAttributes(height, half, segments),
-    grid: flowLines(height, half),
-    ...contourLines(height, half, segments),
+    ...groundCover(height, half),
   };
 }
 
@@ -96,100 +90,72 @@ export function groundAttributes(
   return { groundPosition: position, groundColor: color, groundIndex: index };
 }
 
-/** Curves that follow the slope, with a small bow so a plane does not turn back into a ruler grid. */
-function flowLines(height: (x: number, z: number) => number, half: number): Float32Array {
-  const points: number[] = [];
-  const spacing = 4.5;
-  const step = 0.7;
-  const steps = 10;
-  const lift = 0.02;
-  const e = 0.55;
-  let n = 0;
-  const trace = (x0: number, z0: number, sign: number): void => {
-    let x = x0;
-    let z = z0;
-    for (let i = 0; i < steps; i++) {
-      const gx = height(x + e, z) - height(x - e, z);
-      const gz = height(x, z + e) - height(x, z - e);
-      const glen = Math.hypot(gx, gz);
-      const flat = glen < 1e-4;
-      const wx = flat ? Math.cos(n * 0.17) : gx / glen;
-      const wz = flat ? Math.sin(n * 0.17) : gz / glen;
-      const bow = 0.16 * Math.sin(i * 0.85 + n);
-      const nx = x + sign * wx * step - wz * bow;
-      const nz = z + sign * wz * step + wx * bow;
-      if (nx < -half || nx > half || nz < -half || nz > half) break;
-      points.push(x, height(x, z) + lift, z, nx, height(nx, nz) + lift, nz);
-      x = nx;
-      z = nz;
-    }
-  };
-  for (let x = -half; x <= half; x += spacing) {
-    for (let z = -half; z <= half; z += spacing) {
-      n += 1;
-      trace(x, z, 1);
-      trace(x, z, -1);
-    }
-  }
-  return Float32Array.from(points);
-}
-
-function contourLines(
+/** Small grass blades, moss rosettes and soil flecks share one colored mesh.
+ * These are scenery, not grass entities, so they never change sight or collision.
+ */
+function groundCover(
   height: (x: number, z: number) => number,
   half: number,
-  segments: number,
-): Pick<IslandBuffers, 'contourMinor' | 'contourMajor'> {
-  const cell = (half * 2) / segments;
-  const cols = segments + 1;
-  const heights = new Float32Array(cols * cols);
-  for (let j = 0; j < cols; j++) {
-    for (let i = 0; i < cols; i++)
-      heights[j * cols + i] = height(-half + i * cell, -half + j * cell);
-  }
-  const levels: number[] = [];
-  for (let level = CONTOUR_BOTTOM; level <= CONTOUR_TOP; level += CONTOUR_STEP) levels.push(level);
-  const minor: number[] = [];
-  const major: number[] = [];
-  const crossings: [number, number][] = [];
-  for (let j = 0; j < segments; j++) {
-    const z0 = -half + j * cell;
-    for (let i = 0; i < segments; i++) {
-      const x0 = -half + i * cell;
-      const h00 = heights[j * cols + i];
-      const h10 = heights[j * cols + i + 1];
-      const h01 = heights[(j + 1) * cols + i];
-      const h11 = heights[(j + 1) * cols + i + 1];
-      for (let k = 0; k < levels.length; k++) {
-        const level = levels[k];
-        crossings.length = 0;
-        addCrossing(crossings, level, h00, h10, x0, z0, x0 + cell, z0);
-        addCrossing(crossings, level, h10, h11, x0 + cell, z0, x0 + cell, z0 + cell);
-        addCrossing(crossings, level, h11, h01, x0 + cell, z0 + cell, x0, z0 + cell);
-        addCrossing(crossings, level, h01, h00, x0, z0 + cell, x0, z0);
-        const out = k % 5 === 4 ? major : minor;
-        for (let p = 0; p + 1 < crossings.length; p += 2) {
-          const a = crossings[p];
-          const b = crossings[p + 1];
-          out.push(a[0], level + 0.03, a[1], b[0], level + 0.03, b[1]);
-        }
+): Pick<IslandBuffers, 'coverPosition' | 'coverColor'> {
+  const rand = mulberry32(0x6d6f7373);
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const moss = new Color(PALETTE.moss);
+  const grass = new Color(PALETTE.grass);
+  const soil = new Color(PALETTE.earth);
+  const tint = new Color();
+  const triangle = (points: readonly number[], color: Color): void => {
+    positions.push(...points);
+    for (let i = 0; i < 3; i++) colors.push(color.r, color.g, color.b);
+  };
+  for (let gx = -half; gx < half; gx += 0.85) {
+    for (let gz = -half; gz < half; gz += 0.85) {
+      const x = gx + rand() * 0.85;
+      const z = gz + rand() * 0.85;
+      const y = height(x, z);
+      // Leave the coast, water and the nest interior clear.
+      if (
+        Math.hypot(x, z) > TERRAIN.island * 0.86 ||
+        Math.hypot(x, z) < 4.6 ||
+        y <= TERRAIN.water + 0.03
+      )
+        continue;
+      const slope =
+        Math.hypot(
+          height(x + 0.4, z) - height(x - 0.4, z),
+          height(x, z + 0.4) - height(x, z - 0.4),
+        ) / 0.8;
+      const patch = Math.sin(x * 0.31 + Math.sin(z * 0.17) * 2) + Math.cos(z * 0.27 - x * 0.12);
+      const wet = y < TERRAIN.water + 0.7;
+      const leafy = slope < 0.6 && y < 3 && patch > -0.35;
+      if (rand() > (leafy || wet ? 0.86 : 0.24)) continue;
+      tint.copy(wet ? moss : leafy ? grass : soil).multiplyScalar(0.88 + rand() * 0.2);
+      const blades = leafy && !wet ? 3 : 5;
+      for (let k = 0; k < blades; k++) {
+        const angle = rand() * Math.PI * 2;
+        const dx = Math.cos(angle);
+        const dz = Math.sin(angle);
+        const reach = 0.06 + rand() * (wet ? 0.22 : 0.14);
+        const width = wet ? 0.045 : 0.018;
+        const tipX = x + dx * reach;
+        const tipZ = z + dz * reach;
+        const lift = leafy && !wet ? 0.05 + rand() * 0.1 : 0.018;
+        triangle(
+          [
+            x - dz * width,
+            height(x - dz * width, z + dx * width) + 0.012,
+            z + dx * width,
+            x + dz * width,
+            height(x + dz * width, z - dx * width) + 0.012,
+            z - dx * width,
+            tipX,
+            height(tipX, tipZ) + lift,
+            tipZ,
+          ],
+          tint,
+        );
       }
     }
   }
-  return { contourMinor: Float32Array.from(minor), contourMajor: Float32Array.from(major) };
-}
-
-function addCrossing(
-  out: [number, number][],
-  level: number,
-  a: number,
-  b: number,
-  ax: number,
-  az: number,
-  bx: number,
-  bz: number,
-): void {
-  if ((a < level && b >= level) || (b < level && a >= level)) {
-    const t = (level - a) / (b - a);
-    out.push([ax + (bx - ax) * t, az + (bz - az) * t]);
-  }
+  return { coverPosition: Float32Array.from(positions), coverColor: Float32Array.from(colors) };
 }

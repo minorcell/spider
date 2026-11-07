@@ -30,7 +30,7 @@ describe('world worker', () => {
     expect(prepared.seed).toBe(3);
     expect(new Terrain(3, prepared.grid).height(14, -8)).toBeCloseTo(local.height(14, -8));
     expect(prepared.island.groundPosition.length).toBeGreaterThan(0);
-    expect(prepared.island.contourMinor.length).toBeGreaterThan(0);
+    expect(prepared.island.coverPosition.length).toBeGreaterThan(0);
   });
 
   it('posts the buffers so the page can take them', async () => {
@@ -42,9 +42,8 @@ describe('world worker', () => {
         groundPosition: new Float32Array([0, 1, 2]),
         groundColor: new Float32Array([1, 1, 1]),
         groundIndex: new Uint32Array([0]),
-        grid: new Float32Array([0, 0, 0]),
-        contourMinor: new Float32Array(),
-        contourMajor: new Float32Array([4]),
+        coverPosition: new Float32Array([0, 0, 0]),
+        coverColor: new Float32Array([1, 1, 1]),
       },
     }));
     port.onmessage?.({ data: { id: 2, method: 'prepare', seed: 1 } } as MessageEvent<WorldRequest>);
@@ -52,7 +51,7 @@ describe('world worker', () => {
     const reply = port.postMessage.mock.calls[0][0] as WorldReply;
     const transfer = port.postMessage.mock.calls[0][1] as ArrayBuffer[];
     expect(reply).toMatchObject({ id: 2, ok: true });
-    expect(transfer).toHaveLength(7);
+    expect(transfer).toHaveLength(6);
   });
 
   it('turns a thrown error into a failed reply', async () => {
@@ -96,7 +95,7 @@ describe('world worker', () => {
     };
     const client = new WorldClient(port);
     const prepared = await client.prepare(6);
-    expect(prepared.island.children).toHaveLength(4);
+    expect(prepared.island.children).toHaveLength(3);
     expect(prepared.terrain.height(0, 0)).toBe(0);
     expect(prepared.terrain.height(0, 0)).toBeCloseTo(new Terrain(6).height(0, 0));
 
@@ -202,7 +201,7 @@ describe('world worker', () => {
     attachWorldWorker(port);
     port.onmessage?.({ data: { id: 8, method: 'prepare', seed: 5 } } as MessageEvent<WorldRequest>);
     await settle();
-    expect(port.postMessage.mock.calls[0][1]).toHaveLength(7);
+    expect(port.postMessage.mock.calls[0][1]).toHaveLength(6);
   });
 
   it('starts a worker when the browser has one and reuses it', async () => {

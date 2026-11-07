@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BufferGeometry, Group } from 'three';
+import { KINDS } from '../../src/shared/kinds.js';
 import { Spider as RealSpider } from '../../src/shared/sim/Spider.js';
 import type { EntityState, WorldState } from '../../src/shared/state.js';
 import { Stage } from '../../src/client/stage.js';
@@ -286,11 +287,12 @@ describe('world sync', () => {
         children: { position: { y: number } }[];
       }[];
     };
+    const radius = KINDS.apple.physics!.radius;
     const prop = scene.children.find((child) => Math.abs(child.position.x - 2) < 1e-6);
-    expect(prop?.position.y).toBeCloseTo(0.5 + 0.36);
+    expect(prop?.position.y).toBeCloseTo(0.5 + radius);
     expect(prop?.quaternion.z).toBeCloseTo(0.1);
     expect(prop?.quaternion.w).toBeCloseTo(0.995);
-    expect(prop?.children[0]?.position.y).toBeCloseTo(-0.36);
+    expect(prop?.children[0]?.position.y).toBeCloseTo(-radius);
   });
 
   it('keeps a placed island and swaps in the next one from the source', async () => {

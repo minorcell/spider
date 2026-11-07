@@ -16,12 +16,22 @@ export const PALETTE = {
   stem: 0xd6c3a8,
   /** 石子和蜘蛛的淡灰，蜘蛛再深半档。 */
   stone: 0xdcd9d1,
+  /** 沼石更暗一点，苔藓是比草叶深的绿。 */
+  bogStone: 0xc6c2b7,
+  moss: 0xb5c19c,
   spider: 0xd7d1c7,
   /** 蜘蛛的复眼。 */
   eye: 0xb23a2e,
   ink: 0x1b1714,
   grid: 0xc8bfb2,
 } as const;
+
+/**
+ * The apple mesh is drawn at this fraction of its modeled size, so a fruit
+ * reads against a tree the way it should. The body that rolls and floats uses
+ * the same fraction, so mesh, contact, and carry positions stay one thing.
+ */
+export const APPLE_SCALE = 0.72;
 
 export const DECK_Y = 0.78;
 

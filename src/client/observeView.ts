@@ -23,7 +23,14 @@ import type { Spider } from '../shared/sim/Spider.js';
 
 const RING = 72;
 const OBSERVE_REFRESH_MS = 100;
-const NAME: Record<string, string> = { apple: '苹果', grass: '草', nest: '巢' };
+const NAME: Record<string, string> = {
+  apple: '苹果',
+  grass: '草',
+  nest: '巢',
+  tree: '树',
+  stone: '石',
+  'bog-stone': '沼石',
+};
 
 /** God view of what the spider can sense. The chase camera stays as it is. */
 export class ObserveOverlay {

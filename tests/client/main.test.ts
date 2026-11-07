@@ -302,6 +302,6 @@ describe('main', () => {
     const readIsland = control.setIslandSource.mock.calls[0][0] as (
       seed: number,
     ) => Promise<{ children: unknown[] }>;
-    await expect(readIsland(42)).resolves.toMatchObject({ children: { length: 4 } });
+    await expect(readIsland(42)).resolves.toMatchObject({ children: { length: 3 } });
   });
 });

@@ -8,6 +8,7 @@ import { stepPhysics } from '../../../src/shared/sim/physics.js';
 import type { Block, EntityState, WorldState } from '../../../src/shared/state.js';
 
 const body = { x: 100, z: 100, speed: 0 };
+const APPLE_RADIUS = KINDS.apple.physics!.radius;
 
 function apple(over: Partial<EntityState> = {}): EntityState {
   return { id: 'apple-1', kind: 'apple', x: 0, y: 0, z: 0, stage: 0, ...over };
@@ -97,9 +98,9 @@ describe('stepPhysics', () => {
     for (let i = 0; i < 600; i++) stepPhysics(pond, body, 1 / 60);
     const floated = pond.entities[0];
     expect(floated).toMatchObject({ x: 2, z: 3, vx: 0, vz: 0 });
-    expect(floated.y).toBeCloseTo(-1.3, 1);
+    expect(floated.y).toBeCloseTo(-1.17, 1);
     // The apple's center sits just below the water line, not well above it.
-    expect(floated.y + 0.36).toBeLessThan(-0.8);
+    expect(floated.y + APPLE_RADIUS).toBeLessThan(-0.8);
   });
 
   it('floats bodies by their own mass and volume, not by kind', () => {
@@ -163,10 +164,10 @@ describe('stepPhysics', () => {
 
     const pair = world({
       terrain: { height: () => 0, inside: land },
-      entities: [apple({ id: 'a', x: 5.6 }), apple({ id: 'b', x: 5.2 })],
+      entities: [apple({ id: 'a', x: 5.7 }), apple({ id: 'b', x: 5.3 })],
     });
     stepPhysics(pair, body, 1 / 60);
-    expect(pair.entities[0].x).toBe(5.6);
+    expect(pair.entities[0].x).toBe(5.7);
     expect(pair.entities[0].vx).toBe(0);
   });
 
@@ -179,7 +180,9 @@ describe('stepPhysics', () => {
     const moved = slope.entities[0];
     expect(moved.x).toBeLessThan(5);
     expect(moved.vx).toBeLessThan(0);
-    expect(moved.y).toBeCloseTo(groundSupport(slope.terrain.height, moved.x, moved.z, 0.36));
+    expect(moved.y).toBeCloseTo(
+      groundSupport(slope.terrain.height, moved.x, moved.z, APPLE_RADIUS),
+    );
   });
 
   it('builds speed down a gentle slope instead of cancelling the first shove', () => {
@@ -226,7 +229,7 @@ describe('stepPhysics', () => {
     const pushed = world({ entities: [apple({ x: 0.2 })] });
     stepPhysics(pushed, { x: 0, z: 0, speed: 2 }, 1 / 60);
     const moved = pushed.entities[0];
-    expect(Math.hypot(moved.x, moved.z)).toBeGreaterThanOrEqual(0.48 + 0.36 - 1e-9);
+    expect(Math.hypot(moved.x, moved.z)).toBeGreaterThanOrEqual(0.48 + APPLE_RADIUS - 1e-9);
     expect(moved.vx).toBeGreaterThan(0);
   });
 
@@ -251,21 +254,23 @@ describe('stepPhysics', () => {
     });
     for (let i = 0; i < 60; i++) stepPhysics(pair, body, 1 / 60);
     const [a, b] = pair.entities;
-    expect(Math.hypot(b.x - a.x, b.z - a.z)).toBeGreaterThanOrEqual(0.72 - 1e-6);
+    expect(Math.hypot(b.x - a.x, b.z - a.z)).toBeGreaterThanOrEqual(2 * APPLE_RADIUS - 1e-6);
   });
 
   it('resolves a collision toward the side with room at a shore', () => {
     const land = (x: number, z: number, margin = 0): boolean => Math.hypot(x, z) < 6 - margin;
     const shore = world({
       terrain: { height: () => 0, inside: land },
-      entities: [apple({ id: 'a', x: 5.2 }), apple({ id: 'b', x: 5.7 })],
+      entities: [apple({ id: 'a', x: 5.55 }), apple({ id: 'b', x: 5.72 })],
     });
     stepPhysics(shore, body, 1 / 60);
     const [inner, outer] = shore.entities;
-    expect(inner.x).toBeLessThan(5.2);
-    expect(outer.x).toBeLessThanOrEqual(5.7);
-    expect(Math.hypot(inner.x - outer.x, inner.z - outer.z)).toBeGreaterThanOrEqual(0.72 - 1e-6);
-    expect(land(inner.x, inner.z, 0.36)).toBe(true);
+    expect(inner.x).toBeLessThan(5.55);
+    expect(outer.x).toBeLessThanOrEqual(5.72);
+    expect(Math.hypot(inner.x - outer.x, inner.z - outer.z)).toBeGreaterThanOrEqual(
+      2 * APPLE_RADIUS - 1e-6,
+    );
+    expect(land(inner.x, inner.z, APPLE_RADIUS)).toBe(true);
   });
 
   it('ignores two apples at one exact point', () => {
@@ -298,7 +303,7 @@ describe('stepPhysics', () => {
     }
     const centers = pile.entities.map((entity) => ({
       x: entity.x,
-      y: entity.y + 0.36,
+      y: entity.y + APPLE_RADIUS,
       z: entity.z,
     }));
     for (let i = 0; i < centers.length; i++) {
@@ -306,7 +311,7 @@ describe('stepPhysics', () => {
         const a = centers[i];
         const b = centers[j];
         const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-        expect(dist).toBeGreaterThanOrEqual(0.72 - 1e-4);
+        expect(dist).toBeGreaterThanOrEqual(2 * APPLE_RADIUS - 1e-4);
       }
     }
     const ys = pile.entities.map((entity) => entity.y);

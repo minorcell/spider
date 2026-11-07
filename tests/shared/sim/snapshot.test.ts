@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { localDate } from '../../../src/shared/dates.js';
 import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '../../../src/shared/config.js';
 import { SimSession } from '../../../src/shared/sim/session.js';
-import { Terrain } from '../../../src/shared/terrain.js';
+import { Terrain, TERRAIN } from '../../../src/shared/terrain.js';
 import { APPLE_EVERY } from '../../../src/shared/world.js';
 import {
   applyBody,
@@ -12,6 +12,7 @@ import {
   chooseRecord,
   classify,
   FORMAT,
+  MAX_ENTITIES,
   newer,
   type WorldRecord,
 } from '../../../src/shared/sim/snapshot.js';
@@ -45,6 +46,114 @@ function good(): WorldRecord {
 }
 
 describe('snapshot', () => {
+  it('removes saved grass covered by a changed shoreline', () => {
+    const old = good();
+    old.entities.push({ id: 'grass-no-footprint', kind: 'grass', x: 10, y: 0, z: 10, stage: 0 });
+    const flooded = new Terrain(old.seed, new Float32Array((TERRAIN.segments + 1) ** 2).fill(-1));
+    const restored = session();
+    applyBody(restored, old, flooded);
+    expect(restored.world.entities.some((entity) => entity.kind === 'grass')).toBe(false);
+    expect(
+      restored.world.entities
+        .filter((entity) => entity.kind !== 'grass')
+        .map((entity) => entity.id),
+    ).toEqual(old.entities.filter((entity) => entity.kind !== 'grass').map((entity) => entity.id));
+  });
+
+  it('thins the dense grass release once while preserving the rest of the world', () => {
+    const old = good();
+    old.scenery = 2;
+    const existing = old.entities.filter((entity) => entity.kind !== 'grass');
+    const patches = Array.from({ length: 60 }, (_, index) => ({
+      id: `grass-${index + 1}`,
+      kind: 'grass',
+      x: 10,
+      y: 0,
+      z: 10,
+      stage: 0,
+      footprint: { kind: 'circle' as const, r: 3.2 },
+    }));
+    old.entities = [...existing, ...patches];
+    const restored = session();
+    applyBody(restored, old);
+    expect(
+      restored.world.entities
+        .filter((entity) => entity.kind === 'grass')
+        .map((entity) => entity.id),
+    ).toEqual(patches.slice(0, 32).map((entity) => entity.id));
+    expect(
+      restored.world.entities
+        .filter((entity) => entity.kind !== 'grass')
+        .map((entity) => entity.id),
+    ).toEqual(existing.map((entity) => entity.id));
+    const saved = captureBody(restored, old.pending);
+    expect(classify({ ...old, ...saved }).status).toBe('ok');
+    applyBody(restored, saved);
+    expect(captureBody(restored, old.pending)).toEqual(saved);
+
+    old.entities = [...existing, ...patches.slice(0, 10)];
+    applyBody(restored, old);
+    expect(restored.world.entities.filter((entity) => entity.kind === 'grass')).toHaveLength(10);
+  });
+
+  it('fills vegetation in the first scenery release without duplicating ids', () => {
+    const old = good();
+    old.scenery = 1;
+    let trees = 0;
+    let grass = 0;
+    old.entities = old.entities.filter((entity) => {
+      if (entity.kind === 'tree') return ++trees <= 8;
+      if (entity.kind === 'grass') return ++grass <= 24;
+      return true;
+    });
+    const restored = session();
+    applyBody(restored, old);
+    expect(
+      restored.world.entities.filter((entity) => entity.kind === 'tree').length,
+    ).toBeGreaterThan(8);
+    expect(
+      restored.world.entities.filter((entity) => entity.kind === 'grass').length,
+    ).toBeGreaterThan(24);
+    expect(new Set(restored.world.entities.map((entity) => entity.id)).size).toBe(
+      restored.world.entities.length,
+    );
+    expect(classify({ ...old, ...captureBody(restored, null) }).status).toBe('ok');
+  });
+
+  it('adds scenery to an old save and keeps the upgrade on subsequent restores', () => {
+    const first = session();
+    const old = good();
+    delete old.scenery;
+    expect(classify(old).status).toBe('ok');
+    old.entities = old.entities.filter((entity) =>
+      ['nest', 'apple', 'grass'].includes(entity.kind),
+    );
+    const originals = structuredClone(old.entities);
+    applyBody(first, old);
+    for (const kind of ['tree', 'stone', 'bog-stone']) {
+      expect(first.world.entities.some((entity) => entity.kind === kind)).toBe(true);
+    }
+    for (const entity of originals) {
+      expect(first.world.entities.find((item) => item.id === entity.id)).toMatchObject({
+        kind: entity.kind,
+        x: entity.x,
+        z: entity.z,
+        stage: entity.stage,
+      });
+    }
+    const saved = captureBody(first, old.pending);
+    expect(saved.scenery).toBe(4);
+    const parsed = classify({ ...old, ...saved });
+    expect(parsed.status).toBe('ok');
+    if (parsed.status !== 'ok') throw new Error('invalid upgraded save');
+    const second = session();
+    applyBody(second, parsed.record);
+    expect(second.world.entities).toEqual(first.world.entities);
+    expect(second.world.blocks).toEqual(first.world.blocks);
+    expect(second.world.carrying).toEqual(old.carrying);
+    expect(second.world.marks).toEqual(old.marks);
+  });
+
   it.each([1, 2])('rejects format %s instead of migrating it', (format) => {
     expect(classify({ ...good(), format }, today)).toEqual({ status: 'malformed' });
   });
@@ -343,7 +452,10 @@ describe('snapshot', () => {
     expect(status([], [])).toBe('malformed');
     const crowd = [
       home,
-      ...Array.from({ length: 70 }, (_, index) => ({ ...apple!, id: `apple-${index}` })),
+      ...Array.from({ length: MAX_ENTITIES }, (_, index) => ({
+        ...apple!,
+        id: `apple-${index}`,
+      })),
     ];
     expect(status(crowd)).toBe('malformed');
     expect(

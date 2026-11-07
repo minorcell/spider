@@ -14,9 +14,8 @@ function transfers(value: PreparedBuffers): Transferable[] {
     island.groundPosition.buffer,
     island.groundColor.buffer,
     island.groundIndex.buffer,
-    island.grid.buffer,
-    island.contourMinor.buffer,
-    island.contourMajor.buffer,
+    island.coverPosition.buffer,
+    island.coverColor.buffer,
   ];
 }
 

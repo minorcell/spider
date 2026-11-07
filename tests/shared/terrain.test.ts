@@ -13,6 +13,28 @@ import {
 } from '../../src/shared/terrain.js';
 
 describe('Terrain', () => {
+  it.each([1, 7, 99])('gives seed %s plains, mountains, uneven lowlands and water', (seed) => {
+    const terrain = new Terrain(seed);
+    const angle = ((seed * 2654435761) % 6283) / 1000;
+    const at = (along: number, across: number) =>
+      terrain.height(
+        along * Math.cos(angle) - across * Math.sin(angle),
+        along * Math.sin(angle) + across * Math.cos(angle),
+      );
+    const relief = (cx: number, cz: number) => {
+      const heights: number[] = [];
+      for (let x = -3; x <= 3; x++) {
+        for (let z = -3; z <= 3; z++) heights.push(at(cx + x, cz + z));
+      }
+      return Math.max(...heights) - Math.min(...heights);
+    };
+    expect(at(-12, -24)).toBeGreaterThan(3);
+    expect(Math.abs(at(17, -16))).toBeLessThan(0.3);
+    expect(relief(17, -16)).toBeLessThan(relief(-12, -24));
+    expect(relief(16, 15)).toBeGreaterThan(0.2);
+    expect(at(16, 15)).toBeLessThan(TERRAIN.water);
+  });
+
   it('keeps the unsigned seed', () => {
     expect(new Terrain(9).seed).toBe(9);
     expect(new Terrain(-1).seed).toBe(4294967295);

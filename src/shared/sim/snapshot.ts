@@ -1,15 +1,16 @@
+import { grassOnDryGround, grassRadius } from '../grass.js';
 import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX, MOUNTS } from '../config.js';
 import { KINDS } from '../kinds.js';
 import type { EntityState, Footprint, PlaceMark, SpiderState, WorldState } from '../state.js';
 import { blockedAt, BODY_RADIUS } from '../sight.js';
-import { APPLE_EVERY, nestBlocks, restingY } from '../world.js';
+import { APPLE_EVERY, GRASS, nestBlocks, populateScenery, propBlocks, restingY } from '../world.js';
 import { insideLand, Terrain } from '../terrain.js';
 import { waterAt } from '../water.js';
 import { bindLegWorld } from './bindWorld.js';
 import type { Spider } from './Spider.js';
 
 export const FORMAT = 3;
-export const MAX_ENTITIES = 64;
+export const MAX_ENTITIES = 160;
 export const MAX_PENDING = 4000;
 export const MAX_JSON = 64_000;
 const MAX_SPROUTS = 1_000_000;
@@ -23,6 +24,8 @@ const PLACE_Y = 1_000;
 
 /** World body. No lease and no database key. */
 export interface SimBody {
+  /** Absent in saves made before trees and stones were introduced. */
+  scenery?: 1 | 2 | 3 | 4;
   seed: number;
   appleIn: number;
   sprouts: number;
@@ -59,6 +62,7 @@ export interface Restorable {
 export function captureBody(session: Restorable, pending: SimBody['pending']): SimBody {
   const world = session.world;
   return {
+    scenery: 4,
     seed: world.seed,
     appleIn: world.appleIn ?? APPLE_EVERY,
     sprouts: world.sprouts ?? 0,
@@ -79,15 +83,40 @@ export function applyBody(
   const world = session.world;
   world.terrain = terrain;
   world.seed = terrain.seed;
-  world.blocks = nestBlocks();
   // 地形函数会改；恢复时把落地的道具重新放到当前地面上。
   world.entities = structuredClone(body.entities).map((entity) =>
     entity.kind === 'nest'
       ? entity
       : { ...entity, y: restingY(terrain, entity.kind, entity.x, entity.z, entity.footprint) },
   );
+  // Thin the dense vegetation release once, keeping the original patches first.
+  if (body.scenery === 2) {
+    let patches = 0;
+    world.entities = world.entities.filter(
+      (entity) => entity.kind !== 'grass' || ++patches <= GRASS,
+    );
+  }
+  if (body.scenery !== 4) {
+    for (const entity of world.entities) {
+      if (entity.kind === 'grass') entity.footprint = { kind: 'circle', r: grassRadius(entity.id) };
+    }
+  }
+  world.blocks = [...nestBlocks(), ...propBlocks(world.entities)];
   world.marks = structuredClone(body.marks);
   world.carrying = structuredClone(body.carrying);
+  if (body.scenery !== 2 && body.scenery !== 3 && body.scenery !== 4)
+    populateScenery(world, body.spider.position, MAX_ENTITIES);
+  // Terrain updates can move a shoreline under a saved patch.
+  world.entities = world.entities.filter(
+    (entity) =>
+      entity.kind !== 'grass' ||
+      grassOnDryGround(
+        (x, z) => terrain.height(x, z),
+        entity.x,
+        entity.z,
+        entity.footprint?.kind === 'circle' ? entity.footprint.r : 1.7,
+      ),
+  );
   world.appleIn = body.appleIn;
   world.sprouts = body.sprouts;
   bindLegWorld(session.spider, world);
@@ -187,6 +216,9 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
   const marks = readMarks(raw.marks);
   if (!marks) return null;
   return {
+    ...(raw.scenery === 1 || raw.scenery === 2 || raw.scenery === 3 || raw.scenery === 4
+      ? { scenery: raw.scenery }
+      : {}),
     seed: raw.seed >>> 0,
     appleIn: raw.appleIn as number,
     sprouts: raw.sprouts as number,

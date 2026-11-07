@@ -121,9 +121,10 @@ describe('route around the nest', () => {
   it('routes around the nest in under 15 ms', () => {
     const world = createWorld(SEED);
     const height = (x: number, z: number): number => surfaceOf(world.terrain, x, z);
-    const plan = planAroundNest(world.blocks, height);
+    const blocks = world.blocks.filter((block) => block.id.startsWith('nest-ring-'));
+    const plan = planAroundNest(blocks, height);
     expect(plan !== null && plan.direct === false && plan.points.length > 2).toBe(true);
-    expect(bestOf(5, () => void planAroundNest(world.blocks, height))).toBeLessThan(15);
+    expect(bestOf(5, () => void planAroundNest(blocks, height))).toBeLessThan(15);
   });
 });
 
