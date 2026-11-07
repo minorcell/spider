@@ -202,8 +202,13 @@ export class Spider {
     this.#pose(reuse);
   }
 
-  setInteraction(target: { x: number; y?: number; z: number } | null, phase: 'reach' | 'drag' | 'release' = 'reach'): void {
-    this.interaction = target ? { target: new Vector3(target.x, target.y ?? 0.2, target.z), phase } : null;
+  setInteraction(
+    target: { x: number; y?: number; z: number } | null,
+    phase: 'reach' | 'drag' | 'release' = 'reach',
+  ): void {
+    this.interaction = target
+      ? { target: new Vector3(target.x, target.y ?? 0.2, target.z), phase }
+      : null;
   }
 
   #applyInteraction(): void {

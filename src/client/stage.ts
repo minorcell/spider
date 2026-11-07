@@ -305,11 +305,13 @@ export class Stage {
       const points = [abdomen];
       for (let i = 1; i < 10; i++) {
         const t = i / 10;
-        points.push(new Vector3(
-          abdomen.x + (silkEnd.x - abdomen.x) * t,
-          abdomen.y + (silkEnd.y - abdomen.y) * t - Math.sin(Math.PI * t) * 0.18,
-          abdomen.z + (silkEnd.z - abdomen.z) * t,
-        ));
+        points.push(
+          new Vector3(
+            abdomen.x + (silkEnd.x - abdomen.x) * t,
+            abdomen.y + (silkEnd.y - abdomen.y) * t - Math.sin(Math.PI * t) * 0.18,
+            abdomen.z + (silkEnd.z - abdomen.z) * t,
+          ),
+        );
       }
       points.push(silkEnd);
       this.#silk.geometry.dispose();
