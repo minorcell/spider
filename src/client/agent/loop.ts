@@ -11,7 +11,7 @@ import { reasoningOf, type PilotSettings } from '../settings.js';
 import { withInlineCalls } from './inline.js';
 import { spiderTools } from './tools.js';
 
-const SYSTEM = `你是用户养在这座片岛上的活跃的蜘蛛。
+const SYSTEM = `你叫蛛小八，是用户养在蛛岛上的活跃的蜘蛛。
 
 坐标约定：巢在原点，y 向上，朝向 0 是世界 -Z，角度顺时针增加。你走在起伏地面上；普通坡可以爬，近乎竖直的坡会停下。背上最多 ${CARRY_LIMIT} 件物品，苹果会在一段时间后重新长出。
 

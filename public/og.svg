@@ -31,21 +31,11 @@
   <text
     x="96"
     y="250"
-    font-family="'Helvetica Neue', Helvetica, Arial, sans-serif"
-    font-size="94"
-    font-weight="700"
-    letter-spacing="2"
-    fill="#1b1714"
-  >Token</text>
-
-  <text
-    x="404"
-    y="250"
     font-family="'Songti SC', 'STSong', 'Noto Serif SC', serif"
     font-size="118"
     font-weight="700"
     fill="#1b1714"
-  >蛛</text>
+  >蛛小八</text>
 
   <text
     x="100"
@@ -53,7 +43,7 @@
     font-family="'Songti SC', 'STSong', 'Noto Serif SC', serif"
     font-size="34"
     fill="#4a423a"
-  >纸岛上的蜘蛛宠物</text>
+  >住在蛛岛上的蜘蛛宠物</text>
 
   <text
     x="100"
@@ -72,7 +62,7 @@
     font-family="'Songti SC', 'STSong', 'Noto Serif SC', serif"
     font-size="24"
     fill="#4a423a"
-  >填上模型地址与 Key，它就活了。</text>
+  >接入语言模型，用自然语言与它互动。</text>
 
   <text
     x="100"

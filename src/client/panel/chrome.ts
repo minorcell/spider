@@ -91,7 +91,7 @@ function githubBadge(doc: Document): HTMLAnchorElement {
     href: `https://github.com/${REPO}`,
     target: '_blank',
     rel: 'noopener noreferrer',
-    'aria-label': '在 GitHub 上给 Token 蛛点一个 Star',
+    'aria-label': '在 GitHub 上给 蛛小八点一个 Star',
     title: '去 GitHub 点个 Star',
   });
   const stars = h(doc, 'span', { id: 'github-stars' });
@@ -186,7 +186,7 @@ export function buildChrome(doc: Document): DocumentFragment {
   const settings = dialog(doc, { id: 'settings', label: '设置', kind: 'sheet' });
   const shell = h(doc, 'div', { class: 'settings-shell' });
   const rail = h(doc, 'aside', { class: 'settings-rail' });
-  const brand = h(doc, 'p', { class: 'brand' }, 'Token 蛛', h(doc, 'small', {}, '设置'));
+  const brand = h(doc, 'p', { class: 'brand' }, '蛛小八', h(doc, 'small', {}, '设置'));
   const nav = h(doc, 'nav', { class: 'nav', 'aria-label': '设置导航' });
   const menuModel = button(doc, '模型', { variant: 'quiet', id: 'menu-model' });
   menuModel.setAttribute('aria-current', 'page');
