@@ -34,7 +34,6 @@ export function buildNest(): Group {
   const group = new Group();
   group.name = 'nest';
   const rand = mulberry32(71);
-  const ink: number[] = [];
   const silk: number[] = [];
   const positions: number[] = [];
   const indices: number[] = [];
@@ -88,31 +87,6 @@ export function buildNest(): Group {
     stone.add(new Mesh(growShell(geometry, 0.025), inkSolidMat));
     group.add(stone);
   }
-
-  // A vaulted root canopy gives the mouth depth without closing the walking gap.
-  const canopy = new Group();
-  canopy.name = 'root-canopy';
-  for (let k = 0; k < 4; k++) {
-    const spine: Vector3[] = [];
-    const z = -1.4 - k * 0.25;
-    for (let i = 0; i <= 16; i++) {
-      const angle = (i / 16) * Math.PI;
-      spine.push(
-        new Vector3(
-          -1.45 * Math.cos(angle),
-          0.22 + Math.sin(angle) * (1.65 - k * 0.07),
-          z + Math.sin(angle * 2 + k) * 0.07,
-        ),
-      );
-    }
-    const geometry = tubeGeometry(spine, (t) => 0.075 + Math.sin(t * Math.PI) * 0.035, 8);
-    const root = new Mesh(geometry, stemMat);
-    root.add(new Mesh(growShell(geometry, 0.009), inkSolidMat));
-    canopy.add(root);
-    const crest = spine.map((point) => point.clone().add(new Vector3(0, 0.06, 0)));
-    pushLine(ink, crest);
-  }
-  group.add(canopy);
 
   // Long roots hold the rear bank, rather than the regular rings of a mound.
   for (let k = 0; k < 9; k++) {
@@ -176,7 +150,7 @@ export function buildNest(): Group {
     tuft.position.set(Math.cos(angle) * r, 0.01, Math.sin(angle) * r);
     group.add(tuft);
   }
-  group.add(lineFrom(ink), lineFrom(silk, silkMat));
+  group.add(lineFrom(silk, silkMat));
   group.scale.set(NEST_SCALE_XZ, NEST_SCALE_Y, NEST_SCALE_XZ);
   return group;
 }

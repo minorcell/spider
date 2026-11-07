@@ -70,7 +70,7 @@ describe('buildProp', () => {
     const meshes = nest.children.filter((child) => child instanceof Mesh);
     const lines = nest.children.filter((child) => child instanceof LineSegments);
     expect(meshes.length).toBeGreaterThan(0);
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(1);
     expect(meshes[0].geometry.getAttribute('position').count).toBeGreaterThan(0);
     expect(lines[0].geometry.getAttribute('position').count).toBeGreaterThan(0);
   });
