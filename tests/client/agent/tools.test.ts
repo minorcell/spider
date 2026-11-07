@@ -66,6 +66,7 @@ beforeEach(() => {
     }),
     turn: vi.fn(async () => outcome()),
     turnTo: vi.fn(async () => outcome()),
+    walk: vi.fn(async () => outcome()),
     moveTo: vi.fn(async () => outcome()),
     mark: vi.fn(() => outcome({ action: 'mark', name: '水边', x: 1, z: 2 })),
     marks: vi.fn(() => [
@@ -111,16 +112,35 @@ describe('spiderTools', () => {
     const go = tools.go.inputSchema;
     const act = tools.act.inputSchema;
     expect(go.safeParse({ description: '走过去', mode: 'point', x: 1, z: 2 }).success).toBe(true);
+    expect(go.safeParse({ description: '前进', mode: 'distance', distance: 1 }).success).toBe(true);
+    expect(go.safeParse({ description: '后退', mode: 'distance', distance: -1 }).success).toBe(
+      true,
+    );
     expect(go.safeParse({ description: '过去', mode: 'id', id: 'apple-1' }).success).toBe(true);
     expect(go.safeParse({ description: '转身', mode: 'heading', heading: 0 }).success).toBe(true);
     expect(go.safeParse({ description: '转身', mode: 'degrees', degrees: 30 }).success).toBe(true);
     expect(go.safeParse({ description: '走', mode: 'point', id: 'apple-1' }).success).toBe(false);
     expect(go.safeParse({ description: '走', x: 1, z: 2 }).success).toBe(false);
+    expect(go.safeParse({ description: '前进', mode: 'distance' }).success).toBe(false);
     expect(act.safeParse({ description: '吃掉', verb: 'eat', id: 'apple-1' }).success).toBe(true);
     expect(act.safeParse({ description: '喝水', verb: 'drink' }).success).toBe(true);
     expect(act.safeParse({ description: '睡觉', verb: 'sleep' }).success).toBe(true);
     expect(act.safeParse({ description: '吃掉', verb: 'eat' }).success).toBe(false);
     expect(act.safeParse({ description: '喝水', verb: 'drink', id: 'apple-1' }).success).toBe(true);
+  });
+
+  it('walks relative to its current heading and returns the actual outcome', async () => {
+    const tools = spiderTools(session as unknown as SimSession);
+    session.walk.mockResolvedValueOnce(outcome({ target: 1, achieved: 0.98 }));
+    expect(await execute(tools.go, { mode: 'distance', distance: 1 })).toMatchObject({
+      ok: true,
+      achieved: 0.98,
+    });
+    expect(session.walk).toHaveBeenLastCalledWith(1, false);
+    await execute(tools.go, { mode: 'distance', distance: -1, fast: true });
+    expect(session.walk).toHaveBeenLastCalledWith(-1, true);
+    expect(session.moveTo).not.toHaveBeenCalled();
+    expect(session.observe).not.toHaveBeenCalled();
   });
 
   it('observes and envelopes the result', async () => {

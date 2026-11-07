@@ -1,4 +1,4 @@
-export const LOCAL_MODEL = 'Qwen3-0.6B-q4f16_1-MLC';
+export const LOCAL_MODEL = 'Llama-3.2-1B-Instruct-q0f16-MLC';
 export interface LocalMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;

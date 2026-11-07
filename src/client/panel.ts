@@ -137,7 +137,7 @@ export function mountPanel(
     const settings = readPilot();
     const local = settings.mode === 'local';
     const ready = local ? localReady : pilotReady(settings);
-    model.textContent = ready ? (local ? 'Qwen3 · 本机' : settings.model) : '';
+    model.textContent = ready ? (local ? 'Llama 3.2 · 本机' : settings.model) : '';
     model.style.display = ready ? '' : 'none';
     goal.placeholder = ready
       ? '让它去做一件事'

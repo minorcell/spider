@@ -100,6 +100,6 @@ it('keeps diary inference on the local model when local mode is selected', async
   expect(compat.create).toHaveBeenCalledWith(
     expect.objectContaining({ baseURL: 'http://local.invalid/v1', fetch: expect.any(Function) }),
   );
-  expect(provider).toHaveBeenCalledWith('Qwen3-0.6B-q4f16_1-MLC');
+  expect(provider).toHaveBeenCalledWith('Llama-3.2-1B-Instruct-q0f16-MLC');
   expect(ai.generateText.mock.calls[0][0].maxRetries).toBe(0);
 });

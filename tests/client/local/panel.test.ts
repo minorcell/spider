@@ -30,6 +30,9 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 it('disables cloud fields only for local mode and downloads only after a click', async () => {
+  expect(document.querySelector('#local-model-panel')!.textContent).toContain('Llama 3.2 1B');
+  expect(document.querySelector('#local-model-panel')!.textContent).toContain('约 2.5 GB');
+  expect(document.querySelector('#local-model-panel')!.textContent).toContain('约 2.6 GB');
   const reflect = bindLocalPanel(document);
   reflect(true);
   expect(document.querySelector<HTMLElement>('#online-model-panel')!.hidden).toBe(true);

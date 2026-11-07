@@ -391,5 +391,5 @@ it('opts into local inference without credentials and restores the saved API set
 it('attributes local usage independently of saved API credentials', () => {
   const cloud = { baseURL: 'url', model: 'cloud', apiKey: 'key' };
   expect(modelIdOf(cloud)).toBe('cloud');
-  expect(modelIdOf({ ...cloud, mode: 'local' })).toBe('Qwen3-0.6B-q4f16_1-MLC');
+  expect(modelIdOf({ ...cloud, mode: 'local' })).toBe('Llama-3.2-1B-Instruct-q0f16-MLC');
 });

@@ -4,6 +4,87 @@ import { useLocalBackend } from '../../../src/client/local/backend.js';
 import type { LocalBackend } from '../../../src/client/local/types.js';
 import { SimSession } from '../../../src/shared/sim/session.js';
 
+it.each([
+  {
+    goal: '前进一米',
+    name: 'go',
+    parameters: { description: '我往前走', mode: 'distance', distance: 1 },
+  },
+  {
+    goal: '后退一米',
+    name: 'go',
+    parameters: { description: '我往后退', mode: 'distance', distance: -1 },
+  },
+  {
+    goal: '向左转九十度',
+    name: 'go',
+    parameters: { description: '我向左转', mode: 'degrees', degrees: -90 },
+  },
+  {
+    goal: '向右转九十度',
+    name: 'go',
+    parameters: { description: '我向右转', mode: 'degrees', degrees: 90 },
+  },
+  { goal: '把身体抬高', name: 'set_height', parameters: { description: '我抬高身体', level: 0.3 } },
+])('executes $goal through the real SDK and simulation', async ({ goal, name, parameters }) => {
+  const body = new SimSession(4);
+  const original = body.spider.capture();
+  const complete = vi
+    .fn<LocalBackend['localComplete']>()
+    .mockImplementation(async (_id, _messages, _options, onDelta) => {
+      const text =
+        complete.mock.calls.length === 1 ? JSON.stringify({ name, parameters }) : '答：完成了';
+      onDelta?.(text);
+      return { text, rawText: text, input: 10, output: 5 };
+    });
+  useLocalBackend({
+    localLoad: vi.fn(),
+    localStatus: vi.fn(),
+    localUnload: vi.fn(),
+    localCancel: vi.fn(),
+    localComplete: complete,
+  });
+  const events: AgentEvent[] = [];
+  const timer = setInterval(() => {
+    for (let i = 0; i < 30; i++) body.frame(1 / 60);
+  }, 0);
+  try {
+    const result = await runAgent({
+      goal,
+      session: body,
+      settings: {
+        provider: 'custom',
+        mode: 'local',
+        baseURL: '',
+        model: '',
+        apiKey: '',
+        contextTokens: null,
+        autoMemory: false,
+        thinking: false,
+      },
+      onEvent: (event) => events.push(event),
+    });
+    expect(result.text).toBe('完成了');
+    expect(complete).toHaveBeenCalledTimes(2);
+    const output = events.find((event) => event.type === 'tool-result');
+    expect(output).toMatchObject({ name, output: { ok: true } });
+    if ('distance' in parameters) {
+      const distance = Math.hypot(
+        body.spider.root.position.x - original.position.x,
+        body.spider.root.position.z - original.position.z,
+      );
+      expect(distance).toBeGreaterThan(0.8);
+    } else if ('degrees' in parameters) {
+      expect(Math.abs(body.spider.yaw - original.yaw)).toBeGreaterThan(1.4);
+    } else {
+      expect(body.spider.heightSet).toBeCloseTo(parameters.level, 1);
+    }
+  } finally {
+    clearInterval(timer);
+    body.cancel();
+  }
+});
+
 it('executes a wrapped local tool call through the real SDK without showing its JSON or result', async () => {
   const raw =
     '<think></think>\n' +
