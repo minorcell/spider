@@ -24,14 +24,11 @@ const sky = new Color();
 const cloudDay = new Color(0xf3f1eb);
 const cloudNight = new Color(0x536277);
 
-// Lambert divides diffuse by PI, so these are the amounts reflected by white paper.
-// The palette is already near white. A gray night fill reads as an uncolored film.
 const dayFill = Math.PI * 0.8;
 const daySun = Math.PI * 0.22;
 const nightFill = Math.PI * 0.012;
 const nightMoon = Math.PI * 0.02;
 
-/** Daylight is sun elevation; paper brightness should settle well before noon. */
 export function dayBrightness(clock: WorldClock): number {
   return MathUtils.smoothstep(clock.daylight, 0, 0.35);
 }
@@ -109,7 +106,6 @@ function makeClouds(): CloudSeed[] {
 
 const CLOUDS = makeClouds();
 
-/** Sky and unlit water follow the same clock as the directional light. */
 export function applyEcologyLighting(
   renderer: { setClearColor(color: ColorRepresentation, alpha?: number): void },
   at = new Date(),
@@ -118,13 +114,11 @@ export function applyEcologyLighting(
   const brightness = dayBrightness(clock);
   sky.copy(nightSky).lerp(daySky, brightness);
   renderer.setClearColor(sky, 1);
-  // Water and the ground grid are unlit, so they follow this curve instead of the lamps.
   const light = 0.05 + brightness * 0.95;
   setGroundLight(light * (0.84 + brightness * 0.16), light * (0.89 + brightness * 0.11), light);
   return clock;
 }
 
-/** Mark physical surfaces once, when added. Ink shells must not cast oversized shadows. */
 export function enableWorldShadows(root: Object3D): void {
   root.traverse((node) => {
     if (node instanceof Mesh && node.material instanceof MeshLambertMaterial) {
@@ -134,7 +128,6 @@ export function enableWorldShadows(root: Object3D): void {
   });
 }
 
-/** One shadow map serves the sun by day and the opposite moon by night. */
 export class EcologySky {
   readonly object = new Group();
   readonly clouds = new Group();
@@ -178,8 +171,6 @@ export class EcologySky {
     const scale = new Vector3();
     for (const [index, seed] of CLOUDS.entries()) {
       const puffs = CLOUD_STYLES[seed.style];
-      // One draw per cloud. Keep clouds separate for frustum culling and
-      // transparent sorting; only their outer transform moves each frame.
       const cloud = new InstancedMesh(
         this.#cloudGeometry,
         this.#cloudMaterials[seed.style],
@@ -202,7 +193,6 @@ export class EcologySky {
     this.object.add(this.sun, this.moon, this.clouds, this.ambient, this.light, this.light.target);
   }
 
-  /** Move the shadow window with the viewed ground; the sky has no nearby parallax. */
   update(clock: WorldClock, focus: Vector3, overlook: boolean, dt = 0): void {
     const brightness = dayBrightness(clock);
     const angle = clock.dayFraction * Math.PI * 2 - Math.PI / 2;
@@ -224,7 +214,6 @@ export class EcologySky {
       material.opacity = (0.18 + brightness * 0.4) * (1 - index * 0.12);
     }
     this.#lightDirection.copy(this.#sunDirection).multiplyScalar(isDay ? 1 : -1);
-    // Fade at the horizon so a light switch cannot flip a long dark shadow.
     const altitude = Math.max(0, this.#lightDirection.y);
     const cover = Math.min(1, altitude * 5);
     this.light.intensity = (isDay ? daySun : nightMoon) * cover;
@@ -241,7 +230,6 @@ export class EcologySky {
     }
   }
 
-  /** Geometry is released with Stage's scene; these resources belong only to the sky. */
   dispose(): void {
     this.sun.material.dispose();
     this.moon.material.dispose();

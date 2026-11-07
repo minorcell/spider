@@ -1,5 +1,3 @@
-/** Model credentials live in this browser only. Empty means hand driving. */
-
 import { openSpiderDb, type PreferenceRecord } from './journal/db.js';
 import { providerById, providerNeedsKey } from './providers.js';
 import { PersistentCache } from './store/cache.js';
@@ -8,16 +6,12 @@ const STORAGE_KEY = 'spider.pilot';
 const OPEN_MS = 1500;
 
 export interface PilotSettings {
-  /** Which preset owns the connection. `custom` is any online endpoint. */
   provider: string;
   baseURL: string;
   model: string;
   apiKey: string;
-  /** Model context window in k token (×1000). Null leaves the length unset. */
   contextTokens: number | null;
-  /** When on, a long idle stretch may write the day's conversation into the diary. */
   autoMemory: boolean;
-  /** When off, the request asks the model not to reason before answering. */
   thinking: boolean;
 }
 
@@ -178,7 +172,6 @@ export function resetPilotStore(): void {
   edits = 0;
 }
 
-/** Address and model are required. A Key is required unless the preset runs keyless. */
 export function pilotReady(settings: PilotInput): boolean {
   return (
     settings.baseURL !== '' &&
@@ -187,18 +180,15 @@ export function pilotReady(settings: PilotInput): boolean {
   );
 }
 
-/** Off asks the provider to skip reasoning; on leaves the model's default alone. */
 export function reasoningOf(settings: PilotInput): 'provider-default' | 'none' {
   return settings.thinking === false ? 'none' : 'provider-default';
 }
 
-/** Stored k token → tokens. Vendors count 8k as 8000, 128k as 128000. */
 export function contextTokensOf(k: number | null): number | null {
   if (k == null) return null;
   return k * 1000;
 }
 
-/** Drop an id this page does not know, so an old page still treats it as custom. */
 function knownProvider(value: unknown, fallback: string): string {
   return typeof value === 'string' && providerById(value) !== null ? value : fallback;
 }

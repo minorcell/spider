@@ -21,9 +21,6 @@ import {
   stemMat,
 } from '../shared/sim/parts.js';
 
-// 和蜘蛛一样：车出来的果身，薄墨壳勾轮廓，果面、梗和叶子走曲线，不画直棱。
-
-/** 苹果的剖面：从果底的萼洼，绕到果顶的梗洼。x 是半径，y 是高度。 */
 function appleProfile(): Vector2[] {
   const raw: readonly (readonly [number, number])[] = [
     [0.012, 0.035],
@@ -48,7 +45,6 @@ function appleProfile(): Vector2[] {
 
 function appleGeometry(): LatheGeometry {
   const geometry = new LatheGeometry(appleProfile(), 44);
-  // 轻微的五瓣起伏，别让它是一个完美的旋转体。
   const position = geometry.getAttribute('position');
   for (let i = 0; i < position.count; i++) {
     const x = position.getX(i);
@@ -62,7 +58,6 @@ function appleGeometry(): LatheGeometry {
   return geometry;
 }
 
-/** 沿法线把壳吹大一点，用背面黑壳当外轮廓。 */
 function outlineShell(geometry: LatheGeometry, thickness: number): Mesh {
   const shell = geometry.clone();
   const position = shell.getAttribute('position');
@@ -75,7 +70,6 @@ function outlineShell(geometry: LatheGeometry, thickness: number): Mesh {
   return new Mesh(shell, inkSolidMat);
 }
 
-/** 浮点坐标转一组墨线。 */
 function lineFrom(flat: readonly number[]): LineSegments {
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(flat, 3));
@@ -147,7 +141,6 @@ function appleLeaf(scale: number): Mesh {
   return mesh;
 }
 
-/** A bent stem: rings along a curve, the same language as a leg. */
 function curvedStem(): Mesh {
   const spine = [
     new Vector3(0, 0, 0),
@@ -211,7 +204,6 @@ function curvedStem(): Mesh {
   return mesh;
 }
 
-/** 按高度取剖面半径，给果面的短纹定位。 */
 function radiusAtY(y: number): number {
   let best = 0.1;
   for (const point of appleProfile()) {
@@ -220,7 +212,6 @@ function radiusAtY(y: number): number {
   return best * 0.995;
 }
 
-/** 一只苹果，`stage` 越大咬口越深。 */
 export function buildApple(stage: number): Group {
   const group = new Group();
   const geometry = appleGeometry();
@@ -253,7 +244,6 @@ export function buildApple(stage: number): Group {
     cutLines.push(first.x, first.y, first.z, first.x, first.y, -first.z);
     cutLines.push(last.x, last.y, last.z, last.x, last.y, -last.z);
 
-    // 果肉上的两粒种子。
     for (const [dy, dz] of [
       [0.03, 0.05],
       [-0.02, -0.05],
@@ -297,7 +287,6 @@ export function buildApple(stage: number): Group {
   apple.add(outlineShell(geometry, 0.008));
   group.add(apple);
 
-  // 果面上的曲线顺着果身走，不画直经线。
   const face: number[] = [];
   const curveLine = (phi: number, y0: number, y1: number, bulge: number): void => {
     const points: Vector3[] = [];

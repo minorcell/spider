@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, test } from 'vitest';
 import { Vector3 } from 'three';
 import { EcologySky } from '../src/client/ecologyView.js';

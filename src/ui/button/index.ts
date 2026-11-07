@@ -21,7 +21,6 @@ function paintQuiet(node: HTMLButtonElement, narrow: boolean): void {
   });
 }
 
-/** An ink-on-paper button. `solid` is the default bordered control. */
 export function button(
   doc: Document,
   label: string,

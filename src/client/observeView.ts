@@ -33,7 +33,6 @@ const NAME: Record<string, string> = {
   'bog-stone': '沼石',
 };
 
-/** God view of what the spider can sense. The chase camera stays as it is. */
 export class ObserveOverlay {
   readonly #root = new Group();
   readonly #viewRing: Line;
@@ -45,7 +44,6 @@ export class ObserveOverlay {
   readonly #layer: HTMLElement;
   readonly #readout: HTMLElement;
   readonly #pins: HTMLElement;
-  /** One span per visible entity, reused so the DOM is not rebuilt every frame. */
   readonly #nodes = new Map<string, HTMLSpanElement>();
   readonly #at = new Map<string, { x: number; y: number; z: number }>();
   #observation: Observation | null = null;
@@ -105,7 +103,6 @@ export class ObserveOverlay {
     return this.#root;
   }
 
-  /** Drop cached rings and the last look. A new island is a different height field. */
   reset(): void {
     this.#observation = null;
     this.#observedAt = Number.NEGATIVE_INFINITY;
@@ -147,9 +144,6 @@ export class ObserveOverlay {
     }
     const ground = (px: number, pz: number) => walk(px, pz) + 0.14;
 
-    // The rings depend on where the body stands, how high it has reared, and
-    // how far it sees, not on the camera. They only need to keep up with the
-    // observation; re-tracing 72 bearings every frame stutters the view.
     const ring = this.#ringAt;
     const lift = observation.self.height;
     if (
@@ -205,7 +199,6 @@ export class ObserveOverlay {
     this.#place(camera, view);
   }
 
-  /** Marks and labels, only when a new observation arrives. */
   #layout(
     x: number,
     z: number,
@@ -287,9 +280,7 @@ export class ObserveOverlay {
     this.#dim.geometry.setDrawRange(0, dimCount * 4);
   }
 
-  /** Screen positions follow the camera every frame; the spans themselves stay put. */
   #place(camera: Camera, view: { width: number; height: number }): void {
-    // Stage projects pins before renderer.render updates the camera matrices.
     camera.updateMatrixWorld();
     if (
       !this.#pinsDirty &&
@@ -305,9 +296,7 @@ export class ObserveOverlay {
     this.#pinCamera.copy(camera.matrixWorldInverse);
     this.#pinProjection.copy(camera.projectionMatrix);
     for (const [id, pin] of this.#nodes) {
-      const at = this.#at.get(id);
-      /* v8 ignore next */
-      if (!at) continue;
+      const at = this.#at.get(id)!;
       const point = project(camera, at.x, at.y, at.z, view);
       if (!point) {
         if (!pin.hidden) pin.hidden = true;
@@ -368,7 +357,6 @@ function ringGeometry(): BufferGeometry {
   );
 }
 
-/** A fan from the body to the sight outline. One triangle per bearing. */
 function fillGeometry(): BufferGeometry {
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new BufferAttribute(new Float32Array((RING + 1) * 3), 3));
@@ -397,7 +385,6 @@ function tickGeometry(count: number): BufferGeometry {
   );
 }
 
-/** Grow in powers of two so entity changes do not allocate every refresh. */
 function ensureTickCapacity(lines: LineSegments, count: number): void {
   let capacity = lines.geometry.getAttribute('position').count / 4;
   if (capacity >= count) return;

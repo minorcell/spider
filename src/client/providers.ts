@@ -1,5 +1,3 @@
-/** Provider presets. A preset fills the address and says whether a Key is needed. */
-
 import type { IconName } from '../ui/icon/index.js';
 
 export type ProviderId = 'ollama' | 'deepseek' | 'custom';
@@ -9,13 +7,9 @@ export interface ModelProvider {
   name: string;
   summary: string;
   icon: IconName;
-  /** Filled into Base URL when the user picks this provider. Empty keeps the field. */
   baseURL: string;
-  /** Model filled in for providers that do not list their own models. */
   model: string;
-  /** The endpoint answers without an API key. */
   keyless: boolean;
-  /** The endpoint can list the models it has. */
   discover: boolean;
 }
 
@@ -52,7 +46,6 @@ export const PROVIDERS: readonly ModelProvider[] = [
   },
 ];
 
-/** Presets with a preset address also have a quick-connect flow. */
 export const QUICK_PROVIDERS: readonly ModelProvider[] = PROVIDERS.filter(
   (provider) => provider.baseURL !== '',
 );
@@ -61,24 +54,20 @@ export function providerById(id: string): ModelProvider | null {
   return PROVIDERS.find((provider) => provider.id === id) ?? null;
 }
 
-/** Unknown and custom providers need a Key. Only a known keyless preset does not. */
 export function providerNeedsKey(id: string | undefined): boolean {
   return providerById(id ?? '')?.keyless !== true;
 }
 
-/** Key put on the wire. A keyless provider gets a placeholder so the SDK sends a header. */
 export function apiKeyFor(settings: { provider?: string; apiKey: string }): string {
   return providerNeedsKey(settings.provider) ? settings.apiKey : 'ollama';
 }
 
-/** The OpenAI-compatible model list lives beside the chat path. */
 export function modelsURL(baseURL: string): string {
   return `${baseURL.replace(/\/+$/, '')}/models`;
 }
 
 const LIST_TIMEOUT_MS = 5000;
 
-/** Ask a local endpoint which models it serves. Gives up after a short wait. */
 export async function discoverModels(baseURL: string, apiKey: string): Promise<string[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LIST_TIMEOUT_MS);
@@ -97,7 +86,6 @@ export async function discoverModels(baseURL: string, apiKey: string): Promise<s
   }
 }
 
-/** Read the OpenAI-compatible `{ data: [{ id }] }` list Ollama serves at /v1/models. */
 export function modelIds(body: unknown): string[] {
   const data = (body as { data?: unknown } | null)?.data;
   if (!Array.isArray(data)) return [];

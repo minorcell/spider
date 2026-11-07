@@ -1,6 +1,5 @@
 const TOKEN_SUFFIX = ['', 'k', 'm', 'b'] as const;
 
-/** Compact a token count: 999, 1.5k, 2m, 1.2b. */
 export function formatTokens(value: number): string {
   let scaled = value;
   let unit = 0;

@@ -79,7 +79,6 @@ export async function startCloud(hooks: {
   await run(() => reconcile(io, engine));
 }
 
-/** World checkpoints call this. A quiet ten-second tick only schedules the idle upload. */
 export function noteCloud(reason: 'interval' | 'hide' | 'poke'): Promise<void> | undefined {
   if (!cloudReady()) return;
   if (reason === 'interval') {

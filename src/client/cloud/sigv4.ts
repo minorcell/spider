@@ -11,7 +11,6 @@ export interface SignRequest {
   headers?: Record<string, string>;
 }
 
-/** AWS Signature Version 4 for one S3 request. `host` is signed and not returned. */
 export async function signedHeaders(request: SignRequest): Promise<Record<string, string>> {
   const url = new URL(request.url);
   const payloadHash = await sha256Hex(request.payload);

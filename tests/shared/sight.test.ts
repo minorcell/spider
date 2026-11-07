@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vitest';
 import {
   blockAt,
@@ -124,7 +122,6 @@ describe('sightOutline', () => {
   });
 
   it('does not see down the far side of a bank', () => {
-    // A long plateau: every point behind the crest is lower than the crest.
     const bank = (_x: number, z: number): number => (z < -4 ? 3 : 0);
     const points = sightOutline(0, 0, 0.85, 16, bank, [], 16);
     expect(points[0].z).toBeGreaterThan(-4.75);

@@ -4,7 +4,6 @@ import type { PreparedBuffers, WorldRequest } from './worldProtocol.js';
 
 export type WorldHandler = (request: WorldRequest) => Promise<PreparedBuffers>;
 
-/** Bake one island. The page uploads the buffers; it does not sample the noise. */
 export function createWorldHandler(): WorldHandler {
   return (request) => {
     const seed = request.seed >>> 0;

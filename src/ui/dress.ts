@@ -66,7 +66,6 @@ export function paintTrace(trace: HTMLElement, tail: HTMLElement): void {
   });
 }
 
-/** Point the bubble tail. `down` hangs under the bubble, `up` sits above it. */
 export function placeTail(
   tail: HTMLElement,
   top: number,
@@ -232,7 +231,6 @@ let usageWatch = false;
 let sheetNarrow = false;
 let phoneNarrow = false;
 
-/** Style a freshly built usage page. Responsive rules stay attached to the latest page. */
 export function dressUsage(root: HTMLElement): void {
   usagePage = root;
   paintUsage(root);

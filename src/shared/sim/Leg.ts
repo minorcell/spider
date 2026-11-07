@@ -26,7 +26,6 @@ export class Leg {
   constructor(
     rig: Group,
     readonly spec: MountSpec,
-    /** The shoulder ball: its world matrix is all posing needs from the body. */
     readonly mount: Mesh,
     readonly index: number,
   ) {

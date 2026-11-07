@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vitest';
 import { kindOf, KINDS, propertiesOf, slicesOf } from '../../src/shared/kinds.js';
 

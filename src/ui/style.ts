@@ -4,7 +4,6 @@ export function paint(node: HTMLElement, style: Partial<CSSStyleDeclaration>): v
   Object.assign(node.style, style);
 }
 
-/** Call `apply` now and again when the media query flips. Without matchMedia, the query is treated as not matching. */
 export function onMedia(query: string, apply: (matches: boolean) => void): void {
   if (typeof window.matchMedia !== 'function') {
     apply(false);

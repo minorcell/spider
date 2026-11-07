@@ -7,11 +7,6 @@ export interface Fact {
   value: Node | string;
 }
 
-/**
- * A grid of labeled values. `inset` leaves room for a summary column, and the
- * phone layout drops to one column. Extra nodes span the full width below the
- * fields, for a tool list or a long note.
- */
 export function facts(
   doc: Document,
   options: { className?: string; inset?: boolean },

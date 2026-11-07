@@ -41,14 +41,12 @@ function note(doc: Document, text: string): HTMLParagraphElement {
   return node;
 }
 
-/** A quiet label above a group of controls. */
 function groupLabel(doc: Document, text: string): HTMLParagraphElement {
   const node = h(doc, 'p', {}, text);
   paint(node, { margin: '0 0 7px', color: color.muted, fontSize: '12px', letterSpacing: '0.04em' });
   return node;
 }
 
-/** Small entry points at the foot of the form. Each opens its own flow. */
 function quickProviders(doc: Document): HTMLElement {
   const row = h(doc, 'div', { id: 'providers' });
   paint(row, { display: 'flex', flexWrap: 'wrap', gap: '8px' });
@@ -84,7 +82,6 @@ function quickProviders(doc: Document): HTMLElement {
   return row;
 }
 
-/** Repository link in the toolbar: a star and the live count. */
 function githubBadge(doc: Document): HTMLAnchorElement {
   const badge = h(doc, 'a', {
     id: 'github',
@@ -132,7 +129,6 @@ function githubBadge(doc: Document): HTMLAnchorElement {
   return badge;
 }
 
-/** The page chrome: corner, pilot, settings, and the leave dialog. */
 export function buildChrome(doc: Document): DocumentFragment {
   const fragment = doc.createDocumentFragment();
 

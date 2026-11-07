@@ -12,20 +12,11 @@ import {
 import { VIEW_DISTANCE } from '../../shared/world.js';
 import type { MemoryApi } from '../journal/diary.js';
 
-/**
- * Built-in tools. Each one is a function call on the local simulation.
- * `observe` returns the full look. Every action also returns `near`:
- * what you can eat or carry within reach, and the body's own state.
- */
 export interface ToolResult extends GoalOutcome {
   observation?: Observation;
   self?: Sense;
-  /** Current simulation and client-local world clock. */
   world: WorldInfo;
-  /** Present after an absolute turn. */
   heading?: number;
-  /** Present after a move or after handling something on the ground. */
-  /** Always present for spatial tools; empty means there is no actionable nearby object. */
   near: NearEntity[];
   hint?: ActionHint;
 }

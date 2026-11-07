@@ -3,7 +3,6 @@ import { formatStars, readStars, REPO, REPO_STARS, syncStars } from '../../src/c
 
 const API = `https://api.github.com/repos/${REPO}`;
 
-/** Let the chain inside syncStars settle. */
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 function jsonResponse(body: unknown, ok = true): Response {

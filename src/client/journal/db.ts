@@ -17,7 +17,6 @@ export interface PreferenceRecord {
   value: unknown;
 }
 
-/** One local day's model usage. `total` is input plus output, as the provider reported it. */
 export interface UsageDay {
   date: string;
   input: number;
@@ -42,7 +41,6 @@ export interface UsageTool {
   outputBytes: number;
 }
 
-/** One model step. `id` is callId plus step number so a turn with several steps does not overwrite. */
 export interface UsageCall {
   id: string;
   ts: number;
@@ -130,7 +128,6 @@ export function blankMemory(date: string): MemoryPage {
   return { date, description: '', noted: '', summary: '', updatedAt: 0 };
 }
 
-/** Close and delete the database. Tests use this between cases. */
 export async function resetSpiderDb(): Promise<void> {
   if (opening) {
     const db = await opening;

@@ -24,12 +24,8 @@ import {
   tubeShell,
 } from './parts.js';
 
-// 头胸在前（−z），腹在后（+z）。轮廓是车出来的，再用一层薄墨壳勾边，
-// 不再把每条纬线都画出来。
-
 const CEPH_REAR_Z = 0.36;
 const CEPH_Y_SCALE = 0.18 / 0.55;
-/** 半径、从后往前的距离。最宽处和头胸的碰撞壳对齐。 */
 const CEPHALOTHORAX: readonly (readonly [number, number])[] = [
   [0.004, 0],
   [0.1, 0.06],
@@ -46,7 +42,6 @@ const CEPHALOTHORAX: readonly (readonly [number, number])[] = [
 
 const ABDOMEN_FRONT_Z = 0.48;
 const ABDOMEN_Y_SCALE = 0.32 / 0.46;
-/** 半径、从腹柄往腹末的距离。 */
 const ABDOMEN: readonly (readonly [number, number])[] = [
   [0.004, 0],
   [0.14, 0.08],
@@ -83,7 +78,6 @@ const AHEAD = new Vector3(0, 0, -1);
 const layDelta = new Vector3();
 const layTurn = new Quaternion();
 
-/** alongSign −1 sends the profile toward the face. +1 sends it toward the spinnerets. */
 function spindle(
   profile: readonly (readonly [number, number])[],
   yScale: number,
@@ -180,7 +174,6 @@ function mouth(head: Group, side: number): void {
   const fang = new Mesh(fangGeo, spiderMat);
   fang.name = 'fang';
   fang.position.set(side * 0.04, -0.04, -0.01);
-  // +Y of the cylinder swings down and toward the face.
   fang.rotation.x = -2.2;
   fang.add(new Mesh(fangShell, inkSolidMat));
   head.add(fang);
@@ -211,7 +204,6 @@ function spinnerets(chassis: Group): void {
   }
 }
 
-/** Paper cephalothorax, pedicel, abdomen, and the small parts on the head. Returns the head, which yaws on its own. */
 export function buildSpiderBody(chassis: Group): Group {
   const ceph = spindle(CEPHALOTHORAX, CEPH_Y_SCALE, DECK_Y, CEPH_REAR_Z, -1);
   paper(chassis, ceph, 'cephalothorax');

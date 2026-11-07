@@ -315,8 +315,6 @@ async function read(stream: ReadableStream<unknown>): Promise<Record<string, unk
   const chunks: Record<string, unknown>[] = [];
   const reader = stream.getReader();
   for (;;) {
-    // The stream is a queue; reading it in parallel would not keep the order.
-    // eslint-disable-next-line no-await-in-loop
     const { done, value } = await reader.read();
     if (done) return chunks;
     chunks.push(value as Record<string, unknown>);

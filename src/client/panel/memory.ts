@@ -36,10 +36,7 @@ export function bindMemory(opts: {
     summaryInput.value = page.summary;
   };
 
-  const show = async (): Promise<void> => {
-    const opened = getJournal() ?? (await journalReady);
-    /* v8 ignore next */
-    if (!opened) return;
+  const showJournal = async (opened: Journal): Promise<void> => {
     const pages = await opened.pages();
     memoryEmpty.hidden = pages.length > 0;
     dateSelect.setChoices(
@@ -60,6 +57,13 @@ export function bindMemory(opts: {
     autoMemoryInput.checked = readPilot().autoMemory;
     reflectSwitch(autoMemoryInput);
     showPage();
+  };
+
+  const showIfOpen = (opened: Journal | null): Promise<void> =>
+    opened ? showJournal(opened) : Promise.resolve();
+
+  const show = async (): Promise<void> => {
+    await showIfOpen(getJournal() ?? (await journalReady));
   };
 
   menuMemory.addEventListener('click', () => {

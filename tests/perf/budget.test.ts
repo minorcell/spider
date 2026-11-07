@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vitest';
 import { islandGroup } from '../../src/client/groundView.js';
 import {
@@ -26,11 +24,6 @@ import { surfaceOf, Terrain } from '../../src/shared/terrain.js';
 import { createWorld, REACH, REACH_Y, VIEW_DISTANCE } from '../../src/shared/world.js';
 import { bakeWorkerIsland, dressIsland, planAroundNest, SEED, stepDriven } from './scenarios.js';
 
-/**
- * The budgets are deliberately loose: these run on shared CI machines. They
- * catch a path that suddenly becomes quadratic or starts cloning the world on
- * every keystroke, not a few percent of engine noise.
- */
 function bestOf(runs: number, work: () => void, reset?: () => void): number {
   reset?.();
   work();
@@ -93,7 +86,6 @@ describe('frame and boot budgets', () => {
 });
 
 describe('driven frames', () => {
-  // Node 24, coverage on, median 11.8 ms, 2026-11-05.
   it('steps 120 driven frames in under 120 ms', () => {
     const session = new SimSession(SEED);
     const home = session.spider.capture();
@@ -117,7 +109,6 @@ describe('driven frames', () => {
 });
 
 describe('route around the nest', () => {
-  // Node 24, coverage on, median 2.3 ms, 2026-11-05.
   it('routes around the nest in under 15 ms', () => {
     const world = createWorld(SEED);
     const height = (x: number, z: number): number => surfaceOf(world.terrain, x, z);
@@ -129,14 +120,12 @@ describe('route around the nest', () => {
 });
 
 describe('worker boot', () => {
-  // Local coverage median 38.3 ms. Actions best-of was 140 ms, so 120 does not hold.
   it('bakes a worker island in under 250 ms', () => {
     expect(bestOf(3, () => void bakeWorkerIsland())).toBeLessThan(250);
   });
 });
 
 describe('main-thread dress', () => {
-  // Local coverage median 45.6 ms. Actions best-of was 133 ms, so 120 does not hold.
   it('dresses the island on the main thread in under 250 ms', async () => {
     const world = createWorld(SEED);
     const prepared = await bakeWorkerIsland();

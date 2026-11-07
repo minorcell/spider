@@ -8,7 +8,6 @@ export type MenuSelect = HTMLInputElement & {
   setChoices(choices: SelectChoice[]): void;
 };
 
-/** A labeled listbox. The named input keeps the value for the form and fires `change`. */
 export function menuSelect(
   doc: Document,
   options: {
@@ -172,7 +171,6 @@ export function menuSelect(
     choose(option.dataset.value ?? '');
   });
   doc.addEventListener('click', (event) => {
-    /* v8 ignore next */
     if (!(event.target instanceof Node) || !wrap.isConnected) return;
     if (wrap.contains(event.target)) return;
     setOpen(false);

@@ -27,7 +27,6 @@ export function objectUrl(settings: CloudSettings, key: string): string {
   return `${endpoint}/${path}`;
 }
 
-/** A strong ETag, including its quotes. Weak validators cannot condition a write. */
 export function strongEtag(etag: string | null): string | null {
   if (!etag || etag.startsWith('W/')) return null;
   return etag;
@@ -72,7 +71,6 @@ export function keepaliveObject(request: ObjectRequest): void {
   void requestObject({ ...request, method: 'PUT', keepalive: true });
 }
 
-/** Four requests. A string result is why the endpoint cannot be enabled. */
 export async function probeEndpoint(settings: CloudSettings): Promise<string | null> {
   const key = 'spider/probe.txt';
   const created = await requestObject({

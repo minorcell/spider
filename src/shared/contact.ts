@@ -1,15 +1,7 @@
 import { CONTACT } from './config.js';
 
-/** Horizontal step for the ground slope. The loose-body solver uses the same step. */
 const SLOPE = 0.6;
 
-/**
- * Height of the bottom of a sphere sitting on a heightfield.
- * A point (`radius` 0) uses the center sample and no skin.
- * A sphere treats the ground under it as a plane, so the bottom rises by
- * `radius * (sqrt(1 + slope²) - 1)`, then adds `CONTACT`.
- * Sampling a ring under every apple every frame missed the frame budget.
- */
 export function groundSupport(
   height: (x: number, z: number) => number,
   x: number,

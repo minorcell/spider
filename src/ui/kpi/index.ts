@@ -4,7 +4,6 @@ import { border, color, media } from '../token.js';
 
 export type KpiValue = string | Node[];
 
-/** One headline figure with a label and a footnote. */
 export function kpi(
   doc: Document,
   options: { label: string; value: KpiValue; foot: string },
@@ -25,7 +24,6 @@ export function kpi(
   return node;
 }
 
-/** Four figures in a row, two on a narrow sheet. */
 export function kpiGrid(
   doc: Document,
   options: { label: string },

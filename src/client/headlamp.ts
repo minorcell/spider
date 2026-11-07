@@ -3,14 +3,8 @@ import { DECK_Y } from '../shared/config.js';
 import { dayBrightness } from './ecologyView.js';
 import type { WorldClock } from '../shared/ecology.js';
 
-// Decay is 1, not the physical 2. Inverse-square either whites out the shell
-// or dies before it can light the ground around the feet.
 const POOL = { color: 0xffc56a, intensity: 2.6, distance: 6.5, decay: 1 } as const;
 
-/**
- * A flat lamp on the cephalothorax, where the eight legs join.
- * It lies on the shell. It is not a bulb, and the eyes stay dark.
- */
 export class Headlamp {
   readonly pack = new Group();
   readonly light: PointLight;
@@ -32,7 +26,6 @@ export class Headlamp {
     this.light.name = 'headlamp-light';
     this.light.position.y = 0.05;
     this.pack.add(plate, lens, this.light);
-    // Crown of the cephalothorax, between the leg mounts. +z is the abdomen.
     this.pack.position.set(0, DECK_Y + 0.2, -0.05);
     this.pack.visible = false;
   }

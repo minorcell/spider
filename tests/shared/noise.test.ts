@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from 'vitest';
 import { createNoise, fbm, mulberry32 } from '../../src/shared/noise.js';
 
@@ -47,7 +45,6 @@ describe('createNoise', () => {
         signs.add(`${Math.sign(noise(x, y))}`);
       }
     }
-    // The four gradients produce different signs around zero.
     expect(signs.size).toBeGreaterThan(1);
   });
 });

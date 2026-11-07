@@ -11,7 +11,6 @@ import { cloudReady, type CloudSettings } from './settings.js';
 
 export const WORLD_KEY = 'spider/world.json';
 export const LEASE_KEY = 'spider/lease.json';
-/** Chromium drops a keepalive body larger than this. */
 export const KEEPALIVE_LIMIT = 60_000;
 export const LEASE_MS = 120_000;
 
@@ -54,7 +53,6 @@ export interface CloudIo {
   settings(): CloudSettings;
   readCursor(): Promise<CloudCursor>;
   writeCursor(cursor: CloudCursor): Promise<void>;
-  /** Null when this browser has no saved world yet. */
   readLocal(deviceId: string): Promise<CloudBundle | null>;
   adopt(bundle: CloudBundle): Promise<boolean>;
   get(key: string): Promise<ObjectResult>;
@@ -160,7 +158,6 @@ export async function takeOver(io: CloudIo, engine: Engine): Promise<void> {
   await reconcile(io, engine);
 }
 
-/** Best-effort upload when the page is going away. The response is not waited on. */
 export function keepalive(io: CloudIo, engine: Engine): void {
   const cursor = engine.cursor;
   const cached = engine.cached;

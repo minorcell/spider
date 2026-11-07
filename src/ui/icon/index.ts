@@ -21,7 +21,6 @@ const GLYPHS = {
 
 export type IconName = keyof typeof GLYPHS;
 
-/** A 16px ink icon. */
 export function icon(doc: Document, name: IconName): SVGSVGElement {
   const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 16 16');
@@ -36,7 +35,6 @@ export function icon(doc: Document, name: IconName): SVGSVGElement {
   return svg;
 }
 
-/** Square button sized for one icon. */
 export function iconButton(
   doc: Document,
   name: IconName,

@@ -1,6 +1,3 @@
-/** One calendar day's conversation, and the rules for when it gets smaller. */
-
-/** Compress once the transcript fills this much of the context window. */
 const COMPACT_AT = 0.8;
 const KEEP_TURNS = 4;
 const encoder = new TextEncoder();
@@ -22,12 +19,10 @@ export interface ChatSession {
   summary: string;
   turns: Turn[];
   updatedAt: number;
-  /** updatedAt of the last digest into the diary. 0 means never. */
   digestedAt: number;
 }
 
 export interface CompactLimits {
-  /** Token budget. Null keeps the transcript. */
   contextTokens: number | null;
 }
 
@@ -69,10 +64,6 @@ export function overLimit(session: ChatSession, limits: CompactLimits): boolean 
   return estimateTokens(session) >= tokensAt;
 }
 
-/**
- * Strip tool traces first. A transcript that is still past 80% of the window
- * is summarized. An empty window is kept as it is.
- */
 export function fit(session: ChatSession, limits: CompactLimits): FitAction {
   if (!overLimit(session, limits)) return { kind: 'keep' };
   const stripped = stripTools(session);
@@ -90,14 +81,10 @@ export function stripTools(session: ChatSession): ChatSession {
   };
 }
 
-/** Drop the oldest turns until the payload fits, leaving at least one. */
 export function dropOldest(session: ChatSession, limits: CompactLimits): ChatSession {
   const turns = session.turns;
   if (!overLimit(session, limits)) return session;
 
-  // Payload size increases monotonically as more of the suffix is kept.
-  // Binary search the largest suffix that fits instead of serializing every
-  // intermediate session.
   let low = 1;
   let high = turns.length;
   let keep = 1;
@@ -113,7 +100,6 @@ export function dropOldest(session: ChatSession, limits: CompactLimits): ChatSes
   return { ...session, turns: turns.slice(-keep) };
 }
 
-/** Replace the older turns with one summary and keep the recent tail. */
 export function foldSummary(session: ChatSession, summary: string): ChatSession {
   const stripped = stripTools(session);
   return { ...stripped, summary, turns: stripped.turns.slice(-KEEP_TURNS) };

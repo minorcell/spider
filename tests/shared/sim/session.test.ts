@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KINDS } from '../../../src/shared/kinds.js';
 import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '../../../src/shared/config.js';
@@ -34,7 +32,6 @@ function fakeEntity(over: Partial<EntityState> = {}): EntityState {
   return { id: 'apple-99', kind: 'apple', x: 0, y: 0, z: 0, stage: 0, ...over };
 }
 
-/** Pump frames and let async goal chains make progress between rounds. */
 async function settle<T>(
   promise: Promise<T>,
   session: SimSession,
@@ -288,6 +285,22 @@ describe('goals', () => {
     await expect(promise).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
   });
 
+  it('finishes a goal that already cancelled itself', async () => {
+    const session = new SimSession(4);
+    const goal: Goal = {
+      timeout: 10,
+      controls() {
+        session.cancel();
+        return IDLE;
+      },
+      done: () => true,
+      result: () => ({}),
+    };
+    const promise = session.run(goal);
+    session.frame(1 / 60);
+    await expect(promise).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
+  });
+
   it('preempts the previous goal', async () => {
     const session = new SimSession(4);
     const first = session.walk(5);
@@ -496,6 +509,13 @@ describe('approach', () => {
       reason: 'already-close',
       id: apple.id,
     });
+  });
+
+  it('plans a stand-off from a fruit it is already touching', async () => {
+    const session = new SimSession(6);
+    const apple = session.addEntity('apple', 0, 0);
+    await settle(session.approach(apple.id, -0.06), session);
+    expect(session.world.entities.some((entity) => entity.id === apple.id)).toBe(true);
   });
 
   it('walks to a standoff and faces it', async () => {
@@ -871,8 +891,19 @@ describe('carrying', () => {
   it('refuses to store with no room', () => {
     const session = new SimSession(9);
     session.world.carrying.push(fakeEntity({ id: 'apple-back' }));
-    session.world.blocks.push(block('fill', 0.5, 1.8, -2.5, 1.5));
+    session.world.blocks.push(block('fill', -3, 3, -3, 3));
     expect(session.store()).toMatchObject({ ok: false, reason: 'no-room' });
+  });
+
+  it('keeps storing after the first row is full', () => {
+    const session = new SimSession(9);
+    for (let index = 0; index < 9; index += 1) {
+      session.world.carrying.push(fakeEntity({ id: `kept-${index}` }));
+      expect(session.store(`kept-${index}`).ok).toBe(true);
+    }
+    const stored = session.world.entities.filter((entity) => entity.id.startsWith('kept-'));
+    expect(stored).toHaveLength(9);
+    expect(new Set(stored.map((entity) => `${entity.x},${entity.z}`)).size).toBe(9);
   });
 
   it('stores a carried thing in the nest', () => {

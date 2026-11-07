@@ -27,19 +27,13 @@ export interface RunAgentOptions {
   goal: string;
   session: SimSession;
   settings: PilotSettings;
-  /** Today's conversation so far. Omitted on a fresh day. */
   chat?: ChatSession;
-  /** Directory of diary pages, already trimmed to the recent days. */
   memoryIndex?: string;
   memory?: MemoryApi;
   signal?: AbortSignal;
   onEvent?: (event: AgentEvent) => void;
 }
 
-/**
- * One agent turn in the page. One reply may call several tools. They run in
- * the order written, each until it finishes, and then the loop continues.
- */
 export async function runAgent({
   goal,
   session,
@@ -65,8 +59,6 @@ export async function runAgent({
   const pendingTools = new Map<string, UsageTool>();
   const tools = spiderTools(session, memory);
   const result = streamText({
-    // A model that writes its calls as text still gets them executed, and the
-    // tool loop continues as if it had used the tool-call channel.
     model: withInlineCalls(provider(settings.model), Object.keys(tools)),
     system: systemFor(
       today,
@@ -82,7 +74,6 @@ export async function runAgent({
     stopWhen: isLoopFinished(),
     reasoning: reasoningOf(settings),
     abortSignal: signal,
-    // One body. A second call started early would cancel the goal still running.
     toolCallConcurrency: 1,
     onToolExecutionStart(event) {
       onEvent?.({
@@ -130,9 +121,6 @@ export async function runAgent({
     },
   });
 
-  // A sentence in the same step as a tool call is not a message. The tool's
-  // description is the line beside the spider. The reply is text from a step
-  // that calls nothing.
   let answer = '';
   let stepHasTool = false;
   const pending: string[] = [];

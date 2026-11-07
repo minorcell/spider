@@ -26,9 +26,6 @@ import { buildStone } from './stone.js';
 import { buildTree } from './tree.js';
 import './models.css';
 
-// 一张独立的模型台：树、石、沼石摆在小岛和池塘上，苹果和草是比例参照。
-// 这里不跑模拟，只把要长进世界的东西先看清楚。
-
 const HALF = 17;
 const SEGMENTS = 96;
 const WATER = -0.42;
@@ -40,7 +37,6 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** 小岛的等高：缓坡、给树站的土包、给沼石泡的池塘。 */
 function heightAt(x: number, z: number): number {
   let height =
     0.2 * Math.sin(x * 0.34 + 1.1) * Math.cos(z * 0.3 - 0.4) +
@@ -67,7 +63,6 @@ function spot(x: number, z: number): Spot {
   return { x, z, y: heightAt(x, z) };
 }
 
-/** 沿池塘岸边找一处刚好没过脚背的浅水。 */
 function pondSpot(angle: number): Spot {
   for (let r = POND.r * 0.92; r >= POND.r * 0.44; r -= 0.05) {
     const x = POND.x + Math.cos(angle) * r;
@@ -122,7 +117,6 @@ sun.shadow.camera.top = HALF;
 sun.shadow.camera.updateProjectionMatrix();
 scene.add(sun, sun.target);
 
-/** 地面、流线和等高线，和岛上用的是同一份烘焙。 */
 function buildGround(): Group {
   const buffers = islandBuffers(heightAt, HALF, SEGMENTS);
   const group = new Group();
@@ -174,7 +168,6 @@ scene.add(reference);
 
 let generation = 0;
 
-/** 三棵树、三组石头、三块沼石。编号决定每一件的形状，换一批只换种子。 */
 function createExhibits(round: number): Exhibit[] {
   const exhibits: Exhibit[] = [];
   const seedBase = round * 97;
@@ -279,7 +272,6 @@ function rebuild(): void {
   stats.textContent = `${families} · ${total.toLocaleString('zh-CN')} 三角面`;
 }
 
-// 第一轮也要建立展品，但 generation 从 0 变成 1 没有影响。
 rebuild();
 
 let yaw: number = VIEW.yaw;

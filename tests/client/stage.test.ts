@@ -557,17 +557,14 @@ describe('camera input', () => {
     const heading = [...spin];
 
     canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 400, clientY: 300 }));
-    // 往右拖：地图向右走，镜头向左让出位置。
     canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 500, clientY: 300 }));
     frame();
     settle();
     expect(at.x).toBeLessThan(start.x);
     expect(at.z).toBeCloseTo(start.z);
-    // 视角不跟着摆。
     expect(spin).toEqual(heading);
 
     const panned = { ...at };
-    // 往下拖：地图向下走，镜头往回退。
     canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 500, clientY: 400 }));
     frame();
     settle();
@@ -589,7 +586,6 @@ describe('camera input', () => {
 
     stage.setOverlook(true);
     frame();
-    // 第一帧只走一段，不会直接瞬移到 34 米高。
     expect(cameraY).toBeGreaterThan(chaseY);
     expect(cameraY).toBeLessThan(34);
 
@@ -622,7 +618,6 @@ describe('camera input', () => {
       tick += 16;
       frame(tick);
     }
-    // 焦点移到 5 米高的坡上，镜头也抬 5 米。
     expect(cameraY).toBeGreaterThan(level);
     expect(cameraY).toBeCloseTo(level + 5, 1);
   });

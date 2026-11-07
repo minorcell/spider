@@ -32,7 +32,6 @@ const POKE_MS = 400;
 const APPLE_DIRTY_S = 5;
 const MOVE_M = 0.05;
 const YAW_M = 0.02;
-/** A version-2 tab holds the database open. Do not sit on a blank page. */
 const OPEN_MS = 1500;
 
 export interface BootNote {
@@ -61,27 +60,22 @@ let workTail: Promise<void> = Promise.resolve();
 let writeRevision = 0;
 let stagedRevision = 0;
 let cache = worldCache();
-/** Bakes a seed off the page thread. Null keeps the synchronous terrain. */
 let terrainFor: ((seed: number) => Promise<Terrain>) | null = null;
 let cloudLock = false;
 let onWritten: ((reason: Reason) => void) | null = null;
 
-/** Cloud sync sets this while another device holds the world or a choice is open. */
 export function setCloudLock(locked: boolean): void {
   cloudLock = locked;
 }
 
-/** Fired after a local write attempt that is allowed to reach the cloud. */
 export function onWorldWritten(listen: ((reason: Reason) => void) | null): void {
   onWritten = listen;
 }
 
-/** The page points this at the world worker. Tests leave it unset. */
 export function setWorldTerrainSource(source: ((seed: number) => Promise<Terrain>) | null): void {
   terrainFor = source;
 }
 
-/** The Worker-backed store in the page; IndexedDB directly in tests and old browsers. */
 function resolveStore(): Promise<SnapshotStore> {
   if (providedStore) return Promise.resolve(providedStore);
   storePromise ??= import('./journal/store.js').then((module) => module.dbSnapshotStore());
@@ -119,7 +113,6 @@ function stageRecord(record: WorldRecord): boolean {
   return true;
 }
 
-/** Keep a quiet tab's ownership without rewriting the snapshot. */
 function touchLease(): void {
   const lease = readLease();
   if (!lease || lease.owner !== owner) return;
@@ -149,7 +142,6 @@ export function flushWorld(reason: Reason): void {
   enqueueWrite(reason);
 }
 
-/** Coalesce bursts of tool calls into one write. Hide and submit still flush now. */
 export function flushSoon(reason: Reason): void {
   if (!installed || readonly || !sessionRef) return;
   if (pokeTimer) clearTimeout(pokeTimer);
@@ -163,7 +155,6 @@ export function writesDone(): Promise<void> {
   return workTail;
 }
 
-/** Tests drop the timer and the visibility listener between cases. */
 export function resetWorldStore(): void {
   if (timer) clearInterval(timer);
   timer = undefined;
@@ -274,7 +265,6 @@ function enqueueWrite(reason: Reason): void {
 }
 
 async function write(reason: Reason, previous: Promise<void>): Promise<void> {
-  // flushWorld checked readonly and sessionRef before calling.
   if (reason === 'interval') touchLease();
   const session = sessionRef as Restorable;
   const now = Date.now();
@@ -298,7 +288,6 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
     return;
   }
 
-  // pagehide cannot wait for IndexedDB. The buffer is written before any await.
   let staged: WorldRecord | null = null;
   if (reason === 'hide' || dbDeferred) {
     const stagingLease = readLease() ?? leaseOf(localRec);
@@ -316,8 +305,6 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
     return;
   }
 
-  // The local buffer above is deliberately synchronous for pagehide. Only
-  // the IndexedDB read/write portion waits behind the preceding operation.
   await previous;
 
   let idbRec: WorldRecord | undefined;
@@ -328,9 +315,7 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
       return;
     }
     if (idb.status === 'ok') idbRec = idb.record;
-  } catch {
-    // The buffer is the copy when the database cannot be opened.
-  }
+  } catch {}
 
   if (revision < stagedRevision) return;
   const latest = classify(cache.readRecovery(), today);
@@ -365,7 +350,6 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
   onWritten?.(reason);
 }
 
-/** Replace the running world with a cloud bundle. Does not upload. */
 export async function replaceWorld(body: SimBody): Promise<boolean> {
   if (!installed || readonly) return false;
   const session = sessionRef as Restorable;
@@ -380,9 +364,7 @@ export async function replaceWorld(body: SimBody): Promise<boolean> {
   stagedRevision = ++writeRevision;
   try {
     await cache.flush();
-  } catch {
-    // The buffer still has the adopted world.
-  }
+  } catch {}
   listener?.({
     restored: true,
     cause: null,
@@ -420,9 +402,7 @@ async function currentRecord(today: string): Promise<WorldRecord | 'format' | un
   let idb: Classify = { status: 'empty' };
   try {
     idb = classify(await readIdb(), today);
-  } catch {
-    // Use the buffer alone when the database cannot be opened.
-  }
+  } catch {}
   if (ls.status === 'format' || idb.status === 'format') return 'format';
   return (
     chooseRecord(
@@ -442,9 +422,7 @@ async function mirror(chosen: WorldRecord, ls: Classify, idb: Classify): Promise
     if (!stageRecord(chosen)) return;
     try {
       await cache.flush();
-    } catch {
-      // The buffer still wins on the next launch.
-    }
+    } catch {}
   }
 }
 
@@ -458,9 +436,7 @@ async function forget(item: Classify, side: 'local' | 'idb', today: string): Pro
     const store = await resolveStore();
     await store.sweepSnapshots(today);
     await store.removeSnapshot();
-  } catch {
-    // A failed delete still leaves the page on a fresh island.
-  }
+  } catch {}
 }
 
 async function loadIdb(
@@ -538,7 +514,6 @@ function stamp(body: SimBody, seq: number, now: number, today: string): WorldRec
   };
 }
 
-/** The later of two records; the one that exists when only one does. */
 export function prefer(a?: WorldRecord, b?: WorldRecord): WorldRecord | undefined {
   return a && b ? newer(a, b) : (a ?? b);
 }

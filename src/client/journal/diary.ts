@@ -29,7 +29,6 @@ const INDEX_DAYS = 60;
 
 let onDiary: (() => void) | null = null;
 
-/** The page registers this so a diary write can schedule a cloud upload. */
 export function onDiaryChange(listen: (() => void) | null): void {
   onDiary = listen;
 }
@@ -62,9 +61,7 @@ function viewOf(page: MemoryPage): MemoryView {
   return { date: page.date, line: page.description, noted: page.noted, summary: page.summary };
 }
 
-/** Today's conversation plus the diary that outlives it. */
 export class Diary implements Journal {
-  /** Set when the user dismisses the leave dialog without summarizing. */
   dismissed = false;
 
   private constructor(
@@ -131,7 +128,6 @@ export class Diary implements Journal {
     return viewOf(next);
   }
 
-  /** Append one exchange, then shrink it if a limit says so. */
   async record(
     user: string,
     assistant: string,
@@ -195,7 +191,6 @@ export class Diary implements Journal {
     return readUsage(today, range);
   }
 
-  /** Write today's summary into the diary. Noted lines stay as they are. */
   async digest(settings: PilotSettings): Promise<void> {
     if (!needsDigest(this.session) || !pilotReady(settings)) return;
     await this.digestSession(this.session, settings);
@@ -203,7 +198,6 @@ export class Diary implements Journal {
     await this.save();
   }
 
-  /** If yesterday's conversation never made it into the diary, write it now. */
   async backfill(settings: PilotSettings): Promise<void> {
     if (!pilotReady(settings)) return;
     const date = shiftDate(this.date, -1);

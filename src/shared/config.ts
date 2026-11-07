@@ -1,73 +1,44 @@
-/** Single source of truth for the spider's palette and proportions. */
-
 export const PALETTE = {
   paper: 0xf3efe6,
-  /** 巢穴翻出来的土，比纸稍微暗一点。 */
   soil: 0xe8e1d4,
-  /** 地面只分几种淡色：低处水蓝、缓坡草绿、土、石头。 */
   ground: 0xe1e6d6,
   water: 0xcfe0e6,
   earth: 0xe7e1d3,
-  /** 草叶的淡绿。 */
   grass: 0xd8dfc5,
-  /** 苹果的淡胭脂、叶子和梗。 */
   apple: 0xe6c9bb,
   leaf: 0xcfd9b8,
   stem: 0xd6c3a8,
-  /** 石子和蜘蛛的淡灰，蜘蛛再深半档。 */
   stone: 0xdcd9d1,
-  /** 沼石更暗一点，苔藓是比草叶深的绿。 */
   bogStone: 0xc6c2b7,
   moss: 0xb5c19c,
   spider: 0xd7d1c7,
-  /** 蜘蛛的复眼。 */
   eye: 0xb23a2e,
   ink: 0x1b1714,
   grid: 0xc8bfb2,
 } as const;
 
-/**
- * The apple mesh is drawn at this fraction of its modeled size, so a fruit
- * reads against a tree the way it should. The body that rolls and floats uses
- * the same fraction, so mesh, contact, and carry positions stay one thing.
- */
 export const APPLE_SCALE = 0.72;
 
 export const DECK_Y = 0.78;
 
-/**
- * How far a resting contact sits off the surface.
- * Claws and loose props share this one skin, so neither keeps its own hover.
- */
 export const CONTACT = 0.01;
 
-/** How many things can sit on the spider's back at once. */
 export const CARRY_LIMIT = 7;
 
-/** How many places the spider can remember at once. */
 export const MARK_LIMIT = 16;
 
-/** Longest name a place can have. */
 export const MARK_NAME_MAX = 24;
 
-/** Longest note a place can have. */
 export const MARK_NOTE_MAX = 120;
 
-/** The island's physical rules. Everything that moves reads these numbers. */
 export const PHYSICS = {
   gravity: 9.8,
-  /** 1/s, rolling friction. */
   damping: 2.4,
   sleepSlope: 0.08,
   sleepSpeed: 0.03,
   maxSpeed: 5,
 } as const;
 
-/**
- * The spider body as a buoyant rigid body. `center` and `radius` describe the
- * sphere the water solver uses; `mass / volume` is its density relative to
- * water. Legs add drag but barely change displacement.
- */
 export const SPIDER_BODY = {
   mass: 1.2,
   volume: 2,
@@ -79,15 +50,12 @@ export interface MountSpec {
   readonly x: number;
   readonly y: number;
   readonly z: number;
-  /** -1 for the left side, 1 for the right. */
   readonly side: number;
   readonly fore: number;
   readonly lateral: number;
-  /** 0 or 0.5, so one tetrapod lifts while the other plants. */
   readonly phase: number;
 }
 
-/** Eight legs on the cephalothorax. Same phase lifts one tetrapod. */
 export const MOUNTS: readonly MountSpec[] = [
   { x: -0.22, y: DECK_Y, z: -0.42, side: -1, fore: 1.55, lateral: 0.95, phase: 0 },
   { x: 0.22, y: DECK_Y, z: -0.42, side: 1, fore: 1.55, lateral: 0.95, phase: 0.5 },
@@ -104,7 +72,6 @@ export interface BoneSpec {
   readonly radius: number;
 }
 
-/** Four segments per leg, from the shoulder out to the claw. `radius` is the drawn thickness. */
 export const BONES: readonly BoneSpec[] = [
   { len: 0.34, radius: 0.048 },
   { len: 0.86, radius: 0.036 },
@@ -114,11 +81,6 @@ export const BONES: readonly BoneSpec[] = [
 
 export const GAIT = {
   heightMin: -0.35,
-  /**
-   * Highest the deck can rise before a claw leaves the ground.
-   * The chain is longer than this, but the first segment lies flat and the
-   * feet stand wide of the shoulders, so 1.6 left the body hanging.
-   */
   heightMax: 1,
   swing: 0.42,
   swingLift: 0.28,
@@ -137,10 +99,8 @@ export const GAIT = {
   roll: 0.08,
   liftRate: 1.2,
   liftEase: 8,
-  /** Rise over run at 85 degrees. The body sticks to slopes and stops only on a near-vertical face. */
   maxSlope: Math.tan((85 * Math.PI) / 180),
   fallAccel: 14,
   fallMax: 8,
-  /** Gap above the support before the body falls instead of easing down. */
   drop: 0.2,
 } as const;

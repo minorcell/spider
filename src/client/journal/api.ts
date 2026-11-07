@@ -6,7 +6,6 @@ import type { SnapshotStore } from './store.js';
 import type { UsageCall, UsageCallMeta, UsageRange, UsageSnapshot } from './usage.js';
 import type { PilotSettings } from '../settings.js';
 
-/** What the panel needs from today's conversation and the diary. */
 export interface Journal {
   readonly date: string;
   session: ChatSession;
@@ -36,22 +35,13 @@ export interface OpenedJournal {
   store: SnapshotStore;
 }
 
-/**
- * Modern pages run the journal and its IndexedDB work in a Worker. Tests and
- * browsers without module Workers keep the direct implementation. The fallback
- * is imported lazily, so the Worker bundle stays off the main path.
- */
 export async function openJournal(): Promise<OpenedJournal> {
   if (typeof Worker !== 'undefined') {
     try {
       const { createWorkerJournal } = await import('../worker/client.js');
       const journal = await createWorkerJournal();
       return { journal, store: journal };
-    } catch {
-      // Module workers can be unavailable despite the global existing (CSP,
-      // older browsers, or a failed startup). Keep the direct implementation
-      // as the documented fallback instead of silently losing the journal.
-    }
+    } catch {}
   }
   const [{ Diary }, { dbSnapshotStore }] = await Promise.all([
     import('./diary.js'),

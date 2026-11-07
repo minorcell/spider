@@ -5,19 +5,14 @@ import { border, color, ring as RING } from '../token.js';
 
 export type StackedBar = {
   label: string;
-  /** Share of the chart height, from 0 to 100. */
   height: number;
-  /** Share of this bar that is input, from 0 to 100. */
   input: number;
-  /** Share of this bar that is output, from 0 to 100. */
   output: number;
 };
 
 export type DonutPart = {
   name: string;
-  /** Already formatted amount, shown beside the name. */
   value: string;
-  /** Raw amount used to size the ring and the track. */
   amount: number;
   tone: string;
 };
@@ -36,7 +31,6 @@ function swatch(doc: Document, background: string, bordered: boolean): HTMLEleme
   return node;
 }
 
-/** Daily stacked bars. Input sits above output. Heights are percentages, not raw tokens. */
 export function stackedBarChart(
   doc: Document,
   options: {
@@ -92,7 +86,6 @@ function ring(parts: DonutPart[]): string {
   return `conic-gradient(${stops.join(', ')})`;
 }
 
-/** A ring of parts with a center total and one track per part. */
 export function donutChart(
   doc: Document,
   options: { title: string; hint: string; center: string; caption: string; parts: DonutPart[] },

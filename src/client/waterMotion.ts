@@ -16,22 +16,15 @@ import { PALETTE } from '../shared/config.js';
 import { TERRAIN } from '../shared/terrain.js';
 import { waterAt } from '../shared/water.js';
 
-/**
- * Disturbances on the sheet. Swells are displaced in the water material;
- * each hit here becomes one expanding ring plus a short spray of droplets.
- * Six rings is the usual small ring buffer: old impulses fall off and get reused.
- */
 export const WAKE_COUNT = 6;
 
 const wakeSlots = Array.from({ length: WAKE_COUNT }, () => new Vector4(0, 0, -1000, 0));
 
-/** World x, world z, birth time, strength. The water shader reads this every frame. */
 export const waterWake = uniformArray<'vec4'>(wakeSlots, 'vec4');
 export const waterBodyX = uniform(0);
 export const waterBodyZ = uniform(0);
 export const waterDirX = uniform(0);
 export const waterDirZ = uniform(-1);
-/** 0 on dry ground, up to 1 at a run. Scales the bow wave under the body. */
 export const waterPush = uniform(0);
 
 export interface WaterStrike {
@@ -72,10 +65,6 @@ const contactBuffer: WaterContact = {
   strikes: strikeBuffer,
 };
 
-/**
- * Where the body is, and which feet just planted in water.
- * The returned object is reused; read it before the next call.
- */
 export function waterContact(
   spider: WaterWalker,
   wasLifted: readonly boolean[],
@@ -334,7 +323,6 @@ function stepRings(time: number): void {
   }
 }
 
-/** Move rings and droplets, and record any new contact from this frame. */
 export function applyWaterMotion(seconds: number, dt: number, contact?: WaterContact): void {
   if (contact) drive(contact, seconds, dt);
   else {

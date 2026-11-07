@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, test } from 'vitest';
 import { buildProp } from '../src/client/props.js';
 import { localDate } from '../src/shared/dates.js';

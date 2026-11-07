@@ -1,7 +1,5 @@
 import { vi } from 'vitest';
 
-/** jsdom has no layout or WebGL, and no ResizeObserver/AudioContext. */
-
 export class ResizeObserverStub {
   static last: ResizeObserverStub | null = null;
 

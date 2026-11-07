@@ -1,5 +1,3 @@
-/** Ink on paper. Every color, typeface, and rule in the interface comes from here. */
-
 export type ThemeName = 'day' | 'night';
 
 export interface ThemePalette {
@@ -54,7 +52,6 @@ export const themes: Record<ThemeName, ThemePalette> = {
   },
 };
 
-/** Semantic names never change; only the variables installed on the root do. */
 export const color: Record<keyof ThemePalette, string> = {
   ink: 'var(--ui-ink)',
   paper: 'var(--ui-paper)',
@@ -72,7 +69,6 @@ export const color: Record<keyof ThemePalette, string> = {
   reason: 'var(--ui-reason)',
 };
 
-/** `paperDeep` keeps its camel case in TypeScript but loses it in the custom property. */
 export function variableName(key: keyof ThemePalette): string {
   return `--ui-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
 }
@@ -96,7 +92,6 @@ export const border = {
   hairline: `1px solid ${color.hairline}`,
 } as const;
 
-/** Viewport queries the layout listens for. */
 export const media = {
   pilot: '(max-width: 800px)',
   sheet: '(max-width: 820px)',

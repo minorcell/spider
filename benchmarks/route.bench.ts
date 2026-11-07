@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, test } from 'vitest';
 import { surfaceOf } from '../src/shared/terrain.js';
 import { createWorld } from '../src/shared/world.js';

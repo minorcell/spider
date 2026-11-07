@@ -1,6 +1,5 @@
 import type { WorldRecord } from '../../shared/sim/snapshot.js';
 
-/** The snapshot half of the database, as the page needs it. */
 export interface SnapshotStore {
   readSnapshot(): Promise<unknown>;
   putSnapshot(record: WorldRecord): Promise<void>;
@@ -8,7 +7,6 @@ export interface SnapshotStore {
   sweepSnapshots(today: string): Promise<void>;
 }
 
-/** The direct IndexedDB implementation, used when a Worker is unavailable. */
 export async function dbSnapshotStore(): Promise<SnapshotStore> {
   const [{ openSpiderDb }, { classify }] = await Promise.all([
     import('./db.js'),

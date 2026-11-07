@@ -19,7 +19,6 @@ function paintSheet(node: HTMLDialogElement, narrow: boolean): void {
   });
 }
 
-/** Paper dialog. `card` is the small confirm box; `sheet` is the wide settings panel. */
 export function markDialog(node: HTMLDialogElement, kind: DialogKind): HTMLDialogElement {
   if (kind === 'card') {
     paint(node, {
@@ -77,12 +76,10 @@ export function dialogActions(doc: Document, ...actions: HTMLButtonElement[]): H
   return menu;
 }
 
-/** Open a modal. An open dialog is left as it is. */
 export function showDialog(node: HTMLDialogElement): void {
   if (!node.open) node.showModal();
 }
 
-/** Close a dialog. A closed dialog is left as it is. */
 export function closeDialog(node: HTMLDialogElement): void {
   if (node.open) node.close();
 }

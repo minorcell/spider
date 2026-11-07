@@ -2,16 +2,12 @@ import { worldClock, type LightPeriod } from '../shared/ecology.js';
 import { installTheme } from '../ui/theme.js';
 import type { ThemeName } from '../ui/token.js';
 
-/** Local hour boundaries where the sun changes. */
 export const LIGHT_BOUNDARY_HOURS = [5, 7, 17, 19] as const;
 
-/** Re-read the wall clock once a minute so a changed system time is noticed. */
 const CHECK_MS = 60_000;
 
-/** Land just after the boundary so `worldClock` has crossed it. */
 const SETTLE_MS = 1_000;
 
-/** The dark half starts at dusk and ends at dawn. */
 export function themeForPeriod(period: LightPeriod): ThemeName {
   return period === 'night' || period === 'dusk' ? 'night' : 'day';
 }
@@ -20,7 +16,6 @@ export function themeAt(at: Date): ThemeName {
   return themeForPeriod(worldClock(at).period);
 }
 
-/** The next 05:00, 07:00, 17:00, or 19:00, whichever comes first. */
 export function nextLightBoundary(at: Date): number {
   const now = at.getTime();
   for (const hour of LIGHT_BOUNDARY_HOURS) {
@@ -34,11 +29,6 @@ export function nextLightBoundary(at: Date): number {
   return tomorrow.getTime();
 }
 
-/**
- * Keep the page palette on the same clock as the 3D world. A short timer at
- * each boundary is enough; the minute check is only a safety net for a changed
- * system clock, a timezone move, or a tab that slept through the boundary.
- */
 export function startThemeClock(
   doc: Document,
   win: Window = window,

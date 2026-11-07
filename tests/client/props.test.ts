@@ -100,7 +100,6 @@ describe('buildProp', () => {
     expect(ink).toBeInstanceOf(LineSegments);
     expect(paper.geometry.getAttribute('position').count).toBeGreaterThan(0);
     expect(ink.geometry.getAttribute('position').count).toBeGreaterThan(0);
-    // 草成堆而不是一根根散着：每片草的叶片数压在一个小数目里。
     const blades = patch.userData.blades as unknown[];
     expect(blades.length).toBeGreaterThan(10);
     expect(blades.length).toBeLessThan(140);

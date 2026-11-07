@@ -36,7 +36,6 @@ export function bindLeave(opts: {
   });
 
   window.addEventListener('beforeunload', (event) => {
-    // Vite reloads this page on each save. That is not the user leaving.
     if (import.meta.env.MODE === 'development') return;
     if (!getJournal()?.behind()) return;
     event.preventDefault();

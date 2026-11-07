@@ -1,5 +1,3 @@
-/** Deterministic 2D noise. The same seed rebuilds the same island. */
-
 export function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -57,7 +55,6 @@ export function createNoise(seed: number): (x: number, y: number) => number {
   };
 }
 
-/** Five octaves, scaled to about -1..1. */
 export function fbm(noise: (x: number, y: number) => number, x: number, y: number): number {
   let sum = 0;
   let amp = 0.5;

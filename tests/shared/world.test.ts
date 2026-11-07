@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { groundSupport } from '../../src/shared/contact.js';
 import { KINDS } from '../../src/shared/kinds.js';
@@ -20,7 +18,6 @@ import {
   VIEW_DISTANCE,
 } from '../../src/shared/world.js';
 
-/** Feed the scattered props a fixed random stream. */
 const control = vi.hoisted(() => ({ enabled: false, queue: [] as number[] }));
 
 vi.mock('../../src/shared/noise.js', async (importOriginal) => {
@@ -36,7 +33,6 @@ vi.mock('../../src/shared/noise.js', async (importOriginal) => {
 
 const quantized = (value: number): number => Math.round(value * 10) / 10;
 
-/** The scatter helper draws x and z from this same mapping. */
 function toRng(value: number): number {
   return (quantized(value) / (TERRAIN.island * 0.8) + 1) / 2;
 }
@@ -386,5 +382,35 @@ describe('grow', () => {
     expect(stuck.entities.some((entity) => entity.kind === 'apple')).toBe(false);
     expect(stuck.sprouts).toBe(1);
     expect(stuck.appleIn).toBe(APPLE_EVERY);
+  });
+
+  it('skips a sprout inside a wall and one that cannot settle beside it', () => {
+    const seed = seedWith(findFlat, 6);
+    const spot = findFlat(seed, 6)!;
+    const world = bare(seed);
+    world.entities = world.entities.filter((entity) => entity.kind === 'nest');
+    world.appleIn = 0;
+    const x = quantized(spot.x);
+    const z = quantized(spot.z);
+    world.blocks = [
+      { id: 'wall', minX: x - 0.05, maxX: x + 0.05, minZ: z - 0.05, maxZ: z + 0.05, height: 2 },
+    ];
+    control.enabled = true;
+    control.queue = [toRng(x), toRng(z)];
+    grow(world, 0);
+    expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
+
+    world.appleIn = 0;
+    world.sprouts = 0;
+    world.blocks = [];
+    world.terrain = {
+      height(px: number, pz: number): number {
+        if (Math.abs(px - (x + 0.5)) < 0.05 && Math.abs(pz - z) < 0.05) return 5.2;
+        return 5;
+      },
+    };
+    control.queue = [toRng(x), toRng(z)];
+    grow(world, 0);
+    expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
   });
 });

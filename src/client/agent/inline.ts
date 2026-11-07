@@ -1,10 +1,3 @@
-/**
- * Some models write a tool call into the text channel instead of the tool-call
- * channel: `go {"mode": "point", "x": 1, "z": 2}`. The SDK has already run its own tool
- * loop by the time the text reaches the page, so these would end the turn as
- * prose. Parse them at the model stream and hand the SDK real tool calls.
- */
-
 export interface InlineCall {
   name: string;
   input: Record<string, unknown>;
@@ -21,7 +14,6 @@ interface JsonObject {
 const IDENT = /[A-Za-z0-9_]/;
 const SPACE = /\s/;
 
-/** Every tool call the text contains, in the order written. */
 export function parseInlineCalls(text: string, names: readonly string[]): InlineCall[] {
   if (text === '' || names.length === 0) return [];
   const found: InlineCall[] = [];
@@ -50,7 +42,6 @@ export function parseInlineCalls(text: string, names: readonly string[]): Inline
   return found.toSorted((a, b) => a.start - b.start);
 }
 
-/** The prose around the removed calls, with the token debris some models leave. */
 export function cleanInlineText(text: string, calls: readonly InlineCall[]): string {
   if (calls.length === 0) return text;
   let out = '';
@@ -82,11 +73,6 @@ interface StreamingModel {
   doStream: (options: never) => PromiseLike<{ stream: ReadableStream<unknown> }>;
 }
 
-/**
- * Wrap a streaming model so inline tool calls become real ones before the SDK
- * decides the turn is finished. The wrapper sits on the prototype so the
- * provider object keeps its other methods and getters.
- */
 export function withInlineCalls<M extends object>(model: M, names: readonly string[]): M {
   const source = model as unknown as Partial<StreamingModel>;
   if (names.length === 0 || typeof source.doStream !== 'function') return model;
@@ -209,7 +195,6 @@ function wholeWord(text: string, index: number, length: number): boolean {
   return !IDENT.test(before) && !IDENT.test(after);
 }
 
-/** The JSON object right after a tool name, with or without fences and parens. */
 function jsonAfter(text: string, from: number): JsonObject | null {
   let index = from;
   while (index < text.length && SPACE.test(text[index])) index += 1;

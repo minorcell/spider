@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, test } from 'vitest';
 import { islandGroup } from '../src/client/groundView.js';
 import { buildProp, drapeGrass } from '../src/client/props.js';

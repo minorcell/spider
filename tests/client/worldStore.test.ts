@@ -704,7 +704,6 @@ describe('flushWorld', () => {
     session.spider.root.position.x += 0.3;
     flushWorld('hide');
     expect(localStorage.getItem(KEY)).toContain('"seq":1');
-    // The write reaches the pending read after its own microtasks.
     await new Promise((resolve) => setTimeout(resolve, 0));
     release(undefined);
     await writesDone();
@@ -1168,7 +1167,6 @@ describe('injected snapshot store', () => {
     });
     document.dispatchEvent(new Event('visibilitychange'));
     await writesDone();
-    // A second hidden tick finds no timer to clear.
     document.dispatchEvent(new Event('visibilitychange'));
     await writesDone();
     Object.defineProperty(document, 'visibilityState', {

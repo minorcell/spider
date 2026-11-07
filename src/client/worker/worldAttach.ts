@@ -1,7 +1,6 @@
 import { createWorldHandler, type WorldHandler } from './worldHandler.js';
 import type { PreparedBuffers, WorldReply, WorldRequest } from './worldProtocol.js';
 
-/** The slice of a DedicatedWorkerGlobalScope the transport needs. */
 export interface WorldScope {
   onmessage: ((event: MessageEvent<WorldRequest>) => void) | null;
   postMessage(message: WorldReply, transfer?: Transferable[]): void;
