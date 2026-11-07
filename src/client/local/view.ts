@@ -30,7 +30,8 @@ export function localModelPanel(doc: Document): HTMLElement {
   });
   for (const [label, value] of [
     ['首次下载', '约 2.5 GB'],
-    ['显存占用', '约 2.6 GB'],
+    ['上下文预算', '128K · 80% 时自动压缩'],
+    ['显存占用', '随上下文长度增长'],
     ['运行环境', '支持 WebGPU 的桌面浏览器'],
   ]) {
     const labelNode = h(doc, 'p', {}, label);
@@ -73,25 +74,6 @@ export function localModelPanel(doc: Document): HTMLElement {
     fontSize: '12px',
   });
   card.append(title, intro, facts, actions, hint, status, progress, detail, offline);
-  const guide = h(doc, 'section', { 'aria-label': '玩法提示' });
-  paint(guide, { marginTop: '24px' });
-  const guideTitle = h(doc, 'h3', {}, '先试试简单动作');
-  paint(guideTitle, { margin: '0 0 10px', fontSize: '16px', fontWeight: '400' });
-  const examples = h(doc, 'div');
-  paint(examples, { display: 'flex', flexWrap: 'wrap', gap: '8px' });
-  for (const text of ['向前走一米', '右转九十度', '把身体抬高到一米']) {
-    const example = h(doc, 'span', {}, `「${text}」`);
-    paint(example, { padding: '6px 10px', border: border.hairline });
-    examples.append(example);
-  }
-  const limits = h(
-    doc,
-    'p',
-    {},
-    '支持观察、走路、转向和升降身体。每条指令独立执行，最多尝试 6 步；复杂指令可能失败。刷新页面后需重新加载模型，优先读取缓存。',
-  );
-  paint(limits, { margin: '12px 0 0', color: color.muted, fontSize: '13px' });
-  guide.append(guideTitle, examples, limits);
-  panel.append(card, guide);
+  panel.append(card);
   return panel;
 }

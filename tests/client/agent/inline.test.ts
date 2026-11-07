@@ -160,16 +160,18 @@ describe('withInlineCalls', () => {
     '{"name":"unknown","arguments":{}}',
     '```json\n{"name":"observe","arguments":',
     '工具执行结果：{"ok":true}',
-  ])('never sends an unrecognized local tool payload to speech: %s', async (text) => {
-    const { stream } = await withInlineCalls(
-      fakeModel([{ type: 'text-delta', delta: text }, { type: 'finish' }]),
-      names,
-      true,
-    ).doStream({} as never);
-    const chunks = await read(stream);
-    expect(chunks.some((chunk) => chunk.type === 'text-delta')).toBe(false);
-    expect(chunks.some((chunk) => chunk.type === 'error')).toBe(true);
-  });
+  ])(
+    'never sends an unrecognized tool payload to speech in the shared pipeline: %s',
+    async (text) => {
+      const { stream } = await withInlineCalls(
+        fakeModel([{ type: 'text-delta', delta: text }, { type: 'finish' }]),
+        names,
+      ).doStream({} as never);
+      const chunks = await read(stream);
+      expect(chunks.some((chunk) => chunk.type === 'text-delta')).toBe(false);
+      expect(chunks.some((chunk) => chunk.type === 'error')).toBe(true);
+    },
+  );
 
   it('streams marked answers before generation finishes', async () => {
     let finish!: () => void;
@@ -189,7 +191,7 @@ describe('withInlineCalls', () => {
         }),
       }),
     };
-    const { stream } = await withInlineCalls(model, names, true).doStream();
+    const { stream } = await withInlineCalls(model, names).doStream();
     const reader = stream.getReader();
     expect((await reader.read()).value).toMatchObject({ type: 'text-start' });
     expect((await reader.read()).value).toMatchObject({
@@ -283,12 +285,8 @@ describe('withInlineCalls', () => {
       names,
     ).doStream({} as never);
     const chunks = await read(stream);
-    expect(chunks).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: 'text-delta', delta: '走 move_to {"x":1}' }),
-        error,
-      ]),
-    );
+    expect(chunks).toContainEqual(error);
+    expect(chunks.some((chunk) => chunk.type === 'text-delta')).toBe(false);
     expect(chunks.some((chunk) => chunk.type === 'tool-call')).toBe(false);
   });
 

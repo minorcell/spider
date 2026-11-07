@@ -3,7 +3,7 @@ import { setLocalBusy } from './activity.js';
 import { LOCAL_APP_CONFIG } from './model.js';
 import { localProgress } from './progress.js';
 import { localText } from './text.js';
-import { LOCAL_MODEL, type LocalBackend, type LocalStatus } from './types.js';
+import { LOCAL_CONTEXT_TOKENS, LOCAL_MODEL, type LocalBackend, type LocalStatus } from './types.js';
 
 /** One engine in the journal worker, shared by actions and diary summaries. */
 export function createLocalRuntime(): LocalBackend {
@@ -104,7 +104,7 @@ export function createLocalRuntime(): LocalBackend {
               status = localProgress(report);
             },
           });
-          await next.reload(LOCAL_MODEL, { context_window_size: 4096 });
+          await next.reload(LOCAL_MODEL, { context_window_size: LOCAL_CONTEXT_TOKENS });
           engine = next;
           status = { ready: true, text: '本机模型已就绪', progress: 1 };
         } catch (error) {
@@ -125,9 +125,8 @@ export function createLocalRuntime(): LocalBackend {
             if (cancelled.has(id)) throw new DOMException('已停止', 'AbortError');
             if (!engine) throw new Error('请先在设置里加载本机模型');
             const request = {
+              ...options?.generation,
               messages,
-              temperature: 0,
-              max_tokens: options?.kind === 'summary' ? 384 : 256,
               extra_body: { enable_latency_breakdown: true },
             };
             let rawText = '';

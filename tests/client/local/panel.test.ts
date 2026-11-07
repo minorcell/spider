@@ -32,7 +32,14 @@ afterEach(() => {
 it('disables cloud fields only for local mode and downloads only after a click', async () => {
   expect(document.querySelector('#local-model-panel')!.textContent).toContain('Llama 3.2 1B');
   expect(document.querySelector('#local-model-panel')!.textContent).toContain('约 2.5 GB');
-  expect(document.querySelector('#local-model-panel')!.textContent).toContain('约 2.6 GB');
+  expect(document.querySelector('#local-model-panel')!.textContent).toContain(
+    '128K · 80% 时自动压缩',
+  );
+  expect(document.querySelector('#local-model-panel')!.textContent).not.toContain('先试试简单动作');
+  expect(document.querySelector('#local-model-panel')!.textContent).not.toContain(
+    '每条指令独立执行',
+  );
+  expect(document.querySelector('#local-model-panel [aria-label="玩法提示"]')).toBeNull();
   const reflect = bindLocalPanel(document);
   reflect(true);
   expect(document.querySelector<HTMLElement>('#online-model-panel')!.hidden).toBe(true);

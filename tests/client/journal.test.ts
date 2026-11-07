@@ -19,6 +19,7 @@ import {
 import { readNote, summarizeDiary } from '../../src/client/journal/summarize.js';
 import { readUsage } from '../../src/client/journal/usage.js';
 import type { PilotSettings } from '../../src/client/settings.js';
+import { LOCAL_CONTEXT_TOKENS } from '../../src/client/local/types.js';
 
 vi.mock('../../src/client/journal/summarize.js', async () => {
   const actual = await vi.importActual<typeof import('../../src/client/journal/summarize.js')>(
@@ -229,6 +230,21 @@ describe('readNote', () => {
 });
 
 describe('Diary', () => {
+  it('uses the complete 128K local budget and compresses at 80% with the shared summary flow', async () => {
+    const summarize = vi.mocked(summarizeDiary);
+    summarize.mockClear();
+    const diary = await Diary.open(new Date(2026, 10, 2, 12));
+    const local = { ...settings, mode: 'local' as const, contextTokens: 1 };
+    const threshold = Math.floor(LOCAL_CONTEXT_TOKENS * 0.8);
+    await diary.record('x'.repeat((threshold - 100) * 4), '收到', [], local);
+    expect(estimateTokens(diary.session)).toBeLessThan(threshold);
+    expect(summarize).not.toHaveBeenCalled();
+    await diary.record('y'.repeat(1000), '收到', [], local);
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(summarize.mock.calls[0][0].settings.mode).toBe('local');
+    expect(diary.session.summary).toBe('记下了偏好。');
+    expect(estimateTokens(diary.session)).toBeLessThan(threshold);
+  });
   it('keeps today, writes a note, and backfills yesterday', async () => {
     const today = await Diary.open(new Date(2026, 10, 2, 12));
     await today.record('记住不要吃红的', '记下了。', [], settings);
@@ -271,6 +287,31 @@ describe('Diary', () => {
     diary.dismissed = true;
     await diary.record('再走', '好。', [], settings);
     expect(diary.dismissed).toBe(false);
+  });
+
+  it('preserves memory edits made while generating a summary', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 2, 8));
+    await diary.write({ date: diary.date, line: '旧目录', noted: '旧笔记', summary: '旧摘要' });
+    await diary.record('记住这件事', '好的', [], settings);
+    const waiting = Promise.withResolvers<{ line: string; summary: string }>();
+    const started = Promise.withResolvers<void>();
+    vi.mocked(summarizeDiary).mockImplementationOnce(() => {
+      started.resolve();
+      return waiting.promise;
+    });
+    const digest = diary.digest(settings);
+    await started.promise;
+    await Promise.all([
+      diary.write({ date: diary.date, line: '新目录', noted: '新笔记' }),
+      diary.write({ date: diary.date, summary: '用户的新摘要' }),
+    ]);
+    waiting.resolve({ line: '模型的目录', summary: '模型的摘要' });
+    await digest;
+    expect(await diary.read(diary.date)).toMatchObject({
+      line: '新目录',
+      noted: '新笔记',
+      summary: '用户的新摘要',
+    });
   });
 
   it('skips digest without a model', async () => {
