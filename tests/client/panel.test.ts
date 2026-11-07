@@ -2151,8 +2151,9 @@ it('switches between local inference and the saved API configuration', () => {
   expect(document.querySelector<HTMLElement>('#online-model-panel')!.hidden).toBe(false);
 });
 
-it('opens local setup on reload and preserves unsent input until the model is loaded', async () => {
+it('reloads a previously loaded local model from cache and preserves unsent input until it is ready', async () => {
   vi.stubGlobal('navigator', { gpu: {} });
+  localStorage.setItem('spider.localLoaded', '1');
   let loaded = false;
   let finish!: () => void;
   const load = vi.fn(
@@ -2179,24 +2180,23 @@ it('opens local setup on reload and preserves unsent input until the model is lo
   const dialog = document.querySelector<HTMLDialogElement>('#settings')!;
   const goal = document.querySelector<HTMLInputElement>('#goal')!;
   const badge = document.querySelector<HTMLElement>('#pilot-model')!;
-  expect(dialog.open).toBe(true);
-  expect(document.querySelector<HTMLElement>('#local-model-panel')!.hidden).toBe(false);
+  // Auto-load from cache on mount; settings stay closed while it runs.
+  await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
+  expect(load).toHaveBeenCalledWith({ cachedOnly: true });
+  expect(dialog.open).toBe(false);
   expect(badge.style.display).toBe('none');
-  expect(load).not.toHaveBeenCalled();
-  clickButton('#settings-close');
   goal.value = '向前走一米';
   submit();
   expect(dialog.open).toBe(true);
   expect(goal.value).toBe('向前走一米');
   expect(loop.runAgent).not.toHaveBeenCalled();
   expect(pendingNow()).toBeNull();
-  clickButton('#local-load');
-  await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
   clickButton('#settings-close');
   submit();
   expect(dialog.open).toBe(true);
   expect(goal.value).toBe('向前走一米');
   expect(loop.runAgent).not.toHaveBeenCalled();
+  expect(load).toHaveBeenCalledOnce();
   finish();
   await vi.waitFor(() => expect(badge.textContent).toBe('Qwen3 · 本机'));
   expect(goal.placeholder).toBe('让它去做一件事');

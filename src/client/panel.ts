@@ -233,7 +233,7 @@ export function mountPanel(
   const fill = (settings: PilotSettings): void => {
     field('localModel').checked = settings.mode === 'local';
     reflectSwitch(field('localModel'));
-    localPanel(settings.mode === 'local');
+    localPanel.show(settings.mode === 'local');
     field('baseURL').value = settings.baseURL;
     field('model').value = settings.model;
     field('apiKey').value = settings.apiKey;
@@ -379,7 +379,7 @@ export function mountPanel(
     }
     if (values.localModel !== shownFields.localModel) {
       next.mode = values.localModel ? 'local' : 'api';
-      localPanel(values.localModel);
+      localPanel.show(values.localModel);
       changed = true;
     }
     if (values.thinking !== shownFields.thinking) {
@@ -681,6 +681,16 @@ export function mountPanel(
   paint();
   if (readPilot().mode === 'local') {
     fill(readPilot());
-    showPage('model');
+    if (localPanel.wasLoaded()) {
+      // Reload from the browser cache; open settings only if that fails.
+      void localPanel.load().then((ok) => {
+        if (!ok) {
+          fill(readPilot());
+          showPage('model');
+        }
+      });
+    } else {
+      showPage('model');
+    }
   }
 }
