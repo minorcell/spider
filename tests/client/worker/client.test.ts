@@ -74,6 +74,8 @@ describe('WorkerJournal', () => {
     expect(journal.session.turns).toEqual([]);
 
     expect(await call(port, () => journal.save(), STATE)).toBeUndefined();
+    expect(await call(port, () => journal.resetSession(), STATE)).toBeUndefined();
+    expect(port.last.method).toBe('resetSession');
     await call(
       port,
       () =>

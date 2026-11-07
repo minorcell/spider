@@ -14,6 +14,7 @@ import { bindCloud } from './panel/cloud.js';
 import { bindLeave } from './panel/leave.js';
 import { bindMemory } from './panel/memory.js';
 import { bindUsage } from './panel/usage.js';
+import { bindStatus } from './panel/status.js';
 import { explain, isAbort, numberOrNull, thoughtOf } from './panel/helpers.js';
 import { QUICK_PROVIDERS, discoverModels, type ModelProvider } from './providers.js';
 import { pilotReady, readPilot, writePilot, type PilotSettings } from './settings.js';
@@ -38,6 +39,7 @@ export function mountPanel(
   const trace = doc.querySelector<HTMLOListElement>('#trace');
   const open = doc.querySelector<HTMLButtonElement>('#settings-open');
   const menuModel = doc.querySelector<HTMLButtonElement>('#menu-model');
+  const menuStatus = doc.querySelector<HTMLButtonElement>('#menu-status');
   const menuMemory = doc.querySelector<HTMLButtonElement>('#menu-memory');
   const menuUsage = doc.querySelector<HTMLButtonElement>('#menu-usage');
   const menuCloud = doc.querySelector<HTMLButtonElement>('#menu-cloud');
@@ -45,6 +47,7 @@ export function mountPanel(
   const lookHint = doc.querySelector<HTMLElement>('#look-hint');
   const dialog = doc.querySelector<HTMLDialogElement>('#settings');
   const panelModel = doc.querySelector<HTMLElement>('#panel-model');
+  const panelStatus = doc.querySelector<HTMLElement>('#panel-status');
   const settingsForm = doc.querySelector<HTMLFormElement>('#settings-form');
   const close = doc.querySelector<HTMLButtonElement>('#settings-close');
   const memoryPanel = doc.querySelector<HTMLElement>('#memory');
@@ -70,11 +73,13 @@ export function mountPanel(
     !trace ||
     !open ||
     !menuModel ||
+    !menuStatus ||
     !menuMemory ||
     !menuUsage ||
     !map ||
     !dialog ||
     !panelModel ||
+    !panelStatus ||
     !settingsForm ||
     !close ||
     !memoryPanel ||
@@ -133,6 +138,7 @@ export function mountPanel(
   });
 
   let localReady = false;
+  let localLoading = false;
   const paint = (): void => {
     const settings = readPilot();
     const local = settings.mode === 'local';
@@ -142,7 +148,9 @@ export function mountPanel(
     goal.placeholder = ready
       ? '让它去做一件事'
       : local
-        ? '本机模型未就绪，发送后打开加载面板'
+        ? localLoading
+          ? '本机模型正在加载…'
+          : '本机模型未就绪，发送后打开加载面板'
         : '未填写模型';
   };
 
@@ -189,10 +197,28 @@ export function mountPanel(
     stage.voice();
   };
 
-  const localPanel = bindLocalPanel(doc, (ready) => {
-    localReady = ready;
-    paint();
-  });
+  let journal: Journal | null = null;
+  let lastActivity = Date.now();
+  let digesting = false;
+  let digestRetryAt = 0;
+  const journalReady = Promise.resolve(injected ?? openJournal())
+    .then((opened) => {
+      if (!opened) return null;
+      journal = opened.journal;
+      void opened.journal.backfill(readPilot()).catch(() => undefined);
+      return opened.journal;
+    })
+    .catch(() => null);
+
+  const localPanel = bindLocalPanel(
+    doc,
+    (ready, loading) => {
+      localReady = ready;
+      localLoading = loading === true && !ready;
+      paint();
+    },
+    journalReady,
+  );
 
   const field = (name: string): HTMLInputElement => {
     const element = settingsForm.elements.namedItem(name);
@@ -322,12 +348,14 @@ export function mountPanel(
 
   const pages = {
     model: panelModel,
+    status: panelStatus,
     memory: memoryPanel,
     usage: usagePanel,
     cloud: cloudPanel,
   } as const;
   const nav = {
     model: menuModel,
+    status: menuStatus,
     memory: menuMemory,
     usage: menuUsage,
     cloud: menuCloud,
@@ -404,20 +432,28 @@ export function mountPanel(
     persist();
   });
 
-  let journal: Journal | null = null;
-  let lastActivity = Date.now();
-  let digesting = false;
-  let digestRetryAt = 0;
-  const journalReady = Promise.resolve(injected ?? openJournal())
-    .then((opened) => {
-      if (!opened) return null;
-      journal = opened.journal;
-      void opened.journal.backfill(readPilot()).catch(() => undefined);
-      return opened.journal;
-    })
-    .catch(() => null);
-
   const getJournal = (): Journal | null => journal;
+
+  bindStatus({
+    doc,
+    menu: menuStatus,
+    panel: panelStatus,
+    dialog,
+    showPage: () => showPage('status'),
+    getJournal,
+    journalReady,
+    isBusy: () => current != null || digesting,
+    modelStatus: () => (localReady ? '已就绪' : localLoading ? '正在加载' : '未就绪'),
+    onReset: () => {
+      setPending(null);
+      flushWorld('poke');
+      trace.replaceChildren();
+      live = null;
+      hideAt = 0;
+      lastActivity = Date.now();
+      digestRetryAt = 0;
+    },
+  });
 
   const noteActivity = (): void => {
     lastActivity = Date.now();
@@ -429,6 +465,7 @@ export function mountPanel(
   const rememberIfIdle = (): void => {
     if (current || digesting) return;
     const settings = readPilot();
+    if (settings.mode === 'local' && !localReady) return;
     const opened = journal;
     if (!settings.autoMemory) return;
     if (!opened?.behind()) return;
@@ -681,6 +718,5 @@ export function mountPanel(
   paint();
   if (readPilot().mode === 'local') {
     fill(readPilot());
-    showPage('model');
   }
 }

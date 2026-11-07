@@ -29,7 +29,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
-it('disables cloud fields only for local mode and downloads only after a click', async () => {
+it('disables cloud fields only for local mode and avoids duplicate manual and automatic loads', async () => {
   expect(document.querySelector('#local-model-panel')!.textContent).toContain('Llama 3.2 1B');
   expect(document.querySelector('#local-model-panel')!.textContent).toContain('约 2.5 GB');
   expect(document.querySelector('#local-model-panel')!.textContent).toContain(
@@ -56,6 +56,48 @@ it('disables cloud fields only for local mode and downloads only after a click',
   expect(document.querySelector<HTMLElement>('#online-model-panel')!.hidden).toBe(false);
   expect(document.querySelector<HTMLElement>('#local-model-panel')!.hidden).toBe(true);
   expect(document.querySelector<HTMLInputElement>('[name="apiKey"]')!.disabled).toBe(false);
+});
+
+it('waits for the worker before automatically loading, without repeating on settings reopen', async () => {
+  const ready = Promise.withResolvers<void>();
+  const reflect = bindLocalPanel(document, undefined, ready.promise);
+  reflect(true);
+  reflect(true);
+  await Promise.resolve();
+  expect(mock.load).not.toHaveBeenCalled();
+  ready.resolve();
+  await vi.waitFor(() => expect(mock.load).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(button('#local-load').disabled).toBe(false));
+  reflect(true);
+  await Promise.resolve();
+  expect(mock.load).toHaveBeenCalledOnce();
+  button('#local-unload').click();
+  await vi.waitFor(() => expect(button('#local-unload').disabled).toBe(false));
+  reflect(true);
+  await Promise.resolve();
+  expect(mock.load).toHaveBeenCalledOnce();
+});
+
+it('does not start an automatic load when switched back to the API before initialization', async () => {
+  const ready = Promise.withResolvers<void>();
+  const reflect = bindLocalPanel(document, undefined, ready.promise);
+  reflect(true);
+  reflect(false);
+  ready.resolve();
+  await Promise.resolve();
+  expect(mock.load).not.toHaveBeenCalled();
+});
+
+it('allows an automatic load failure to be retried manually', async () => {
+  const onReady = vi.fn();
+  mock.load.mockRejectedValueOnce(new Error('network'));
+  bindLocalPanel(document, onReady)(true);
+  await vi.waitFor(() => expect(status()).toContain('模型加载失败'));
+  expect(onReady).toHaveBeenLastCalledWith(false, false);
+  expect(button('#local-load').disabled).toBe(false);
+  button('#local-load').click();
+  await vi.waitFor(() => expect(status()).toBe('ready'));
+  expect(onReady).toHaveBeenLastCalledWith(true, false);
 });
 it('shows progress during loading and leaves retry available after failure', async () => {
   vi.stubEnv('DEV', false);

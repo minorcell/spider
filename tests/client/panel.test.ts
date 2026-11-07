@@ -782,6 +782,58 @@ const PILOT: PilotSettings = {
   thinking: true,
 };
 
+describe('session status page', () => {
+  beforeEach(async () => {
+    await resetSpiderDb();
+  });
+
+  it('opens status, starts a new session and sends the next instruction with empty history', async () => {
+    ready();
+    const diary = await Diary.open();
+    await diary.record('旧消息', '旧回答', [], PILOT);
+    diary.session.summary = '旧摘要';
+    await diary.save();
+    await diary.write({ date: diary.date, noted: '记住的偏好' });
+    mount();
+    await flush();
+    clickButton('#menu-status');
+    expect(document.querySelector('#menu-status')!.getAttribute('aria-current')).toBe('page');
+    expect(document.querySelector<HTMLElement>('#panel-status')!.hidden).toBe(false);
+    expect(document.querySelector<HTMLElement>('#panel-model')!.hidden).toBe(true);
+    expect(document.querySelector('#session-turns')!.textContent).toBe('2 条消息');
+    expect(document.querySelector('#session-summary')!.textContent).toBe('旧摘要');
+    clickButton('#session-new');
+    await flush();
+    expect(document.querySelector('#session-status')!.textContent).toBe('新会话已开始');
+    expect(document.querySelector('#session-turns')!.textContent).toBe('0 条消息');
+    expect(pendingNow()).toBeNull();
+    expect((await Diary.open()).session.turns).toEqual([]);
+    expect(await diary.read(diary.date)).toMatchObject({ noted: '记住的偏好' });
+    loop.runAgent.mockResolvedValue({ text: '新回答', usage: null });
+    document.querySelector<HTMLInputElement>('#goal')!.value = '新消息';
+    submit();
+    await flush();
+    expect(loop.runAgent.mock.calls[0][0].chat).toMatchObject({ summary: '', turns: [] });
+  });
+
+  it('prevents resetting a session while an action is running', async () => {
+    ready();
+    const pending = Promise.withResolvers<{ text: string; usage: null }>();
+    loop.runAgent.mockReturnValueOnce(pending.promise);
+    mount();
+    document.querySelector<HTMLInputElement>('#goal')!.value = '行动';
+    submit();
+    await flush();
+    clickButton('#menu-status');
+    expect(document.querySelector<HTMLButtonElement>('#session-new')!.disabled).toBe(true);
+    pending.resolve({ text: '完成', usage: null });
+    await flush();
+    clickButton('#menu-status');
+    expect(document.querySelector<HTMLButtonElement>('#session-new')!.disabled).toBe(false);
+    expect(document.querySelector('#session-turns')!.textContent).toBe('2 条消息');
+  });
+});
+
 describe('diary panel', () => {
   beforeEach(async () => {
     await resetSpiderDb();
@@ -1264,6 +1316,8 @@ describe('diary panel', () => {
     await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS);
     await settle();
     expect(summarizeDiary).toHaveBeenCalledTimes(1);
+    clickButton('#menu-status');
+    expect(document.querySelector<HTMLButtonElement>('#session-new')!.disabled).toBe(true);
     await vi.advanceTimersByTimeAsync(AUTO_MEMORY_IDLE_MS);
     await settle();
     expect(summarizeDiary).toHaveBeenCalledTimes(1);
@@ -2151,7 +2205,7 @@ it('switches between local inference and the saved API configuration', () => {
   expect(document.querySelector<HTMLElement>('#online-model-panel')!.hidden).toBe(false);
 });
 
-it('opens local setup on reload and preserves unsent input until the model is loaded', async () => {
+it('automatically loads the saved local model on reload and preserves input until it is ready', async () => {
   vi.stubGlobal('navigator', { gpu: {} });
   let loaded = false;
   let finish!: () => void;
@@ -2179,10 +2233,13 @@ it('opens local setup on reload and preserves unsent input until the model is lo
   const dialog = document.querySelector<HTMLDialogElement>('#settings')!;
   const goal = document.querySelector<HTMLInputElement>('#goal')!;
   const badge = document.querySelector<HTMLElement>('#pilot-model')!;
-  expect(dialog.open).toBe(true);
+  expect(dialog.open).toBe(false);
   expect(document.querySelector<HTMLElement>('#local-model-panel')!.hidden).toBe(false);
   expect(badge.style.display).toBe('none');
-  expect(load).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
+  expect(goal.placeholder).toBe('本机模型正在加载…');
+  clickButton('#menu-status');
+  expect(document.querySelector('#session-state')!.textContent).toBe('正在加载');
   clickButton('#settings-close');
   goal.value = '向前走一米';
   submit();
@@ -2190,8 +2247,7 @@ it('opens local setup on reload and preserves unsent input until the model is lo
   expect(goal.value).toBe('向前走一米');
   expect(loop.runAgent).not.toHaveBeenCalled();
   expect(pendingNow()).toBeNull();
-  clickButton('#local-load');
-  await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
+  expect(load).toHaveBeenCalledOnce();
   clickButton('#settings-close');
   submit();
   expect(dialog.open).toBe(true);
@@ -2200,6 +2256,8 @@ it('opens local setup on reload and preserves unsent input until the model is lo
   finish();
   await vi.waitFor(() => expect(badge.textContent).toBe('Llama 3.2 · 本机'));
   expect(goal.placeholder).toBe('让它去做一件事');
+  clickButton('#menu-status');
+  expect(document.querySelector('#session-state')!.textContent).toBe('已就绪');
   clickButton('#settings-close');
   loop.runAgent.mockResolvedValue({ text: '好' });
   submit();
@@ -2223,4 +2281,29 @@ it('opens local setup on reload and preserves unsent input until the model is lo
     expect(document.querySelector('#local-status')!.textContent).toContain('加载失败'),
   );
   expect(badge.style.display).toBe('none');
+});
+
+it('waits for the local model before running automatic memory work', async () => {
+  vi.stubGlobal('navigator', { gpu: {} });
+  const pending = Promise.withResolvers<void>();
+  let loaded = false;
+  useLocalBackend({
+    localLoad: async () => {
+      await pending.promise;
+      loaded = true;
+    },
+    localUnload: vi.fn(),
+    localStatus: async () => ({ ready: loaded, text: loaded ? '已就绪' : '正在加载' }),
+    localComplete: vi.fn(),
+    localCancel: vi.fn(),
+  });
+  writePilot({ ...readPilot(), mode: 'local' });
+  vi.useFakeTimers();
+  mount();
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(document.querySelector<HTMLInputElement>('#goal')!.placeholder).toContain('正在加载');
+  pending.resolve();
+  await settle();
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(document.querySelector<HTMLInputElement>('#goal')!.placeholder).toBe('让它去做一件事');
 });

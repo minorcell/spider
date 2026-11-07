@@ -109,6 +109,10 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
     this.#state = await this.#call<'save'>((id) => ({ id, method: 'save' }));
   }
 
+  async resetSession(): Promise<void> {
+    this.#state = await this.#call<'resetSession'>((id) => ({ id, method: 'resetSession' }));
+  }
+
   async indexBlock(): Promise<string> {
     return this.#call<'indexBlock'>((id) => ({ id, method: 'indexBlock' }));
   }

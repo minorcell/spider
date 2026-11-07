@@ -121,6 +121,24 @@ describe('journal worker handler', () => {
     expect(reopened.session.turns).toHaveLength(2);
   });
 
+  it('starts a persistent empty session without deleting diary pages', async () => {
+    const handle = createHandler();
+    const date = localDate(new Date());
+    await handle({ id: 1, method: 'record', args: ['走', '好', [], SETTINGS] });
+    await handle({ id: 2, method: 'write', args: [{ date, noted: '保留的记忆' }] });
+    await handle({ id: 3, method: 'dismiss', args: [true] });
+    const state = await handle({ id: 4, method: 'resetSession' });
+    expect(state).toMatchObject({
+      session: { turns: [], summary: '' },
+      dismissed: false,
+      behind: false,
+    });
+    expect((await Diary.open()).session.turns).toEqual([]);
+    expect(await handle({ id: 5, method: 'read', args: [date] })).toMatchObject({
+      noted: '保留的记忆',
+    });
+  });
+
   it('reads and writes diary pages through the same handle', async () => {
     const handle = createHandler();
     const date = localDate(new Date());

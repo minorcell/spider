@@ -1,4 +1,4 @@
-import { LOCAL_MODEL } from './local/types.js';
+import { LOCAL_CONTEXT_TOKENS, LOCAL_MODEL } from './local/types.js';
 import { openSpiderDb, type PreferenceRecord } from './journal/db.js';
 import { providerById, providerNeedsKey } from './providers.js';
 import { PersistentCache } from './store/cache.js';
@@ -193,6 +193,10 @@ export function reasoningOf(settings: PilotInput): 'provider-default' | 'none' {
 export function contextTokensOf(k: number | null): number | null {
   if (k == null) return null;
   return k * 1000;
+}
+
+export function contextBudgetOf(settings: PilotSettings): number | null {
+  return settings.mode === 'local' ? LOCAL_CONTEXT_TOKENS : contextTokensOf(settings.contextTokens);
 }
 
 function knownProvider(value: unknown, fallback: string): string {

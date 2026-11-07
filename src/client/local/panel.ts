@@ -3,7 +3,8 @@ import { prepareOffline } from './offline.js';
 
 export function bindLocalPanel(
   doc: Document,
-  onReady?: (ready: boolean) => void,
+  onReady?: (ready: boolean, loading?: boolean) => void,
+  backendReady: Promise<unknown> = Promise.resolve(),
 ): (local: boolean) => void {
   const panel = doc.querySelector<HTMLElement>('#local-model-panel')!;
   const load = doc.querySelector<HTMLButtonElement>('#local-load')!;
@@ -13,10 +14,11 @@ export function bindLocalPanel(
   const progress = doc.querySelector<HTMLProgressElement>('#local-progress')!;
   const detail = doc.querySelector<HTMLElement>('#local-progress-detail')!;
   let statusVersion = 0;
+  let loading = false;
   const report = async (version: number): Promise<void> => {
     const next = await (await localBackend()).localStatus();
     if (version !== statusVersion) return;
-    onReady?.(next.ready);
+    onReady?.(next.ready, loading);
     status.textContent = next.text;
     detail.textContent = next.detail ?? '';
     if (next.progress === undefined) progress.removeAttribute('value');
@@ -26,17 +28,19 @@ export function bindLocalPanel(
     }
   };
   const fail = (text: string): void => {
+    loading = false;
     ++statusVersion;
-    onReady?.(false);
+    onReady?.(false, false);
     status.textContent = text;
     progress.hidden = true;
     detail.textContent = '';
   };
   let loadAttempt = 0;
   load.addEventListener('click', () => {
+    loading = true;
     const attempt = ++loadAttempt;
     const version = ++statusVersion;
-    onReady?.(false);
+    onReady?.(false, true);
     load.disabled = true;
     unload.disabled = true;
     status.textContent = '正在加载；优先使用缓存，缺失文件才会下载…';
@@ -64,6 +68,7 @@ export function bindLocalPanel(
         },
       );
       await (await localBackend()).localLoad();
+      loading = false;
       await report(++statusVersion);
     })()
       .catch((error: unknown) => {
@@ -81,8 +86,9 @@ export function bindLocalPanel(
       });
   });
   unload.addEventListener('click', () => {
+    loading = false;
     ++statusVersion;
-    onReady?.(false);
+    onReady?.(false, false);
     unload.disabled = true;
     load.disabled = true;
     void (async () => {
@@ -98,6 +104,7 @@ export function bindLocalPanel(
         load.disabled = false;
       });
   });
+  let enabled = false;
   return (local) => {
     panel.hidden = !local;
     doc.querySelector<HTMLElement>('#online-model-panel')!.hidden = local;
@@ -106,5 +113,11 @@ export function bindLocalPanel(
     )) {
       input.disabled = local;
     }
+    const start = local && !enabled;
+    enabled = local;
+    if (start)
+      void backendReady.then(() => {
+        if (enabled && !load.disabled) load.click();
+      });
   };
 }

@@ -12,6 +12,7 @@ export interface Journal {
   dismissed: boolean;
   behind(): boolean;
   save(): Promise<void>;
+  resetSession(): Promise<void>;
   indexBlock(): Promise<string>;
   api(): MemoryApi;
   pages(): Promise<MemoryPage[]>;

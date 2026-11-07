@@ -26,6 +26,7 @@ export type JournalRequest =
   | { id: number; method: 'localCancel'; args: [string] }
   | { id: number; method: 'open' }
   | { id: number; method: 'save' }
+  | { id: number; method: 'resetSession' }
   | { id: number; method: 'record'; args: [string, string, Trace[], PilotSettings] }
   | { id: number; method: 'digest'; args: [PilotSettings] }
   | { id: number; method: 'backfill'; args: [PilotSettings] }
@@ -62,6 +63,7 @@ export interface JournalResultMap {
   localCancel: void;
   open: JournalState;
   save: JournalState;
+  resetSession: JournalState;
   record: JournalState;
   digest: JournalState;
   backfill: JournalState;

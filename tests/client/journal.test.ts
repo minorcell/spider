@@ -230,6 +230,44 @@ describe('readNote', () => {
 });
 
 describe('Diary', () => {
+  it('starts a new persisted session while retaining memory and usage', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 2, 12));
+    await diary.write({ date: diary.date, noted: '长期记忆' });
+    await diary.record('旧对话', '旧回答', [], settings);
+    diary.session.summary = '旧摘要';
+    diary.dismissed = true;
+    await diary.recordUsage(
+      { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      new Date(2026, 10, 2, 12),
+    );
+    await diary.resetSession();
+    expect(diary.session).toMatchObject({ turns: [], summary: '', digestedAt: 0 });
+    expect(diary.dismissed).toBe(false);
+    expect(diary.behind()).toBe(false);
+    expect((await Diary.open(new Date(2026, 10, 2, 12))).session).toEqual(diary.session);
+    expect(await diary.read(diary.date)).toMatchObject({ noted: '长期记忆' });
+    expect((await diary.readUsage(diary.date)).today.total).toBe(15);
+  });
+
+  it('does not restore old dialogue when a summary completes after a reset', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 2, 12));
+    await diary.record('旧对话', '旧回答', [], settings);
+    const waiting = Promise.withResolvers<{ line: string; summary: string }>();
+    const started = Promise.withResolvers<void>();
+    vi.mocked(summarizeDiary).mockImplementationOnce(() => {
+      started.resolve();
+      return waiting.promise;
+    });
+    const digest = diary.digest(settings);
+    await started.promise;
+    await diary.resetSession();
+    waiting.resolve({ line: '旧对话的日记', summary: '旧摘要' });
+    await digest;
+    expect(diary.session.turns).toEqual([]);
+    expect(diary.session.summary).toBe('');
+    expect((await Diary.open(new Date(2026, 10, 2, 12))).session).toEqual(diary.session);
+  });
+
   it('uses the complete 128K local budget and compresses at 80% with the shared summary flow', async () => {
     const summarize = vi.mocked(summarizeDiary);
     summarize.mockClear();

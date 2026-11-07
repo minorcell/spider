@@ -42,6 +42,11 @@ export function createHandler(): Handler {
         await opened.save();
         return stateOf(opened);
       }
+      case 'resetSession': {
+        const opened = await open();
+        await opened.resetSession();
+        return stateOf(opened);
+      }
       case 'record': {
         const opened = await open();
         await opened.record(...request.args);

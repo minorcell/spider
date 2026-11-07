@@ -1,6 +1,5 @@
 import type { LanguageModelUsage } from 'ai';
-import { LOCAL_CONTEXT_TOKENS } from '../local/types.js';
-import { contextTokensOf, modelIdOf, pilotReady, type PilotSettings } from '../settings.js';
+import { contextBudgetOf, modelIdOf, pilotReady, type PilotSettings } from '../settings.js';
 import type { Journal } from './api.js';
 import { blankMemory, openSpiderDb, type MemoryPage } from './db.js';
 import { localDate, shiftDate } from '../../shared/dates.js';
@@ -55,10 +54,7 @@ export interface MemoryApi {
 }
 
 function limitsOf(settings: PilotSettings): CompactLimits {
-  return {
-    contextTokens:
-      settings.mode === 'local' ? LOCAL_CONTEXT_TOKENS : contextTokensOf(settings.contextTokens),
-  };
+  return { contextTokens: contextBudgetOf(settings) };
 }
 
 function viewOf(page: MemoryPage): MemoryView {
@@ -88,6 +84,13 @@ export class Diary implements Journal {
   async save(): Promise<void> {
     if (this.session.turns.length === 0 && !this.session.summary) return;
     await this.db.put('sessions', this.session);
+  }
+
+  async resetSession(): Promise<void> {
+    const next = { ...blankSession(this.date), updatedAt: Date.now() };
+    await this.db.put('sessions', next);
+    this.session = next;
+    this.dismissed = false;
   }
 
   async indexBlock(): Promise<string> {
@@ -199,7 +202,9 @@ export class Diary implements Journal {
 
   async digest(settings: PilotSettings): Promise<void> {
     if (!needsDigest(this.session) || !pilotReady(settings)) return;
-    await this.digestSession(this.session, settings);
+    const session = this.session;
+    await this.digestSession(session, settings);
+    if (this.session !== session) return;
     this.session = { ...this.session, digestedAt: this.session.updatedAt };
     await this.save();
   }

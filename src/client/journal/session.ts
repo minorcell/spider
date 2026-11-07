@@ -1,4 +1,4 @@
-const COMPACT_AT = 0.8;
+export const COMPACT_AT = 0.8;
 const KEEP_TURNS = 4;
 const encoder = new TextEncoder();
 
