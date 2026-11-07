@@ -69,17 +69,17 @@ pnpm bench
 场景性能可单独运行：
 
 ```bash
-pnpm exec vitest bench bench/scenery.bench.ts --run --reporter=verbose
+pnpm exec vitest bench benchmarks/scenery.bench.ts --run --reporter=verbose
 ```
 
 这组基准覆盖整座岛上的树、石、沼石、巢和草的模型创建，草的贴地，以及每轮几何释放；地表拆成纯地面烘焙、带短草苔藓的完整烘焙和主线程组装。运行路径包括 120 次草丛遮挡查询、带真实场景障碍且已确认可达的绕行，以及当前存档、无景物旧存档、密集草版本的恢复。恢复基准复用已烘焙地形，原有 `apply a body` 基准则包含地形重建。初始化和路线选择在计时外完成。
 
 输出的 mean、p75、p99 等耗时单位为毫秒。模型创建是启动时的一次性开销，不能当成每帧耗时；Node 基准也不包含 GPU 上传、阴影、浏览器绘制和相机移动，需要浏览器性能录制补充判断。Vitest 如提示 module export getter 开销，跨版本比较时应使用相同运行方式。
 
-持续运行的热点另有 `bench/runtime.bench.ts`，拆分 120 帧天空动画、移动蜘蛛时的苹果物理和 120 次墙体探测。和驱动帧一起运行：
+持续运行的热点另有 `benchmarks/runtime.bench.ts`，拆分 120 帧天空动画、移动蜘蛛时的苹果物理和 120 次墙体探测。和驱动帧一起运行：
 
 ```bash
-pnpm exec vitest bench bench/runtime.bench.ts bench/frame.bench.ts --run --reporter=verbose
+pnpm exec vitest bench benchmarks/runtime.bench.ts benchmarks/frame.bench.ts --run --reporter=verbose
 ```
 
 `reset whole world` 场景在每次采样前恢复完整快照，恢复本身不计时，避免苹果在重复采样中逐渐静止而让结果偏低。云采用每朵独立的实例批次，保留云间透明排序和剔除；批次数量测试不能替代浏览器 GPU 帧时间测量。
