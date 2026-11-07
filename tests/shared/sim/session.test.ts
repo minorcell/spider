@@ -977,3 +977,26 @@ describe('sleep and props', () => {
     expect(STUCK_LIMIT).toBeGreaterThan(0);
   });
 });
+
+it('leaves slack cargo still, pulls taut cargo, and preserves existing velocity', () => {
+  const session = new SimSession(3);
+  session.world.entities = [];
+  const back = session.spider.root.position;
+  const cargo = fakeEntity({ x: back.x, z: back.z + 1.66, y: back.y + 10 });
+  session.world.carrying = [cargo];
+  session.frame(0);
+  expect(cargo.vx).toBe(0);
+  expect(cargo.vz).toBe(0);
+  session.frame(0.05);
+  expect(cargo.y).toBeLessThan(back.y + 10);
+  expect(cargo.vy).toBeLessThan(0);
+  cargo.x = back.x + 5;
+  const oldX = cargo.x;
+  session.frame(0.05);
+  expect(cargo.x).toBeLessThan(oldX);
+  expect(cargo.vx).toBeLessThan(0);
+  cargo.y = -100;
+  session.frame(0.05);
+  expect(cargo.vy).toBe(0);
+  expect(cargo.y).toBeGreaterThan(-100);
+});

@@ -719,3 +719,33 @@ describe('feedback', () => {
     expect(draw.domElement.setPointerCapture).not.toHaveBeenCalled();
   });
 });
+
+it('keeps a curved luminous tether during pickup and removes it after release', () => {
+  const spider = new RealSpider();
+  const stage = new Stage(makeHost(), spider);
+  const apple = entity({ x: 3, z: 2 });
+  const world = makeWorld({ entities: [apple] });
+  stage.bind(vi.fn(), () => world);
+  stage.start();
+  spider.setInteraction(apple, 'reach');
+  frame();
+  spider.setInteraction(apple, 'drag');
+  frame();
+  const scene = renderer().render.mock.calls.at(-1)![0] as Group;
+  const tether = scene.children.find(
+    (node) =>
+      (node as unknown as { geometry?: { type: string } }).geometry?.type === 'TubeGeometry',
+  );
+  expect(tether).toBeDefined();
+  frame();
+  expect(scene.children).toContain(tether);
+  spider.setInteraction(null);
+  frame();
+  expect(scene.children).not.toContain(tether);
+  world.entities = [];
+  world.carrying = [apple];
+  apple.x = spider.root.position.x;
+  apple.z = spider.root.position.z;
+  frame();
+  expect(scene.children).toContain(tether);
+});

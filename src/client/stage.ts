@@ -278,13 +278,11 @@ export class Stage {
     }
 
     const interaction = this.#spider.interaction;
-    const dragging = held.length > 0 || (interaction?.phase === 'drag' && interaction.target);
-    if (dragging) {
+    const target = held[0] ?? (interaction?.phase === 'drag' ? interaction.target : null);
+    if (target) {
       if (!this.#silk.parent) {
         this.#scene.add(this.#silk);
       }
-      const target = held[0] ?? interaction?.target;
-      if (!target) return;
       // spinneret 在腹部最后端，丝线从身体后方出发，而不是从肚子底部垂下。
       // 腹部轮廓的最后尖端约在身体后方 1.7 个单位、甲壳高度附近。
       // 端点略微嵌入模型，避免出现一小段悬空。

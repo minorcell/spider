@@ -674,11 +674,11 @@ export class SimSession {
       item.vz = (item.vz ?? 0) + (dist > 1e-4 ? (dz / dist) * pull * step : 0);
       item.vx *= Math.exp(-3.5 * step);
       item.vz *= Math.exp(-3.5 * step);
-      item.x += (item.vx ?? 0) * step;
-      item.z += (item.vz ?? 0) * step;
+      item.x += item.vx * step;
+      item.z += item.vz * step;
       const floor = restingY(this.world.terrain, item.kind, item.x, item.z, item.footprint);
       item.vy = (item.vy ?? 0) - 4.5 * step;
-      item.y += (item.vy ?? 0) * step;
+      item.y += item.vy * step;
       if (item.y < floor) {
         item.y = floor;
         item.vy = 0;

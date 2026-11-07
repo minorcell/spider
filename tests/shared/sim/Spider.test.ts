@@ -538,3 +538,14 @@ describe('Spider', () => {
     expect(Number.isFinite(leg.bones[0].scale.z)).toBe(true);
   });
 });
+
+it('settles into a release posture with a default target height', () => {
+  const spider = new Spider();
+  spider.setInteraction({ x: 1, z: 2 }, 'release');
+  expect(spider.interaction?.target.y).toBe(0.2);
+  spider.update(1 / 60, IDLE);
+  expect(spider.chassis.position.y).toBeCloseTo(-0.045 * 0.45);
+  spider.setInteraction(null);
+  spider.update(1 / 60, IDLE);
+  expect(spider.interaction).toBeNull();
+});
