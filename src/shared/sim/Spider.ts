@@ -66,6 +66,8 @@ export class Spider {
   stuckFor = 0;
   /** Why the last step failed to move. `clear` means it moved, or nothing was asked. */
   halt: 'clear' | 'solid' | 'steep' = 'clear';
+  /** Temporary reach posture used while handling a nearby object. */
+  interaction: { target: Vector3; phase: 'reach' | 'drag' | 'release' } | null = null;
 
   #head!: Group;
   #seeded = false;
@@ -190,6 +192,7 @@ export class Spider {
 
     this.#stepGait(dt, throttle, turn, boost);
     this.#applySlope();
+    this.#applyInteraction();
     // A moving body never reuses the last pose, so don't spend the frame recording one.
     const reuse =
       Math.abs(throttle) < 0.05 &&
@@ -197,6 +200,20 @@ export class Spider {
       Math.abs(this.speed) < 0.05 &&
       Math.abs(this.yawRate) < 0.25;
     this.#pose(reuse);
+  }
+
+  setInteraction(target: { x: number; y?: number; z: number } | null, phase: 'reach' | 'drag' | 'release' = 'reach'): void {
+    this.interaction = target ? { target: new Vector3(target.x, target.y ?? 0.2, target.z), phase } : null;
+  }
+
+  #applyInteraction(): void {
+    const action = this.interaction;
+    if (!action) return;
+    // 保持正常步态，只把身体轻轻压低。把四只前腿瞬间钉到目标点会
+    // 让蜘蛛像失去生命一样僵住；前腿应继续由步态求解器自然摆动。
+    const crouch = action.phase === 'release' ? 0.45 : 1;
+    this.chassis.position.y = -0.045 * crouch;
+    this.chassis.rotation.x = 0.045 * crouch;
   }
 
   /** Snapshot for the wire: everything a viewer needs to rebuild the pose. */

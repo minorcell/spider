@@ -406,12 +406,29 @@ export class SimSession {
     if (!reach.ok) return Promise.resolve(reach);
 
     const startedAt = this.spider.time;
+    this.spider.setInteraction(entity, 'reach');
     return this.run({
-      timeout: 2,
-      controls: () => IDLE_CONTROLS,
-      done: () => this.spider.time - startedAt >= 0.7,
+      timeout: 3,
+      controls: () => {
+        const elapsed = this.spider.time - startedAt;
+        if (elapsed < 0.35) {
+          this.spider.setInteraction(entity, 'reach');
+          return IDLE_CONTROLS;
+        }
+        // 拖拽时蜘蛛背向目标施力，果子始终留在地面上，跟在腹部后方。
+        const yaw = this.spider.yaw;
+        const fx = -Math.sin(yaw);
+        const fz = -Math.cos(yaw);
+        entity.x = this.spider.root.position.x - fx * 0.62;
+        entity.z = this.spider.root.position.z - fz * 0.62;
+        entity.y = restingY(this.world.terrain, entity.kind, entity.x, entity.z, entity.footprint);
+        this.spider.setInteraction(entity, 'drag');
+        return { ...IDLE_CONTROLS, throttle: -0.28 };
+      },
+      done: () => this.spider.time - startedAt >= 1.45,
       result: () => ({ action: 'pick-up', target: entity.id }),
     }).then((outcome) => {
+      this.spider.setInteraction(null);
       if (!outcome.ok) return outcome;
       if (!this.world.entities.includes(entity))
         return { ok: false, reason: 'not-found', id: entity.id };
@@ -652,6 +669,7 @@ export class SimSession {
 
     const active = this.#active;
     this.spider.update(dt, active ? active.goal.controls() : IDLE_CONTROLS);
+    this.#dragCarried(dt);
     stepPhysics(
       this.world,
       {
@@ -675,5 +693,37 @@ export class SimSession {
       reason: stopped ? (halt === 'steep' ? 'steep' : 'blocked') : reached ? 'reached' : 'timeout',
       ...detail,
     });
+  }
+
+  /** Move tethered cargo with spring-damper tension and gravity. */
+  #dragCarried(dt: number): void {
+    if (this.world.carrying.length === 0) return;
+    const yaw = this.spider.yaw;
+    const back = this.spider.root.position;
+    const step = Math.max(dt, 0);
+    for (let i = 0; i < this.world.carrying.length; i++) {
+      const item = this.world.carrying[i];
+      const anchorX = back.x + Math.sin(yaw) * 1.66;
+      const anchorZ = back.z + Math.cos(yaw) * 1.66;
+      const dx = anchorX - item.x;
+      const dz = anchorZ - item.z;
+      const dist = Math.hypot(dx, dz);
+      const rest = 1.2 + i * 0.45;
+      const stretch = Math.max(0, dist - rest);
+      const pull = stretch * 8;
+      item.vx = (item.vx ?? 0) + (dist > 1e-4 ? (dx / dist) * pull * step : 0);
+      item.vz = (item.vz ?? 0) + (dist > 1e-4 ? (dz / dist) * pull * step : 0);
+      item.vx *= Math.exp(-3.5 * step);
+      item.vz *= Math.exp(-3.5 * step);
+      item.x += (item.vx ?? 0) * step;
+      item.z += (item.vz ?? 0) * step;
+      const floor = restingY(this.world.terrain, item.kind, item.x, item.z, item.footprint);
+      item.vy = (item.vy ?? 0) - 4.5 * step;
+      item.y += (item.vy ?? 0) * step;
+      if (item.y < floor) {
+        item.y = floor;
+        item.vy = 0;
+      }
+    }
   }
 }

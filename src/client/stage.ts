@@ -1,11 +1,16 @@
 import {
   Group,
+  BufferGeometry,
+  AdditiveBlending,
+  CatmullRomCurve3,
+  Mesh,
+  MeshBasicMaterial,
+  TubeGeometry,
   MathUtils,
   PerspectiveCamera,
   PCFShadowMap,
   Scene,
   Vector3,
-  type BufferGeometry,
   type Object3D,
 } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
@@ -72,6 +77,16 @@ export class Stage {
   #resizeObserver!: ResizeObserver;
   #view = { left: 0, top: 0, width: 1, height: 1 };
   readonly #sound = createSound(window);
+  readonly #silk = new Mesh(
+    new TubeGeometry(new CatmullRomCurve3([new Vector3(), new Vector3()]), 8, 0.014, 6, false),
+    new MeshBasicMaterial({
+      color: 0xbffcff,
+      transparent: true,
+      opacity: 0.95,
+      blending: AdditiveBlending,
+      toneMapped: false,
+    }),
+  );
   #heard = false;
   readonly #wasLifted: boolean[] = [];
   /** Ids on the back last frame. Null until the first sync, so birth is silent. */
@@ -137,6 +152,7 @@ export class Stage {
       this.#sky.object,
       waterSplashes,
     );
+    this.#silk.visible = true;
 
     this.#lamp.attach(this.#spider);
 
@@ -255,27 +271,60 @@ export class Stage {
 
     const back = this.#spider.root.position;
     const yaw = this.#spider.yaw;
-    const fx = -Math.sin(yaw);
-    const fz = -Math.cos(yaw);
-    // 背得多时排成两列，别让七只苹果从背上排到尾巴外面。
-    const rows = held.length > 3 ? 2 : 1;
-    const cols = Math.ceil(held.length / rows);
-    const rightX = -fz;
-    const rightZ = fx;
-    for (let index = 0; index < held.length; index++) {
-      const item = held[index];
+    // carrying 中的苹果使用自己的物理坐标；蜘蛛只通过蛛丝施加拉力。
+    for (const item of held) {
       alive.add(item.id);
-      const row = index % rows;
-      const col = Math.floor(index / rows);
-      const along = (col - (cols - 1) / 2) * 0.42;
-      const lateral = rows === 1 ? 0 : row === 0 ? -0.24 : 0.24;
-      this.#syncProp(
-        item,
-        back.x - fx * along + rightX * lateral,
-        back.y + 0.95,
-        back.z - fz * along + rightZ * lateral,
-        world,
+      this.#syncProp(item, item.x, item.y, item.z, world);
+    }
+
+    const interaction = this.#spider.interaction;
+    const dragging = held.length > 0 || (interaction?.phase === 'drag' && interaction.target);
+    if (dragging) {
+      if (!this.#silk.parent) {
+        this.#scene.add(this.#silk);
+      }
+      const target = held[0] ?? interaction?.target;
+      if (!target) return;
+      // spinneret 在腹部最后端，丝线从身体后方出发，而不是从肚子底部垂下。
+      // 腹部轮廓的最后尖端约在身体后方 1.7 个单位、甲壳高度附近。
+      // 端点略微嵌入模型，避免出现一小段悬空。
+      const abdomen = new Vector3(
+        back.x + Math.sin(yaw) * 1.62,
+        back.y + 0.82,
+        back.z + Math.cos(yaw) * 1.62,
       );
+      const toSpiderX = back.x - target.x;
+      const toSpiderZ = back.z - target.z;
+      const toSpiderLength = Math.hypot(toSpiderX, toSpiderZ) || 1;
+      const appleRadius = 0.32;
+      const silkEnd = new Vector3(
+        target.x + (toSpiderX / toSpiderLength) * appleRadius,
+        target.y + 0.34,
+        target.z + (toSpiderZ / toSpiderLength) * appleRadius,
+      );
+      const points = [abdomen];
+      for (let i = 1; i < 10; i++) {
+        const t = i / 10;
+        points.push(new Vector3(
+          abdomen.x + (silkEnd.x - abdomen.x) * t,
+          abdomen.y + (silkEnd.y - abdomen.y) * t - Math.sin(Math.PI * t) * 0.18,
+          abdomen.z + (silkEnd.z - abdomen.z) * t,
+        ));
+      }
+      points.push(silkEnd);
+      this.#silk.geometry.dispose();
+      this.#silk.geometry = new TubeGeometry(
+        new CatmullRomCurve3(points),
+        Math.max(8, points.length * 2),
+        0.014,
+        6,
+        false,
+      );
+      this.#silk.visible = true;
+    } else {
+      if (this.#silk.parent) {
+        this.#scene.remove(this.#silk);
+      }
     }
 
     for (const [id, prop] of this.#props) {

@@ -81,7 +81,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       case 'full':
         return {
           code: 'carry-full',
-          message: '背包已经满了。先用 act 的 drop 或 store 放下一件。',
+          message: '牵引的物品已经达到上限。先用 act 的 drop 或 store 放下一件。',
           next: 'act',
         };
       case 'no-water':
@@ -223,7 +223,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       },
     }),
     act: tool({
-      description: `吃、搬、放下、存进巢、喝水或睡觉。eat、pick_up、drop、store 要带 id，背上最多 ${CARRY_LIMIT} 件。`,
+      description: `吃、搬、放下、存进巢、喝水或睡觉。eat、pick_up、drop、store 要带 id，最多牵引 ${CARRY_LIMIT} 件。`,
       inputSchema: z.discriminatedUnion('verb', [
         call({
           verb: z.literal('eat').describe('吃附近或背上的食物。'),
@@ -234,11 +234,11 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
           id: z.string().describe('对象 id。'),
         }),
         call({
-          verb: z.literal('drop').describe('把背上的东西放在面前。'),
+          verb: z.literal('drop').describe('松开蛛丝，把东西放在面前。'),
           id: z.string().describe('物品 id。'),
         }),
         call({
-          verb: z.literal('store').describe('把背上的东西放进巢里。'),
+          verb: z.literal('store').describe('把蛛丝牵着的东西放进巢里。'),
           id: z.string().describe('物品 id。'),
         }),
         call({
