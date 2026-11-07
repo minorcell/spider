@@ -9,7 +9,12 @@ export interface WorkerScope {
 export function attachJournalWorker(scope: WorkerScope, handle: Handler = createHandler()): void {
   scope.onmessage = (event) => {
     const request = event.data;
-    void handle(request).then(
+    void handle(
+      request,
+      request.method === 'localComplete' && request.stream
+        ? (text) => scope.postMessage({ event: 'localDelta', id: request.id, text })
+        : undefined,
+    ).then(
       (value) => scope.postMessage({ id: request.id, ok: true, value }),
       (error: unknown) =>
         scope.postMessage({

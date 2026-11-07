@@ -8,6 +8,22 @@ import {
 const names = ['move_to', 'observe', 'pick_up'];
 
 describe('parseInlineCalls', () => {
+  it('recovers nested tool envelopes and preserves all calls in a shared envelope', () => {
+    expect(
+      parseInlineCalls(
+        JSON.stringify({
+          tool_calls: [
+            { type: 'function', function: { name: 'observe', arguments: '{"distance":8}' } },
+            { name: 'move_to', parameters: { x: 1, z: 2 } },
+          ],
+        }),
+        names,
+      ),
+    ).toMatchObject([
+      { name: 'observe', input: { distance: 8 } },
+      { name: 'move_to', input: { x: 1, z: 2 } },
+    ]);
+  });
   it('reads the actions a model wrote into its text', () => {
     const text =
       '我记得东边一点那块地更高，我过去看看。  move_to {"description":"我往东边那块更高的地走。","x":4.9,"z":-6,"fast":true} observe {"description":"我到了高处，看看周围还有没有更高的。","distance":16}';
@@ -139,6 +155,52 @@ describe('cleanInlineText', () => {
 });
 
 describe('withInlineCalls', () => {
+  it.each([
+    '{"ok":true,"observation":{"x":1}}',
+    '{"name":"unknown","arguments":{}}',
+    '```json\n{"name":"observe","arguments":',
+    '工具执行结果：{"ok":true}',
+  ])('never sends an unrecognized local tool payload to speech: %s', async (text) => {
+    const { stream } = await withInlineCalls(
+      fakeModel([{ type: 'text-delta', delta: text }, { type: 'finish' }]),
+      names,
+      true,
+    ).doStream({} as never);
+    const chunks = await read(stream);
+    expect(chunks.some((chunk) => chunk.type === 'text-delta')).toBe(false);
+    expect(chunks.some((chunk) => chunk.type === 'error')).toBe(true);
+  });
+
+  it('streams marked answers before generation finishes', async () => {
+    let finish!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const model = {
+      doStream: async () => ({
+        stream: new ReadableStream({
+          async start(controller) {
+            controller.enqueue({ type: 'text-delta', delta: '答：我已经看清周围了' });
+            await gate;
+            controller.enqueue({ type: 'text-delta', delta: '。' });
+            controller.enqueue({ type: 'finish' });
+            controller.close();
+          },
+        }),
+      }),
+    };
+    const { stream } = await withInlineCalls(model, names, true).doStream();
+    const reader = stream.getReader();
+    expect((await reader.read()).value).toMatchObject({ type: 'text-start' });
+    expect((await reader.read()).value).toMatchObject({
+      type: 'text-delta',
+      delta: '我已经看清周围了',
+    });
+    finish();
+    while (!(await reader.read()).done) {
+      /* drain */
+    }
+  });
   it('turns inline text into tool-call chunks before finish', async () => {
     const model = fakeModel([
       { type: 'text-start', id: 't0' },

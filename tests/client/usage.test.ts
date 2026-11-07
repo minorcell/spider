@@ -152,6 +152,34 @@ describe('recordUsage', () => {
 describe('recordUsageCall', () => {
   const day = new Date(2026, 10, 2, 15);
 
+  it('persists valid local timings and discards incomplete metrics', async () => {
+    const local = {
+      queueMs: 2,
+      generationMs: 30,
+      firstTokenMs: 5,
+      prefillTokensPerSecond: 100,
+      decodeTokensPerSecond: 25,
+    };
+    const meta = {
+      kind: 'agent' as const,
+      sessionId: '2026-11-02',
+      turnId: 'local',
+      date: '2026-11-02',
+      ts: day.getTime(),
+    };
+    for (const metrics of [local, { queueMs: -1 }, { ...local, generationMs: NaN }]) {
+      await recordUsageCall(
+        usageCallFromStep(
+          { providerMetadata: { webllm: metrics }, usage: usage(1, 1, 2, 0, 0) },
+          meta,
+        ),
+      );
+    }
+    const calls = (await readUsage('2026-11-02')).requests;
+    expect(calls.filter((call) => call.local)).toHaveLength(1);
+    expect(calls.find((call) => call.local)?.local).toEqual(local);
+  });
+
   it('counts three model steps as three requests', async () => {
     const turn = 'turn-1';
     for (const step of [0, 1, 2]) {

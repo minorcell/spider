@@ -421,6 +421,17 @@ function requestDetail(doc: Document, call: UsageCall, finish: string): HTMLElem
       { label: '首字响应', value: formatDuration(call.timing.ttftMs) },
       { label: '总响应', value: formatDuration(call.timing.responseMs) },
       { label: '单步耗时', value: formatDuration(call.timing.stepMs) },
+      ...(call.local
+        ? [
+            { label: '本机排队', value: formatDuration(call.local.queueMs) },
+            { label: '模型首 token', value: formatDuration(call.local.firstTokenMs) },
+            { label: '本机生成', value: formatDuration(call.local.generationMs) },
+            {
+              label: '输入 / 生成速度',
+              value: `${call.local.prefillTokensPerSecond.toFixed(1)} / ${call.local.decodeTokensPerSecond.toFixed(1)} token/s`,
+            },
+          ]
+        : []),
       { label: '结束原因', value: pill(doc, finish) },
       { label: '会话 / 回合', value: `${call.sessionId} / ${call.turnId}` },
       { label: '记录 id', value: call.id },

@@ -1,5 +1,12 @@
 import { useLocalBackend } from '../local/backend.js';
-import type { LocalBackend, LocalMessage, LocalReply, LocalStatus } from '../local/types.js';
+import { setLocalBusy } from '../local/activity.js';
+import type {
+  LocalBackend,
+  LocalMessage,
+  LocalOptions,
+  LocalReply,
+  LocalStatus,
+} from '../local/types.js';
 import type { LanguageModelUsage } from 'ai';
 import type { WorldRecord } from '../../shared/sim/snapshot.js';
 import type { Journal } from '../journal/api.js';
@@ -20,6 +27,7 @@ export interface WorkerPort {
 interface Waiter {
   resolve(value: unknown): void;
   reject(error: Error): void;
+  onDelta?: (text: string) => void;
 }
 
 export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
@@ -38,18 +46,34 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
   localLoad(): Promise<void> {
     return this.#call<'localLoad'>((id) => ({ id, method: 'localLoad' }));
   }
+  localSession(id: string, active: boolean): Promise<void> {
+    return this.#call<'localSession'>((seq) => ({
+      id: seq,
+      method: 'localSession',
+      args: [id, active],
+    }));
+  }
   localStatus(): Promise<LocalStatus> {
     return this.#call<'localStatus'>((id) => ({ id, method: 'localStatus' }));
   }
   localUnload(): Promise<void> {
     return this.#call<'localUnload'>((id) => ({ id, method: 'localUnload' }));
   }
-  localComplete(id: string, messages: LocalMessage[]): Promise<LocalReply> {
-    return this.#call<'localComplete'>((seq) => ({
-      id: seq,
-      method: 'localComplete',
-      args: [id, messages],
-    }));
+  localComplete(
+    id: string,
+    messages: LocalMessage[],
+    options?: LocalOptions,
+    onDelta?: (text: string) => void,
+  ): Promise<LocalReply> {
+    return this.#call<'localComplete'>(
+      (seq) => ({
+        id: seq,
+        method: 'localComplete',
+        args: options ? [id, messages, options] : [id, messages],
+        stream: onDelta != null,
+      }),
+      onDelta,
+    );
   }
   localCancel(id: string): Promise<void> {
     return this.#call<'localCancel'>((seq) => ({ id: seq, method: 'localCancel', args: [id] }));
@@ -190,6 +214,11 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
   }
 
   #receive(reply: JournalReply): void {
+    if ('event' in reply) {
+      if (reply.event === 'localActivity') setLocalBusy(reply.busy);
+      else this.#pending.get(reply.id)?.onDelta?.(reply.text);
+      return;
+    }
     const waiter = this.#pending.get(reply.id);
     if (!waiter) return;
     this.#pending.delete(reply.id);
@@ -198,6 +227,7 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
   }
 
   #fail(error: Error): void {
+    setLocalBusy(false);
     this.#failure ??= error;
     for (const waiter of this.#pending.values()) waiter.reject(error);
     this.#pending.clear();
@@ -205,6 +235,7 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
 
   #call<K extends keyof JournalResultMap>(
     make: (id: number) => JournalRequest,
+    onDelta?: (text: string) => void,
   ): Promise<JournalResultMap[K]> {
     const id = ++this.#seq;
     return new Promise<JournalResultMap[K]>((resolve, reject) => {
@@ -212,7 +243,7 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
         reject(this.#failure);
         return;
       }
-      this.#pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
+      this.#pending.set(id, { resolve: resolve as (value: unknown) => void, reject, onDelta });
       try {
         this.#port.postMessage(make(id));
       } catch (error) {

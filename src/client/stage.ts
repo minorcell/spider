@@ -21,6 +21,7 @@ import type { EntityState, WorldState } from '../shared/state.js';
 import type { Spider } from '../shared/sim/Spider.js';
 import { paintCanvas } from '../ui/dress.js';
 import { FpsDisplay } from './fps.js';
+import { onLocalBusy } from './local/activity.js';
 import { buildIsland, tickWater } from './groundView.js';
 import { waterContact, waterSplashes } from './waterMotion.js';
 import { applyEcologyLighting, EcologySky, enableWorldShadows } from './ecologyView.js';
@@ -57,6 +58,9 @@ const bubbleAt = new Vector3();
 /** Renderer and camera. It steps the one spider, then paints that same spider. */
 export class Stage {
   readonly #fps: FpsDisplay;
+  readonly #stopLocal: () => void;
+  #inferenceBusy = false;
+  #lastPaint = -Infinity;
   readonly #host: HTMLElement;
   readonly #renderer: WebGPURenderer;
   readonly #scene = new Scene();
@@ -140,6 +144,10 @@ export class Stage {
     host.appendChild(this.#renderer.domElement);
     paintCanvas(this.#renderer.domElement);
     this.#fps = new FpsDisplay(host);
+    this.#stopLocal = onLocalBusy((busy) => {
+      this.#inferenceBusy = busy;
+      this.#renderer.setPixelRatio(Math.min(busy ? 1 : 2, window.devicePixelRatio || 1));
+    });
 
     this.#camera = new PerspectiveCamera(VIEW.fov, 1, VIEW.near, VIEW.far);
     this.#observe = new ObserveOverlay(host);
@@ -393,6 +401,7 @@ export class Stage {
   }
 
   dispose(): void {
+    this.#stopLocal();
     this.#renderer.setAnimationLoop(null);
     this.#resizeObserver.disconnect();
     const el = this.#renderer.domElement;
@@ -538,17 +547,24 @@ export class Stage {
     const dt = Math.min(0.05, (now - this.#last) / 1000);
     this.#last = now;
     if (!this.#held) this.#step?.(dt);
-    this.#syncEcology();
-    tickWater(now * 0.001, waterContact(this.#spider, this.#wasLifted, this.#world?.() ?? null));
-    this.#syncWorld();
+    const contact = waterContact(this.#spider, this.#wasLifted, this.#world?.() ?? null);
     this.#feedback();
+    // Keep simulation and tool execution responsive while leaving GPU time for inference.
+    if (this.#inferenceBusy && now - this.#lastPaint < 1000 / 30) return;
+    const paintDt = Number.isFinite(this.#lastPaint)
+      ? Math.min(0.05, (now - this.#lastPaint) / 1000)
+      : dt;
+    this.#lastPaint = now;
+    this.#syncEcology();
+    tickWater(now * 0.001, contact);
+    this.#syncWorld();
 
-    this.#placeCamera(dt);
+    this.#placeCamera(paintDt);
     this.#sky.update(
       this.#clock,
       this.#overlook ? this.#focus : this.#spider.root.position,
       this.#overlook,
-      dt,
+      paintDt,
     );
     this.#lamp.update(this.#clock, this.#spider.lamp);
     const world = this.#world?.();

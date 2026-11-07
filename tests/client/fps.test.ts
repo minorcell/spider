@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { FpsDisplay } from '../../src/client/fps.js';
 
 describe('FpsDisplay', () => {
+  it('exposes slow frames even when the average frame rate hides them', () => {
+    const display = new FpsDisplay(document.createElement('div'));
+    display.tick(0);
+    for (let now = 16; now <= 480; now += 16) display.tick(now);
+    display.tick(600);
+    expect(display.element.title).toContain('P95 16.0 ms');
+    expect(display.element.title).toContain('P99 120.0 ms');
+    expect(display.element.title).toContain('长帧 1');
+  });
   it('measures real frame intervals and only writes twice per second', () => {
     const host = document.createElement('div');
     const display = new FpsDisplay(host);

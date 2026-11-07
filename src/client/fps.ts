@@ -5,6 +5,7 @@ export class FpsDisplay {
   #last: number | null = null;
   #elapsed = 0;
   #frames = 0;
+  readonly #intervals: number[] = [];
 
   constructor(host: HTMLElement) {
     this.element = host.ownerDocument.createElement('span');
@@ -23,14 +24,21 @@ export class FpsDisplay {
     if (this.element.ownerDocument.hidden || elapsed <= 0 || elapsed > 1000) {
       this.#elapsed = 0;
       this.#frames = 0;
+      this.#intervals.length = 0;
       this.element.textContent = 'FPS —';
       return;
     }
     this.#elapsed += elapsed;
     this.#frames += 1;
+    this.#intervals.push(elapsed);
     if (this.#elapsed < 500) return;
     const text = `FPS ${Math.round((this.#frames * 1000) / this.#elapsed)}`;
     if (this.element.textContent !== text) this.element.textContent = text;
+    const intervals = this.#intervals.toSorted((a, b) => a - b);
+    const percentile = (p: number) =>
+      intervals[Math.max(0, Math.ceil(intervals.length * p) - 1)].toFixed(1);
+    this.element.title = `帧间隔 P95 ${percentile(0.95)} ms · P99 ${percentile(0.99)} ms · 长帧 ${intervals.filter((ms) => ms > 50).length}`;
+    this.#intervals.length = 0;
     this.#elapsed = 0;
     this.#frames = 0;
   }

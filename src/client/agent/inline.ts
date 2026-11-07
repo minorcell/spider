@@ -1,3 +1,5 @@
+import { speechText } from './speech.js';
+
 export interface InlineCall {
   name: string;
   input: Record<string, unknown>;
@@ -17,9 +19,6 @@ const SPACE = /\s/;
 export function parseInlineCalls(text: string, names: readonly string[]): InlineCall[] {
   if (text === '' || names.length === 0) return [];
   const found: InlineCall[] = [];
-  const add = (call: InlineCall): void => {
-    if (!found.some((other) => overlaps(other, call))) found.push(call);
-  };
 
   let cursor = 0;
   while (cursor < text.length) {
@@ -27,7 +26,7 @@ export function parseInlineCalls(text: string, names: readonly string[]): Inline
     if (!hit) break;
     const object = jsonAfter(text, hit.index + hit.name.length);
     if (object) {
-      add({ name: hit.name, input: object.value, start: hit.index, end: object.end });
+      found.push({ name: hit.name, input: object.value, start: hit.index, end: object.end });
       cursor = object.end;
     } else {
       cursor = hit.index + hit.name.length;
@@ -35,8 +34,10 @@ export function parseInlineCalls(text: string, names: readonly string[]): Inline
   }
 
   for (const object of jsonObjects(text)) {
-    const call = wrappedCall(object.value, names);
-    if (call) add({ ...call, start: object.start, end: object.end });
+    const calls = wrappedCalls(object.value, names);
+    if (!found.some((other) => overlaps(other, object))) {
+      for (const call of calls) found.push({ ...call, start: object.start, end: object.end });
+    }
   }
 
   return found.toSorted((a, b) => a.start - b.start);
@@ -73,14 +74,18 @@ interface StreamingModel {
   doStream: (options: never) => PromiseLike<{ stream: ReadableStream<unknown> }>;
 }
 
-export function withInlineCalls<M extends object>(model: M, names: readonly string[]): M {
+export function withInlineCalls<M extends object>(
+  model: M,
+  names: readonly string[],
+  local = false,
+): M {
   const source = model as unknown as Partial<StreamingModel>;
   if (names.length === 0 || typeof source.doStream !== 'function') return model;
   const stream = source.doStream.bind(model);
   const wrapped = Object.create(model) as M & StreamingModel;
   wrapped.doStream = async (options: never) => {
     const result = await stream(options);
-    return { ...result, stream: recover(result.stream, names) };
+    return { ...result, stream: recover(result.stream, names, local) };
   };
   return wrapped;
 }
@@ -88,21 +93,44 @@ export function withInlineCalls<M extends object>(model: M, names: readonly stri
 function recover(
   source: ReadableStream<unknown>,
   names: readonly string[],
+  local: boolean,
 ): ReadableStream<unknown> {
   let text = '';
   let textId = inlineId('text');
   let hasToolCall = false;
   let flushed = false;
+  let emitted = '';
+  let opened = false;
+  const emit = (controller: TransformStreamDefaultController<unknown>, body: string): void => {
+    if (body.length <= emitted.length) return;
+    if (!opened) {
+      opened = true;
+      controller.enqueue({ type: 'text-start', id: textId });
+    }
+    controller.enqueue({ type: 'text-delta', id: textId, delta: body.slice(emitted.length) });
+    emitted = body;
+  };
 
   const flush = (controller: TransformStreamDefaultController<unknown>, parse: boolean): void => {
     if (!flushed) {
       flushed = true;
       const calls = parse && !hasToolCall ? parseInlineCalls(text, names) : [];
-      const body = calls.length > 0 ? cleanInlineText(text, calls) : text;
+      const body = local
+        ? calls.length || hasToolCall || !parse
+          ? ''
+          : speechText(text)
+        : calls.length > 0
+          ? cleanInlineText(text, calls)
+          : text;
       if (body !== '') {
-        controller.enqueue({ type: 'text-start', id: textId });
-        controller.enqueue({ type: 'text-delta', id: textId, delta: body });
-        controller.enqueue({ type: 'text-end', id: textId });
+        emit(controller, body);
+      }
+      if (opened) controller.enqueue({ type: 'text-end', id: textId });
+      if (local && parse && text.trim() && !body && !calls.length && !hasToolCall) {
+        controller.enqueue({
+          type: 'error',
+          error: new Error('本机模型返回了无法识别的工具消息，请重试'),
+        });
       }
       for (const call of calls) {
         controller.enqueue({
@@ -129,6 +157,11 @@ function recover(
           case 'text-delta':
             if (typeof chunk.id === 'string') textId = chunk.id;
             text += chunk.delta ?? chunk.text ?? '';
+            // Only explicitly marked answers may stream. Unmarked prose and action
+            // envelopes stay buffered until the whole reply has been classified.
+            if (local && !hasToolCall && /^\s*答[：:]/.test(text) && speechText(text).length >= 6) {
+              emit(controller, speechText(text));
+            }
             return;
           case 'text-end':
             return;
@@ -221,17 +254,16 @@ function* jsonObjects(text: string): Generator<JsonObject> {
   while (index < text.length) {
     const start = text.indexOf('{', index);
     if (start < 0) return;
-    const object = readObject(text, start);
-    if (!object) {
-      index = start + 1;
-      continue;
-    }
-    yield object;
-    index = object.end;
+    // A malformed outer object must not repeatedly rescan its nested braces.
+    index = text.length;
+    const object = readObject(text, start, (end) => {
+      index = end;
+    });
+    if (object) yield object;
   }
 }
 
-function readObject(text: string, start: number): JsonObject | null {
+function readObject(text: string, start: number, onEnd?: (end: number) => void): JsonObject | null {
   let depth = 0;
   let string = false;
   let escaped = false;
@@ -254,6 +286,7 @@ function readObject(text: string, start: number): JsonObject | null {
     if (char !== '}') continue;
     depth -= 1;
     if (depth !== 0) continue;
+    onEnd?.(index + 1);
     try {
       const value = JSON.parse(text.slice(start, index + 1)) as Record<string, unknown>;
       return { value, start, end: index + 1 };
@@ -271,9 +304,24 @@ function wrappedCall(
   const fn = isRecord(value.function) ? value.function : null;
   const name = firstString(value.name, value.tool, value.tool_name, fn?.name);
   if (name == null || !names.includes(name)) return null;
-  const args = value.arguments ?? value.input ?? fn?.arguments;
+  const args = value.arguments ?? value.input ?? value.parameters ?? fn?.arguments;
   const input = args == null ? {} : asRecord(args);
   return input ? { name, input } : null;
+}
+
+function wrappedCalls(
+  value: Record<string, unknown>,
+  names: readonly string[],
+): Array<{ name: string; input: Record<string, unknown> }> {
+  const direct = wrappedCall(value, names);
+  if (direct) return [direct];
+  for (const key of ['tool_calls', 'tool_call', 'function_call', 'calls']) {
+    const nested = value[key];
+    const items = Array.isArray(nested) ? nested : [nested];
+    const calls = items.flatMap((item) => (isRecord(item) ? wrappedCalls(item, names) : []));
+    if (calls.length) return calls;
+  }
+  return [];
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -296,7 +344,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function overlaps(a: InlineCall, b: InlineCall): boolean {
+function overlaps(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
   return a.start < b.end && b.start < a.end;
 }
 
