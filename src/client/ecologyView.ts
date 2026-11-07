@@ -3,7 +3,9 @@ import {
   DirectionalLight,
   Group,
   HemisphereLight,
+  InstancedMesh,
   MathUtils,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
@@ -172,20 +174,29 @@ export class EcologySky {
     this.light.shadow.normalBias = 0.025;
     this.light.shadow.camera.near = 0.1;
     this.light.shadow.camera.far = 220;
+    const matrix = new Matrix4();
+    const scale = new Vector3();
     for (const [index, seed] of CLOUDS.entries()) {
-      const cloud = new Group();
+      const puffs = CLOUD_STYLES[seed.style];
+      // One draw per cloud. Keep clouds separate for frustum culling and
+      // transparent sorting; only their outer transform moves each frame.
+      const cloud = new InstancedMesh(
+        this.#cloudGeometry,
+        this.#cloudMaterials[seed.style],
+        puffs.length,
+      );
       cloud.name = `cloud-${index + 1}`;
       cloud.position.set(seed.x, seed.y, seed.z);
       cloud.scale.set(seed.scale * seed.stretch, seed.scale, seed.scale);
       cloud.rotation.y = seed.phase * 0.35;
-      for (const puff of CLOUD_STYLES[seed.style]) {
-        const mesh = new Mesh(this.#cloudGeometry, this.#cloudMaterials[seed.style]);
-        mesh.position.set(puff.x, puff.y, puff.z);
-        mesh.scale.set(puff.scale, puff.scale * (0.58 + seed.stretch * 0.12), puff.scale * 0.82);
-        mesh.castShadow = false;
-        mesh.receiveShadow = false;
-        cloud.add(mesh);
+      for (const [puffIndex, puff] of puffs.entries()) {
+        scale.set(puff.scale, puff.scale * (0.58 + seed.stretch * 0.12), puff.scale * 0.82);
+        matrix.makeScale(scale.x, scale.y, scale.z);
+        matrix.setPosition(puff.x, puff.y, puff.z);
+        cloud.setMatrixAt(puffIndex, matrix);
       }
+      cloud.computeBoundingBox();
+      cloud.computeBoundingSphere();
       this.clouds.add(cloud);
     }
     this.object.add(this.sun, this.moon, this.clouds, this.ambient, this.light, this.light.target);
@@ -235,6 +246,7 @@ export class EcologySky {
     this.sun.material.dispose();
     this.moon.material.dispose();
     this.#cloudGeometry.dispose();
+    for (const cloud of this.clouds.children) (cloud as InstancedMesh).dispose();
     for (const material of this.#cloudMaterials) material.dispose();
     this.light.shadow.dispose();
   }

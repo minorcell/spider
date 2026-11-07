@@ -3,9 +3,43 @@ import { describe, expect, it, vi } from 'vitest';
 import { applyEcologyLighting, EcologySky } from '../../src/client/ecologyView.js';
 import { buildIsland } from '../../src/client/groundView.js';
 import { worldClock } from '../../src/shared/ecology.js';
-import { Color, Mesh, Vector3 } from 'three';
+import { Color, InstancedMesh, Matrix4, Mesh, Vector3 } from 'three';
 
 describe('applyEcologyLighting', () => {
+  it('draws the original 159 cloud puffs in 28 independently culled batches', () => {
+    const sky = new EcologySky();
+    const clouds = sky.clouds.children as InstancedMesh[];
+    expect(clouds).toHaveLength(28);
+    expect(clouds.every((cloud) => cloud instanceof InstancedMesh)).toBe(true);
+    expect(clouds.reduce((count, cloud) => count + cloud.count, 0)).toBe(159);
+    expect(new Set(clouds.map((cloud) => cloud.geometry)).size).toBe(1);
+    expect(new Set(clouds.map((cloud) => cloud.material)).size).toBe(4);
+    const matrix = new Matrix4();
+    for (const cloud of clouds) {
+      expect(cloud.children).toHaveLength(0);
+      expect(cloud.frustumCulled).toBe(true);
+      expect(cloud.castShadow).toBe(false);
+      expect(cloud.receiveShadow).toBe(false);
+      expect(cloud.boundingSphere!.radius).toBeGreaterThan(0);
+      for (let i = 0; i < cloud.count; i++) {
+        cloud.getMatrixAt(i, matrix);
+        const center = new Vector3().setFromMatrixPosition(matrix);
+        expect(cloud.boundingBox!.containsPoint(center)).toBe(true);
+      }
+    }
+    const instances = clouds.map((cloud) => Array.from(cloud.instanceMatrix.array));
+    const versions = clouds.map((cloud) => cloud.instanceMatrix.version);
+    const positions = clouds.map((cloud) => cloud.position.clone());
+    const clock = worldClock(new Date(2026, 0, 1, 12));
+    for (let i = 0; i < 120; i++) sky.update(clock, new Vector3(), false, 1 / 60);
+    expect(clouds.every((cloud, i) => !cloud.position.equals(positions[i]))).toBe(true);
+    expect(clouds.map((cloud) => Array.from(cloud.instanceMatrix.array))).toEqual(instances);
+    expect(clouds.map((cloud) => cloud.instanceMatrix.version)).toEqual(versions);
+    const disposals = clouds.map((cloud) => vi.spyOn(cloud, 'dispose'));
+    sky.dispose();
+    for (const disposal of disposals) expect(disposal).toHaveBeenCalledOnce();
+  });
+
   it('updates the renderer and returns the local clock', () => {
     const renderer = { setClearColor: vi.fn((_color: Color) => undefined) };
     const noon = applyEcologyLighting(renderer, new Date(2026, 0, 1, 12));

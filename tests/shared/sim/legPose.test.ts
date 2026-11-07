@@ -13,6 +13,26 @@ function lengths(): number[] {
 }
 
 describe('solveLeg', () => {
+  it('ignores distant spheres while keeping nearby support and the same pose', () => {
+    const shoulder = new Vector3(0, 0.9, 0);
+    const foot = new Vector3(1.3, 0.16, 0);
+    const nearby: LegSphere = { x: 0.7, y: 0.45, z: 0, radius: 0.28 };
+    solveLeg(shoulder, foot, 1, 0, flat, none, [nearby], chain);
+    const expected = chain.map((point) => point.clone());
+    const distant = Array.from({ length: 20 }, (_, index) => ({
+      x: 10 + index,
+      y: 0.4,
+      z: 10,
+      radius: 0.26,
+    }));
+    solveLeg(shoulder, foot, 1, 0, flat, none, [...distant, nearby], chain);
+    chain.forEach((point, index) => expect(point.distanceTo(expected[index])).toBeLessThan(1e-10));
+    expect(supportY(nearby.x, nearby.z, flat, none, [...distant, nearby])).toBeCloseTo(
+      nearby.y + nearby.radius,
+    );
+    expect(supportY(nearby.x + nearby.radius, nearby.z, flat, none, [nearby])).toBe(0);
+  });
+
   it('keeps the planted foot and never outgrows a bone', () => {
     const shoulder = new Vector3(0, 0.8, 0);
     const foot = new Vector3(0.9, 0.16, -0.6);

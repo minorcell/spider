@@ -20,11 +20,19 @@ export function blockAt(
 ): Block | null {
   let nearest: Block | null = null;
   let nearestD = Infinity;
+  const radiusSquared = radius * radius;
   for (const block of blocks) {
+    if (
+      x < block.minX - radius ||
+      x > block.maxX + radius ||
+      z < block.minZ - radius ||
+      z > block.maxZ + radius
+    )
+      continue;
     const cx = Math.min(block.maxX, Math.max(block.minX, x));
     const cz = Math.min(block.maxZ, Math.max(block.minZ, z));
     const d = (x - cx) ** 2 + (z - cz) ** 2;
-    if (d < radius ** 2 && d < nearestD) {
+    if (d < radiusSquared && d < nearestD) {
       nearest = block;
       nearestD = d;
     }

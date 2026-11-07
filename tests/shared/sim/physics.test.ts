@@ -34,6 +34,48 @@ function world(over: Partial<WorldState> = {}): WorldState {
 const wall: Block = { id: 'wall', minX: 1, maxX: 2, minZ: -1, maxZ: 1, height: 1 };
 
 describe('stepPhysics', () => {
+  it('samples each slope neighbor once for an active grounded body', () => {
+    const samples: [number, number][] = [];
+    const flat = world({
+      terrain: {
+        height: (x, z) => {
+          samples.push([x, z]);
+          return 0;
+        },
+      },
+      entities: [apple({ x: 2, y: CONTACT, z: 3 })],
+    });
+    stepPhysics(flat, { x: 100, z: 100, speed: 2 }, 1 / 60);
+    expect(samples).toHaveLength(7);
+    for (const [x, z] of [
+      [2.6, 3],
+      [1.4, 3],
+      [2, 3.6],
+      [2, 2.4],
+    ]) {
+      expect(samples.filter(([px, pz]) => px === x && pz === z)).toHaveLength(1);
+    }
+    expect(flat.entities[0]).toMatchObject({ x: 2, y: CONTACT, z: 3, vx: 0, vy: 0, vz: 0 });
+  });
+
+  it('keeps a zero-radius body on the ground without a contact skin', () => {
+    KINDS.point = {
+      properties: [],
+      rest: 0,
+      physics: { solid: true, radius: 0, loose: true, rolls: false },
+    };
+    try {
+      const flat = world({
+        entities: [item('point', { x: 2, y: 0.25 })],
+        terrain: { height: () => 0.25 },
+      });
+      stepPhysics(flat, body, 1 / 60);
+      expect(flat.entities[0].y).toBe(0.25);
+    } finally {
+      delete KINDS.point;
+    }
+  });
+
   it('does nothing without time or movers', () => {
     const quiet = world({ entities: [item('grass')] });
     stepPhysics(quiet, body, 0);

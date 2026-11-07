@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BufferAttribute, Line, PerspectiveCamera, Vector3 } from 'three';
+import { BufferAttribute, Line, LineSegments, PerspectiveCamera, Vector3 } from 'three';
 import { ObserveOverlay } from '../../src/client/observeView.js';
 import type { Spider } from '../../src/shared/sim/Spider.js';
 import type { EntityState, SpiderState, WorldState } from '../../src/shared/state.js';
@@ -59,6 +59,79 @@ function camera(): PerspectiveCamera {
 }
 
 describe('ObserveOverlay', () => {
+  it('grows tick buffers for the whole world and retains them when entities leave', () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const overlay = new ObserveOverlay(parent);
+    const entities = Array.from({ length: 100 }, (_, index) =>
+      entity({ id: `apple-${index}`, x: 30 + index }),
+    );
+    const seen = world({ entities });
+    const cam = camera();
+    overlay.sync(true, cam, fakeSpider(0, 0), seen, view);
+    const dim = overlay.object.children[4] as LineSegments;
+    const position = dim.geometry.getAttribute('position');
+    expect(position.count).toBeGreaterThanOrEqual(400);
+    expect(dim.geometry.drawRange.count).toBe(400);
+    expect(position.getX(396)).toBeCloseTo(129 - 0.28);
+    seen.entities = seen.entities.slice(0, 1);
+    clock.mockReturnValue(1000);
+    overlay.sync(true, cam, fakeSpider(0, 0), seen, view);
+    expect(dim.geometry.getAttribute('position')).toBe(position);
+    expect(dim.geometry.drawRange.count).toBe(4);
+    expect(parent.querySelector('#observe-pins')!.children).toHaveLength(1);
+  });
+
+  it('skips unchanged pin DOM writes but tracks camera, viewport and entity changes', () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const overlay = new ObserveOverlay(parent);
+    const apple = entity({ x: 2 });
+    const seen = world({ entities: [apple] });
+    const cam = camera();
+    const spider = fakeSpider(0, 0);
+    overlay.sync(true, cam, spider, seen, view);
+    const pin = parent.querySelector<HTMLElement>('.observe-pin')!;
+    const observer = new MutationObserver(() => undefined);
+    observer.observe(pin, { attributes: true });
+    const originalLeft = pin.style.left;
+    overlay.sync(true, cam, spider, seen, view);
+    clock.mockReturnValue(1000);
+    overlay.sync(true, cam, spider, seen, view);
+    expect(observer.takeRecords()).toHaveLength(0);
+
+    cam.position.x = 3;
+    cam.lookAt(0, 0, 0);
+    overlay.sync(true, cam, spider, seen, view);
+    expect(pin.style.left).not.toBe(originalLeft);
+    const movedLeft = pin.style.left;
+    overlay.sync(true, cam, spider, seen, { ...view, width: 1600 });
+    expect(parseFloat(pin.style.left)).toBeCloseTo(parseFloat(movedLeft) * 2);
+
+    const resizedLeft = pin.style.left;
+    cam.fov = 40;
+    cam.updateProjectionMatrix();
+    overlay.sync(true, cam, spider, seen, { ...view, width: 1600 });
+    expect(pin.style.left).not.toBe(resizedLeft);
+    apple.x = 4;
+    clock.mockReturnValue(2000);
+    const beforeMove = pin.style.left;
+    overlay.sync(true, cam, spider, seen, { ...view, width: 1600 });
+    expect(pin.style.left).not.toBe(beforeMove);
+    apple.z = 30;
+    clock.mockReturnValue(3000);
+    overlay.sync(true, cam, spider, seen, view);
+    expect(pin.hidden).toBe(true);
+    observer.takeRecords();
+    cam.position.x += 0.1;
+    overlay.sync(true, cam, spider, seen, view);
+    expect(pin.hidden).toBe(true);
+    expect(observer.takeRecords()).toHaveLength(0);
+    cam.position.set(0, 10, 40);
+    cam.lookAt(0, 0, 30);
+    overlay.sync(true, cam, spider, seen, view);
+    expect(pin.hidden).toBe(false);
+    observer.disconnect();
+  });
+
   it('builds its layer hidden', () => {
     const overlay = new ObserveOverlay(parent);
     expect(overlay.object.visible).toBe(true);

@@ -41,9 +41,9 @@ export function supportY(
   for (const sphere of spheres) {
     const dx = x - sphere.x;
     const dz = z - sphere.z;
-    const horizontal = Math.hypot(dx, dz);
-    if (horizontal >= sphere.radius) continue;
-    const top = sphere.y + Math.sqrt(sphere.radius * sphere.radius - horizontal * horizontal);
+    const squared = dx * dx + dz * dz;
+    if (squared >= sphere.radius * sphere.radius) continue;
+    const top = sphere.y + Math.sqrt(sphere.radius * sphere.radius - squared);
     if (top > y) y = top;
   }
   return y;
@@ -162,9 +162,10 @@ function shove(
     const dx = at.x - sphere.x;
     const dy = at.y - sphere.y;
     const dz = at.z - sphere.z;
-    const dist = Math.hypot(dx, dy, dz);
     const min = sphere.radius + radius;
-    if (dist >= min) continue;
+    const squared = dx * dx + dy * dy + dz * dz;
+    if (squared >= min * min) continue;
+    const dist = Math.sqrt(squared);
     if (dist < 1e-6) {
       out.y += min;
       continue;
