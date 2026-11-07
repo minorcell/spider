@@ -26,12 +26,12 @@
 
 Issue 用少量标签表达类型和当前需要的动作。仓库使用以下标签：
 
-| 标签 | 用途 |
-| --- | --- |
-| `type: bug` | Bug 报告 |
-| `type: proposal` | 新功能或行为变更提议 |
-| `status: approved` | Proposal 已批准，可以开始实现 |
-| `status: in-progress` | 已有人着手处理，通常关联 PR |
+| 标签                  | 用途                          |
+| --------------------- | ----------------------------- |
+| `type: bug`           | Bug 报告                      |
+| `type: proposal`      | 新功能或行为变更提议          |
+| `status: approved`    | Proposal 已批准，可以开始实现 |
+| `status: in-progress` | 已有人着手处理，通常关联 PR   |
 
 状态标签只用于标记已批准的 Proposal 和正在进行的工作。Proposal 必须先标记 `status: approved`，贡献者才应开始实现；开始处理后改为 `status: in-progress`。工作完成后关闭 Issue，不需要额外的完成状态标签。标签名称是建议的仓库约定；如果仓库尚未创建某个标签，请在 Issue 中注明对应状态。
 
