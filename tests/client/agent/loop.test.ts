@@ -386,28 +386,44 @@ describe('runAgent', () => {
   });
 });
 
-it('uses local transport with bounded basic actions and a fresh instruction context', async () => {
+it('uses the same prompt, complete tools, history and loop policy for local and API models', async () => {
   stream([{ type: 'text-delta', text: '好了' }]);
-  await runAgent({
+  const input = {
     goal: '前进一步',
     session: fakeSession(),
-    settings: { ...settings, mode: 'local' },
     chat: {
       date: '2026-11-06',
-      summary: '',
-      turns: [{ role: 'user', text: 'old instruction' }],
+      summary: '更早的记忆',
+      turns: [{ role: 'user' as const, text: 'old instruction' }],
       updatedAt: 0,
       digestedAt: 0,
     },
-  });
+    memoryIndex: '我的日记目录',
+    memory: { list: vi.fn(), get: vi.fn(), write: vi.fn() },
+  };
+  await runAgent({ ...input, settings });
+  const online = aiControl.streamText.mock.calls[0][0];
+  await runAgent({ ...input, settings: { ...settings, mode: 'local' } });
   expect(aiControl.providerOptions).toMatchObject({
     baseURL: 'http://local.invalid/v1',
     fetch: expect.any(Function),
   });
   expect(aiControl.provider).toHaveBeenCalledWith('Llama-3.2-1B-Instruct-q0f16-MLC');
-  const options = aiControl.streamText.mock.calls[0][0];
-  expect(Object.keys(options.tools)).toEqual(['observe', 'go', 'set_height']);
-  expect(options.stopWhen).toEqual([{ until: 'finished' }, { count: 6 }]);
-  expect(options.maxRetries).toBe(0);
-  expect(JSON.stringify(options.messages)).not.toContain('old instruction');
+  const options = aiControl.streamText.mock.calls[1][0];
+  expect(Object.keys(options.tools)).toEqual(Object.keys(online.tools));
+  expect(Object.keys(options.tools)).toEqual([
+    'observe',
+    'go',
+    'mark',
+    'act',
+    'lamp',
+    'set_height',
+    'memory',
+  ]);
+  expect(options.system).toBe(online.system);
+  expect(options.system).toContain('更早的记忆');
+  expect(options.messages).toEqual(online.messages);
+  expect(JSON.stringify(options.messages)).toContain('old instruction');
+  expect(options.stopWhen).toEqual(online.stopWhen);
+  expect(options).not.toHaveProperty('maxRetries');
 });

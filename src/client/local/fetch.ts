@@ -6,18 +6,23 @@ import { LOCAL_MODEL, type LocalMessage, type LocalOptions, type LocalReply } fr
 interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content?: string | null;
+  tool_call_id?: string;
   tool_calls?: { function: { name: string; arguments: string } }[];
 }
-interface RequestBody {
+interface RequestBody extends NonNullable<LocalOptions['generation']> {
   messages: Message[];
-  tools?: unknown[];
+  tools?: Array<{ function: { name: string; [key: string]: unknown }; [key: string]: unknown }>;
   stream?: boolean;
 }
 
 export function localMessages(body: RequestBody): LocalMessage[] {
   const messages: LocalMessage[] = body.messages.map((message) => {
     if (message.role === 'tool')
-      return { role: 'user', content: `工具执行结果：${message.content}` };
+      return {
+        role: 'tool',
+        content: message.content ?? '',
+        tool_call_id: message.tool_call_id ?? '',
+      };
     if (message.tool_calls?.length)
       return {
         role: 'assistant',
@@ -37,15 +42,9 @@ export function localMessages(body: RequestBody): LocalMessage[] {
     .map((m) => m.content)
     .join('\n');
   const instruction = body.tools?.length
-    ? '你叫蛛小八，是住在蛛岛上的蜘蛛。遵循用户要求，用自然、简短的第一人称交流。问候和闲聊直接回答，不必调用工具。需要行动时只输出一个 JSON：{"name":"工具名","arguments":{参数}}。arguments 必须包含 description 和工具要求的全部参数。' +
-      '例：前进一米 → {"name":"go","arguments":{"description":"我向前走","mode":"distance","distance":1}}；右转九十度 → {"name":"go","arguments":{"description":"我向右转","mode":"degrees","degrees":90}}；把身体抬高到一米 → {"name":"set_height","arguments":{"description":"我抬高身体","level":1}}。' +
-      '按距离前进或后退直接用 go 的 distance 模式，正数前进、负数后退，无需先观察或计算坐标。寻找目标或按坐标移动才先 observe，再用 go 的 point 或 id 模式。执行成功后简短回应，不重复调用。只会观察、移动、转向和升降，不能拿取物品。工具结果是事实，受阻先按 hint 恢复，不编造已经完成的动作。' +
-      'description 用20字内第一人称短句。go 的 point 用 x、z 坐标，id 用对象 id；heading 是绝对角度，0 朝 -Z，degrees 是顺时针相对角度。set_height 的 level 是离地高度。observe 不填 distance 就尽量看远。' +
-      '无需行动时，以“答：”开头简短回答。不要复述工具 JSON 或工具结果。可用工具：' +
-      JSON.stringify(body.tools.map((tool) => compactTool(tool)))
+    ? `${system}\n\n工具消息的传输格式：调用工具时输出 JSON {"name":"工具名","arguments":{参数}}，或此类对象的数组；普通回答直接输出正文。工具定义：${JSON.stringify(body.tools)}`
     : system;
-  // Keep the current instruction and its tool results together. Earlier turns
-  // remain in the diary; the small model does not use a whole day's transcript.
+  // Preserve the common agent's system rules, complete history and tool results.
   const history = messages.filter((m) => m.role !== 'system');
   return [{ role: 'system', content: instruction }, ...history];
 }
@@ -56,6 +55,17 @@ export function createLocalFetch(options: LocalOptions = {}): typeof fetch {
   let previous: { canonical: LocalMessage[]; sent: LocalMessage[]; reply: LocalReply } | undefined;
   return async (_url, init) => {
     const body = JSON.parse(init!.body as string) as RequestBody;
+    const requestOptions: LocalOptions = {
+      ...options,
+      generation: {
+        max_tokens: body.max_tokens,
+        temperature: body.temperature,
+        top_p: body.top_p,
+        frequency_penalty: body.frequency_penalty,
+        presence_penalty: body.presence_penalty,
+        stop: body.stop,
+      },
+    };
     const backend = await localBackend();
     const signal = init?.signal;
     signal?.throwIfAborted();
@@ -65,7 +75,10 @@ export function createLocalFetch(options: LocalOptions = {}): typeof fetch {
     if (previous) {
       const count = previous.canonical.length;
       const next = canonical[count];
-      const names = parseInlineCalls(previous.reply.text, ['observe', 'go', 'set_height']);
+      const names = parseInlineCalls(
+        previous.reply.text,
+        body.tools?.map((tool) => tool.function.name) ?? [],
+      );
       const normalized = names.length
         ? JSON.stringify(
             singleOrMany(
@@ -107,7 +120,7 @@ export function createLocalFetch(options: LocalOptions = {}): typeof fetch {
     });
     if (!body.stream)
       try {
-        const result = await backend.localComplete(id, messages, options);
+        const result = await backend.localComplete(id, messages, requestOptions);
         signal?.throwIfAborted();
         remember(result);
         return Response.json({
@@ -146,7 +159,7 @@ export function createLocalFetch(options: LocalOptions = {}): typeof fetch {
           });
         };
         void backend
-          .localComplete(id, messages, options, (text) => {
+          .localComplete(id, messages, requestOptions, (text) => {
             if (closed || signal?.aborted) return;
             raw += text;
             delta(localText(raw, false));
@@ -188,15 +201,4 @@ export const localFetch = createLocalFetch();
 
 function singleOrMany<T>(items: T[]): T | T[] {
   return items.length === 1 ? items[0] : items;
-}
-
-/** Descriptions and validation remain in the SDK; send only the executable schema. */
-function compactTool(value: unknown, properties = false): unknown {
-  if (Array.isArray(value)) return value.map((item) => compactTool(item));
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key]) => properties || (key !== 'description' && key !== '$schema'))
-      .map(([key, item]) => [key, compactTool(item, key === 'properties')]),
-  );
 }

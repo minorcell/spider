@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { openSpiderDb, resetSpiderDb } from '../../../src/client/journal/db.js';
 import { Diary } from '../../../src/client/journal/diary.js';
+import { summarizeDiary } from '../../../src/client/journal/summarize.js';
 import { localDate } from '../../../src/shared/dates.js';
 import { createHandler } from '../../../src/client/worker/handler.js';
 import type { JournalState } from '../../../src/client/worker/protocol.js';
@@ -42,6 +43,60 @@ beforeEach(async () => {
 });
 
 describe('journal worker handler', () => {
+  it('shares an in-flight open across the diary and memory queues', async () => {
+    const opened = await Diary.open();
+    const waiting = Promise.withResolvers<Diary>();
+    const spy = vi.spyOn(Diary, 'open').mockReturnValueOnce(waiting.promise);
+    const handle = createHandler();
+    const state = handle({ id: 1, method: 'open' });
+    const index = handle({ id: 2, method: 'indexBlock' });
+    await vi.waitFor(() => expect(spy).toHaveBeenCalledOnce());
+    waiting.resolve(opened);
+    expect(await state).toMatchObject({ date: opened.date });
+    expect(await index).toBe('记忆目录是空的。');
+    expect(spy).toHaveBeenCalledOnce();
+    spy.mockRestore();
+  });
+
+  it('retries opening after a failure', async () => {
+    const spy = vi.spyOn(Diary, 'open').mockRejectedValueOnce(new Error('open failed'));
+    const handle = createHandler();
+    await expect(handle({ id: 1, method: 'open' })).rejects.toThrow('open failed');
+    expect(await handle({ id: 2, method: 'pages' })).toEqual([]);
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
+
+  it('keeps memory tools available while a background summary is waiting', async () => {
+    const handle = createHandler();
+    const date = localDate(new Date());
+    await handle({ id: 1, method: 'record', args: ['记住偏好', '好的', [], SETTINGS] });
+    const waiting = Promise.withResolvers<{ line: string; summary: string }>();
+    const started = Promise.withResolvers<void>();
+    vi.mocked(summarizeDiary).mockImplementationOnce(() => {
+      started.resolve();
+      return waiting.promise;
+    });
+    const digest = handle({ id: 2, method: 'digest', args: [SETTINGS] });
+    await started.promise;
+    const first = handle({ id: 3, method: 'write', args: [{ date, line: '行动中写入' }] });
+    const second = handle({ id: 4, method: 'write', args: [{ date, noted: '不要吃红的' }] });
+    await Promise.all([first, second]);
+    expect(await handle({ id: 5, method: 'read', args: [date] })).toMatchObject({
+      line: '行动中写入',
+      noted: '不要吃红的',
+    });
+    expect(await handle({ id: 6, method: 'indexBlock' })).toContain('行动中写入');
+    expect(await handle({ id: 7, method: 'pages' })).toHaveLength(1);
+    waiting.resolve({ line: '旧目录句', summary: '新摘要' });
+    await digest;
+    expect(await handle({ id: 8, method: 'read', args: [date] })).toMatchObject({
+      line: '行动中写入',
+      noted: '不要吃红的',
+      summary: '新摘要',
+    });
+  });
+
   it('opens the diary and returns its cloneable state', async () => {
     const handle = createHandler();
     const state = (await handle({ id: 1, method: 'open' })) as JournalState;

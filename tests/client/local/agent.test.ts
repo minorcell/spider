@@ -4,6 +4,124 @@ import { useLocalBackend } from '../../../src/client/local/backend.js';
 import type { LocalBackend } from '../../../src/client/local/types.js';
 import { SimSession } from '../../../src/shared/sim/session.js';
 
+it('uses tools beyond the old subset and completes more than six steps in the shared loop', async () => {
+  const body = new SimSession(4);
+  const complete = vi
+    .fn<LocalBackend['localComplete']>()
+    .mockImplementation(async (_id, _messages, _options, onDelta) => {
+      const step = complete.mock.calls.length;
+      const text =
+        step <= 7
+          ? JSON.stringify({
+              name: 'lamp',
+              arguments: { description: '我调整灯光', on: step % 2 === 1 },
+            })
+          : '灯光调整好了';
+      onDelta?.(text);
+      return { text, rawText: text, input: 10, output: 5 };
+    });
+  useLocalBackend({
+    localLoad: vi.fn(),
+    localStatus: vi.fn(),
+    localUnload: vi.fn(),
+    localCancel: vi.fn(),
+    localComplete: complete,
+  });
+  const result = await runAgent({
+    goal: '调整灯光',
+    session: body,
+    settings: {
+      provider: 'custom',
+      mode: 'local',
+      baseURL: '',
+      model: '',
+      apiKey: '',
+      contextTokens: null,
+      autoMemory: false,
+      thinking: false,
+    },
+  });
+  expect(complete).toHaveBeenCalledTimes(8);
+  expect(body.lamp).toBe(true);
+  expect(result.text).toBe('灯光调整好了');
+  expect(complete.mock.calls[1][1].at(-1)).toMatchObject({ role: 'tool' });
+  expect(
+    complete.mock.calls[1][1].some(
+      (message) =>
+        message.role === 'assistant' &&
+        message.content ===
+          JSON.stringify({ name: 'lamp', arguments: { description: '我调整灯光', on: true } }),
+    ),
+  ).toBe(true);
+});
+
+it('writes memory through the same tool and retains prior conversation and memory context', async () => {
+  const write = vi.fn(async () => ({
+    date: '2026-11-08',
+    line: '偏好',
+    noted: '喜欢安静',
+    summary: '',
+  }));
+  const complete = vi
+    .fn<LocalBackend['localComplete']>()
+    .mockImplementation(async (_id, _messages, _options, onDelta) => {
+      const text =
+        complete.mock.calls.length === 1
+          ? JSON.stringify({
+              name: 'memory',
+              arguments: {
+                description: '我记下偏好',
+                command: 'write',
+                date: '2026-11-08',
+                noted: '喜欢安静',
+              },
+            })
+          : '记住了，你喜欢安静';
+      onDelta?.(text);
+      return { text, rawText: text, input: 10, output: 5 };
+    });
+  useLocalBackend({
+    localLoad: vi.fn(),
+    localStatus: vi.fn(),
+    localUnload: vi.fn(),
+    localCancel: vi.fn(),
+    localComplete: complete,
+  });
+  const result = await runAgent({
+    goal: '请记住这个偏好',
+    session: new SimSession(4),
+    settings: {
+      provider: 'custom',
+      mode: 'local',
+      baseURL: '',
+      model: '',
+      apiKey: '',
+      contextTokens: null,
+      autoMemory: false,
+      thinking: false,
+    },
+    memory: { list: vi.fn(), get: vi.fn(), write },
+    memoryIndex: '我的记忆目录',
+    chat: {
+      date: '2026-11-08',
+      summary: '更早的对话',
+      turns: [
+        { role: 'user', text: '我喜欢安静' },
+        { role: 'assistant', text: '知道了' },
+      ],
+      updatedAt: 1,
+      digestedAt: 0,
+    },
+  });
+  expect(result.text).toBe('记住了，你喜欢安静');
+  expect(write).toHaveBeenCalledWith(
+    expect.objectContaining({ date: '2026-11-08', noted: '喜欢安静' }),
+  );
+  expect(complete.mock.calls[0][1][0].content).toContain('我的记忆目录');
+  expect(complete.mock.calls[0][1][0].content).toContain('更早的对话');
+  expect(complete.mock.calls[0][1][1]).toEqual({ role: 'user', content: '我喜欢安静' });
+});
+
 it.each([
   {
     goal: '前进一米',

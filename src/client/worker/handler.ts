@@ -17,13 +17,20 @@ function stateOf(diary: Diary): JournalState {
 }
 
 export function createHandler(): Handler {
-  let diary: Diary | null = null;
+  let diary: Promise<Diary> | null = null;
   let snapshots: SnapshotStore | null = null;
 
-  let diaryQueue = Promise.resolve();
-  let snapshotQueue = Promise.resolve();
+  const queues = {
+    diary: Promise.resolve(),
+    memory: Promise.resolve(),
+    snapshot: Promise.resolve(),
+  };
 
-  const open = async (): Promise<Diary> => (diary ??= await Diary.open());
+  const open = (): Promise<Diary> =>
+    (diary ??= Diary.open().catch((error) => {
+      diary = null;
+      throw error;
+    }));
   const store = async (): Promise<SnapshotStore> => (snapshots ??= await dbSnapshotStore());
 
   const dispatch = async (request: JournalRequest): Promise<unknown> => {
@@ -118,14 +125,17 @@ export function createHandler(): Handler {
             return localRuntime.localCancel(...request.args);
         }
       });
-    const snapshotsOnly = request.method.startsWith('snapshot');
-    const task = (snapshotsOnly ? snapshotQueue : diaryQueue).then(() => dispatch(request));
-    const settled = task.then(
+    // Memory tools must stay available while a background summary yields to an action.
+    const queue = request.method.startsWith('snapshot')
+      ? 'snapshot'
+      : ['indexBlock', 'pages', 'read', 'write'].includes(request.method)
+        ? 'memory'
+        : 'diary';
+    const task = queues[queue].then(() => dispatch(request));
+    queues[queue] = task.then(
       () => undefined,
       () => undefined,
     );
-    if (snapshotsOnly) snapshotQueue = settled;
-    else diaryQueue = settled;
     return task;
   };
 }

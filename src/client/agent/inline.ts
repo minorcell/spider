@@ -74,18 +74,14 @@ interface StreamingModel {
   doStream: (options: never) => PromiseLike<{ stream: ReadableStream<unknown> }>;
 }
 
-export function withInlineCalls<M extends object>(
-  model: M,
-  names: readonly string[],
-  local = false,
-): M {
+export function withInlineCalls<M extends object>(model: M, names: readonly string[]): M {
   const source = model as unknown as Partial<StreamingModel>;
   if (names.length === 0 || typeof source.doStream !== 'function') return model;
   const stream = source.doStream.bind(model);
   const wrapped = Object.create(model) as M & StreamingModel;
   wrapped.doStream = async (options: never) => {
     const result = await stream(options);
-    return { ...result, stream: recover(result.stream, names, local) };
+    return { ...result, stream: recover(result.stream, names) };
   };
   return wrapped;
 }
@@ -93,7 +89,6 @@ export function withInlineCalls<M extends object>(
 function recover(
   source: ReadableStream<unknown>,
   names: readonly string[],
-  local: boolean,
 ): ReadableStream<unknown> {
   let text = '';
   let textId = inlineId('text');
@@ -115,21 +110,15 @@ function recover(
     if (!flushed) {
       flushed = true;
       const calls = parse && !hasToolCall ? parseInlineCalls(text, names) : [];
-      const body = local
-        ? calls.length || hasToolCall || !parse
-          ? ''
-          : speechText(text)
-        : calls.length > 0
-          ? cleanInlineText(text, calls)
-          : text;
+      const body = calls.length > 0 ? cleanInlineText(text, calls) : speechText(text);
       if (body !== '') {
         emit(controller, body);
       }
       if (opened) controller.enqueue({ type: 'text-end', id: textId });
-      if (local && parse && text.trim() && !body && !calls.length && !hasToolCall) {
+      if (parse && text.trim() && !body && !calls.length && !hasToolCall) {
         controller.enqueue({
           type: 'error',
-          error: new Error('本机模型返回了无法识别的工具消息，请重试'),
+          error: new Error('模型返回了无法识别的工具消息，请重试'),
         });
       }
       for (const call of calls) {
@@ -159,7 +148,7 @@ function recover(
             text += chunk.delta ?? chunk.text ?? '';
             // Only explicitly marked answers may stream. Unmarked prose and action
             // envelopes stay buffered until the whole reply has been classified.
-            if (local && !hasToolCall && /^\s*答[：:]/.test(text) && speechText(text).length >= 6) {
+            if (!hasToolCall && /^\s*答[：:]/.test(text) && speechText(text).length >= 6) {
               emit(controller, speechText(text));
             }
             return;

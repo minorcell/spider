@@ -27,26 +27,25 @@ it('routes to the selected worker without touching network fetch', async () => {
   });
   expect(network).not.toHaveBeenCalled();
 });
-it('turns tool results into chat messages and supplies executable tool schemas', () => {
+it('preserves the common system prompt, tool roles and complete executable definitions', () => {
   const messages = localMessages({
-    tools: [{ name: 'go' }],
+    tools: [{ type: 'function', function: { name: 'go', parameters: {} } }],
     messages: [
-      { role: 'system', content: 'ignored full prompt' },
+      { role: 'system', content: '完整的线上人格、世界规则和记忆' },
       { role: 'user', content: '走一步' },
       {
         role: 'assistant',
         tool_calls: [{ function: { name: 'go', arguments: '{"mode":"degrees","degrees":90}' } }],
       },
-      { role: 'tool', content: '{"ok":true}' },
+      { role: 'tool', content: '{"ok":true}', tool_call_id: 'call-go' },
       { role: 'assistant', content: null },
     ],
   });
-  expect(messages[0].content).toContain('degrees');
-  expect(messages[0].content).toContain('前进一米');
-  expect(messages[0].content).toContain('"mode":"distance"');
-  expect(messages[0].content).toContain('set_height');
+  expect(messages[0].content.startsWith('完整的线上人格、世界规则和记忆\n\n')).toBe(true);
+  expect(messages[0].content).toContain('"name":"go"');
+  expect(messages[0].content).not.toContain('只会观察');
   expect(messages[2].content).toContain('"name":"go"');
-  expect(messages[3]).toEqual({ role: 'user', content: '工具执行结果：{"ok":true}' });
+  expect(messages[3]).toEqual({ role: 'tool', content: '{"ok":true}', tool_call_id: 'call-go' });
   expect(messages[4].content).toBe('');
   // Long inputs must be judged by the engine's tokenizer, not a character cutoff.
   expect(
@@ -107,9 +106,14 @@ it('restores the exact generated assistant bytes across successive tool steps', 
     output: 2,
   });
   const initial = [{ role: 'user', content: '右转' }];
-  await fetcher('', { body: JSON.stringify({ tools: [{ name: 'go' }], messages: initial }) });
+  await fetcher('', {
+    body: JSON.stringify({
+      tools: [{ type: 'function', function: { name: 'go', parameters: {} } }],
+      messages: initial,
+    }),
+  });
   const request = {
-    tools: [{ name: 'go' }],
+    tools: [{ type: 'function', function: { name: 'go', parameters: {} } }],
     messages: [
       ...initial,
       {
@@ -128,7 +132,7 @@ it('restores the exact generated assistant bytes across successive tool steps', 
   expect(backend.localComplete.mock.calls[2][1][2].content).not.toBe(rawText);
 });
 
-it('retains required description properties while removing schema annotation text', () => {
+it('keeps the exact same tool semantics and schema annotations as the API request', () => {
   const text = localMessages({
     tools: [
       {
@@ -148,8 +152,54 @@ it('retains required description properties while removing schema annotation tex
     ],
     messages: [],
   })[0].content;
-  expect(text).toContain('"properties":{"description":{"type":"string"}}');
-  expect(text).not.toContain('verbose');
+  expect(text).toContain('"description":"verbose tool description"');
+  expect(text).toContain('"description":"verbose field description"');
+  expect(text).toContain('"required":["description"]');
+});
+
+it('forwards the SDK generation settings unchanged to the local runtime', async () => {
+  const generation = {
+    max_tokens: 777,
+    temperature: 0.3,
+    top_p: 0.8,
+    frequency_penalty: 0.2,
+    presence_penalty: 0.1,
+    stop: ['END'],
+  };
+  await createLocalFetch()('', { body: JSON.stringify({ ...generation, messages: [] }) });
+  expect(backend.localComplete.mock.calls[0][2]).toMatchObject({ generation });
+});
+
+it('preserves an empty tool response without inventing user text', () => {
+  expect(localMessages({ messages: [{ role: 'tool', content: null }] })[1]).toEqual({
+    role: 'tool',
+    content: '',
+    tool_call_id: '',
+  });
+});
+
+it('produces tool-result messages accepted by the installed WebLLM request validator', async () => {
+  const { postInitAndCheckFieldsChatCompletion, ModelType } = await import('@mlc-ai/web-llm');
+  const messages = localMessages({
+    messages: [
+      { role: 'system', content: '共同的业务提示词' },
+      { role: 'user', content: '把灯打开' },
+      {
+        role: 'assistant',
+        tool_calls: [
+          { function: { name: 'lamp', arguments: '{"description":"我打开灯","on":true}' } },
+        ],
+      },
+      { role: 'tool', content: '{"ok":true}', tool_call_id: 'lamp-1' },
+    ],
+  });
+  expect(() =>
+    postInitAndCheckFieldsChatCompletion(
+      { messages },
+      'Llama-3.2-1B-Instruct-q0f16-MLC',
+      ModelType.LLM,
+    ),
+  ).not.toThrow();
 });
 it('cancels the matching generation and never returns an aborted result', async () => {
   const controller = new AbortController();

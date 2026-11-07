@@ -4,17 +4,22 @@ import { parseInlineCalls, withInlineCalls } from '../src/client/agent/inline.js
 import { spiderTools } from '../src/client/agent/tools.js';
 import { localMessages } from '../src/client/local/fetch.js';
 import { SimSession } from '../src/shared/sim/session.js';
+import { systemFor } from '../src/client/agent/prompt.js';
 
-const all = spiderTools(new SimSession(1234));
-const tools = [all.observe, all.go, all.set_height].map((tool, i) => ({
+const all = spiderTools(new SimSession(1234), {
+  list: async () => [],
+  get: async () => null,
+  write: async (input) => ({ date: input.date, line: '', noted: '', summary: '' }),
+});
+const tools = Object.entries(all).map(([name, tool]) => ({
   type: 'function',
   function: {
-    name: ['observe', 'go', 'set_height'][i],
+    name,
     description: tool.description,
     parameters: z.toJSONSchema(tool.inputSchema),
   },
 }));
-const names = ['observe', 'go', 'set_height'];
+const names = Object.keys(all);
 const reply = JSON.stringify({
   tool_calls: [
     {
@@ -25,20 +30,28 @@ const reply = JSON.stringify({
     },
   ],
 });
-const request = { tools, messages: [{ role: 'user' as const, content: '向右转九十度' }] };
+const system = systemFor('2026-11-08', '', '', false);
+const request = {
+  tools,
+  messages: [
+    { role: 'system' as const, content: system },
+    { role: 'user' as const, content: '向右转九十度' },
+  ],
+};
 const malformed = '{'.repeat(4096);
 
 describe('local inference application overhead (no GPU)', () => {
-  test('compact a real three-tool prompt', async ({ bench }) => {
+  test('adapt the complete shared prompt and tools without changing their definitions', async ({
+    bench,
+  }) => {
     const prompt = localMessages(request)[0].content;
     const schemaStart = prompt.indexOf('[{"type":"function"');
-    const compactBytes = new TextEncoder().encode(prompt.slice(schemaStart)).length;
-    const originalBytes = new TextEncoder().encode(JSON.stringify(tools)).length;
-    expect(compactBytes).toBeLessThan(originalBytes);
+    expect(prompt.startsWith(system)).toBe(true);
+    expect(JSON.parse(prompt.slice(schemaStart))).toEqual(tools);
     console.info(
-      `Tool schema bytes: ${originalBytes} -> ${compactBytes} (${((1 - compactBytes / originalBytes) * 100).toFixed(1)}% reduction)`,
+      `Shared tools: ${tools.length}; full prompt bytes: ${new TextEncoder().encode(prompt).length}`,
     );
-    await bench('build compact tool prompt', () => {
+    await bench('adapt shared agent prompt', () => {
       localMessages(request);
     }).run();
   });
@@ -71,7 +84,7 @@ describe('local inference application overhead (no GPU)', () => {
       }),
     };
     await bench('classify 8-character tool chunks', async () => {
-      const { stream } = await withInlineCalls(model, names, true).doStream();
+      const { stream } = await withInlineCalls(model, names).doStream();
       const reader = stream.getReader();
       while (!(await reader.read()).done) {
         /* drain */

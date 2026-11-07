@@ -408,6 +408,18 @@ it('loads immutable model and wasm URLs with the matching model id', async () =>
   );
   expect(config.model_list[0].model_lib).toContain('Llama-3.2-1B-Instruct-q0f16_cs1k-webgpu.wasm');
   expect(mock.reload).toHaveBeenCalledWith(config.model_list[0].model_id, {
-    context_window_size: 4096,
+    context_window_size: 131072,
   });
+  expect(config.model_list[0].overrides.context_window_size).toBe(131072);
+});
+
+it('forwards caller generation parameters without local temperature or output caps', async () => {
+  const runtime = createLocalRuntime();
+  await runtime.localLoad();
+  await runtime.localComplete('defaults', []);
+  expect(mock.create.mock.calls[0][0]).not.toHaveProperty('max_tokens');
+  expect(mock.create.mock.calls[0][0]).not.toHaveProperty('temperature');
+  const generation = { max_tokens: 900, temperature: 0.4, top_p: 0.8, stop: ['END'] };
+  await runtime.localComplete('configured', [], { generation });
+  expect(mock.create.mock.calls[1][0]).toMatchObject(generation);
 });

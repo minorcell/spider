@@ -1,4 +1,5 @@
 import type { LanguageModelUsage } from 'ai';
+import { LOCAL_CONTEXT_TOKENS } from '../local/types.js';
 import { contextTokensOf, modelIdOf, pilotReady, type PilotSettings } from '../settings.js';
 import type { Journal } from './api.js';
 import { blankMemory, openSpiderDb, type MemoryPage } from './db.js';
@@ -54,7 +55,10 @@ export interface MemoryApi {
 }
 
 function limitsOf(settings: PilotSettings): CompactLimits {
-  return { contextTokens: contextTokensOf(settings.mode === 'local' ? 2 : settings.contextTokens) };
+  return {
+    contextTokens:
+      settings.mode === 'local' ? LOCAL_CONTEXT_TOKENS : contextTokensOf(settings.contextTokens),
+  };
 }
 
 function viewOf(page: MemoryPage): MemoryView {
@@ -115,7 +119,8 @@ export class Diary implements Journal {
   }
 
   async write(input: MemoryWrite): Promise<MemoryView> {
-    const current = (await this.db.get('memories', input.date)) ?? blankMemory(input.date);
+    const tx = this.db.transaction('memories', 'readwrite');
+    const current = (await tx.store.get(input.date)) ?? blankMemory(input.date);
     const next: MemoryPage = {
       date: input.date,
       description: input.line ?? current.description,
@@ -123,7 +128,8 @@ export class Diary implements Journal {
       summary: input.summary ?? current.summary,
       updatedAt: Date.now(),
     };
-    await this.db.put('memories', next);
+    await tx.store.put(next);
+    await tx.done;
     onDiary?.();
     return viewOf(next);
   }
@@ -222,12 +228,18 @@ export class Diary implements Journal {
       provider: 'openai-compatible',
       modelId: modelIdOf(settings),
     });
-    await this.db.put('memories', {
-      ...page,
-      description: note.line || page.description,
-      summary: note.summary || page.summary,
+    const tx = this.db.transaction('memories', 'readwrite');
+    const current = (await tx.store.get(session.date)) ?? blankMemory(session.date);
+    await tx.store.put({
+      ...current,
+      description:
+        current.description !== page.description
+          ? current.description
+          : note.line || current.description,
+      summary: current.summary !== page.summary ? current.summary : note.summary || current.summary,
       updatedAt: Date.now(),
     });
+    await tx.done;
     onDiary?.();
   }
 }

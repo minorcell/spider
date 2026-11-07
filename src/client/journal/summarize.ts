@@ -27,7 +27,6 @@ export async function summarizeDiary(input: {
   });
   const result = await generateText({
     model: provider(local ? LOCAL_MODEL : input.settings.model),
-    ...(local ? { maxRetries: 0 } : {}),
     system:
       '你在整理一只蜘蛛某一天的日记。只根据给出的对话，不要编造。不要写坐标。用 JSON 回答，不要写别的。',
     prompt: [
