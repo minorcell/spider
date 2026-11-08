@@ -1,130 +1,163 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { formatStars, readStars, REPO, REPO_STARS, syncStars } from '@/src/client/stars';
+import { formatStars, readStars, REPO, syncStars } from '@/src/client/stars';
 
 const API = `https://api.github.com/repos/${REPO}`;
-
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+const flush = async (): Promise<void> => {
+  await vi.advanceTimersByTimeAsync(0);
+};
 
 function jsonResponse(body: unknown, ok = true): Response {
-  return {
-    ok,
-    json: async () => body,
-  } as unknown as Response;
+  return { ok, json: async () => body } as unknown as Response;
 }
 
 beforeEach(() => {
   document.body.innerHTML = '';
+  vi.useFakeTimers();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe('formatStars', () => {
-  it('keeps small counts exact', () => {
+  it('formats counts', () => {
     expect(formatStars(0)).toBe('0');
-    expect(formatStars(6)).toBe('6');
     expect(formatStars(999)).toBe('999');
-  });
-
-  it('shortens thousands', () => {
-    expect(formatStars(1000)).toBe('1k');
-    expect(formatStars(1234)).toBe('1.2k');
-    expect(formatStars(45000)).toBe('45k');
+    expect(formatStars(1000)).toBe('1,000');
+    expect(formatStars(1234)).toBe('1,234');
   });
 });
 
 describe('readStars', () => {
-  it('reads the stargazer count', async () => {
+  it('requests a fresh stargazer count', async () => {
     const fetcher = vi.fn(async () =>
       jsonResponse({ stargazers_count: 1234 }),
     ) as unknown as typeof fetch;
     await expect(readStars(fetcher)).resolves.toBe(1234);
     expect(fetcher).toHaveBeenCalledWith(API, {
+      cache: 'no-store',
       headers: { accept: 'application/vnd.github+json' },
+      signal: expect.any(AbortSignal),
     });
   });
 
-  it('gives up when GitHub answers with an error', async () => {
-    const fetcher = vi.fn(async () => jsonResponse(null, false)) as unknown as typeof fetch;
-    await expect(readStars(fetcher)).resolves.toBeNull();
+  it('times out a stalled response', async () => {
+    const fetcher = vi.fn((_url: string, _init: RequestInit) => new Promise<Response>(() => {}));
+    const result = readStars(fetcher as unknown as typeof fetch);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(result).resolves.toBeNull();
+    expect(fetcher.mock.calls[0][1].signal?.aborted).toBe(true);
   });
 
-  it('gives up when the request fails', async () => {
-    const fetcher = vi.fn(async () => {
+  it('returns null on errors and invalid values', async () => {
+    const denied = vi.fn(async () => jsonResponse(null, false)) as unknown as typeof fetch;
+    await expect(readStars(denied)).resolves.toBeNull();
+    const offline = vi.fn(async () => {
       throw new Error('offline');
     }) as unknown as typeof fetch;
-    await expect(readStars(fetcher)).resolves.toBeNull();
-  });
-
-  it('gives up on a body without a count', async () => {
-    const empty = vi.fn(async () => jsonResponse(null)) as unknown as typeof fetch;
-    await expect(readStars(empty)).resolves.toBeNull();
-
-    const wrong = vi.fn(async () =>
-      jsonResponse({ stargazers_count: '很多' }),
-    ) as unknown as typeof fetch;
-    await expect(readStars(wrong)).resolves.toBeNull();
-
-    const broken = vi.fn(async () =>
-      jsonResponse({ stargazers_count: NaN }),
-    ) as unknown as typeof fetch;
-    await expect(readStars(broken)).resolves.toBeNull();
+    await expect(readStars(offline)).resolves.toBeNull();
+    for (const value of [null, '6', NaN, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      const fetcher = vi.fn(async () =>
+        jsonResponse({ stargazers_count: value }),
+      ) as unknown as typeof fetch;
+      await expect(readStars(fetcher)).resolves.toBeNull();
+    }
   });
 });
 
 describe('syncStars', () => {
-  it('writes the count into the badge', async () => {
-    document.body.innerHTML = `<span id="github-stars-count">${REPO_STARS}</span>`;
+  it('shows a successful count, including zero', async () => {
+    document.body.innerHTML = '<span id="github-stars-count" hidden></span>';
     const fetcher = vi.fn(async () =>
-      jsonResponse({ stargazers_count: 88 }),
+      jsonResponse({ stargazers_count: 0 }),
     ) as unknown as typeof fetch;
-
-    syncStars(document, fetcher);
+    const stop = syncStars(document, fetcher);
     await flush();
-
-    expect(document.querySelector('#github-stars-count')?.textContent).toBe('88');
+    const slot = document.querySelector<HTMLElement>('#github-stars-count')!;
+    expect(slot.textContent).toBe('0');
+    expect(slot.hidden).toBe(false);
+    stop();
   });
 
-  it('shortens a large count in place', async () => {
-    document.body.innerHTML = `<span id="github-stars-count">${REPO_STARS}</span>`;
-    const fetcher = vi.fn(async () =>
-      jsonResponse({ stargazers_count: 2200 }),
-    ) as unknown as typeof fetch;
-
-    syncStars(document, fetcher);
+  it('shows the exact fetched number instead of rounding it', async () => {
+    document.body.innerHTML = '<span id="github-stars-count" hidden></span>';
+    const fetcher = vi.fn(async () => jsonResponse({ stargazers_count: 1234 }));
+    const stop = syncStars(document, fetcher as unknown as typeof fetch);
     await flush();
-
-    expect(document.querySelector('#github-stars-count')?.textContent).toBe('2.2k');
+    expect(document.querySelector('#github-stars-count')?.textContent).toBe('1,234');
+    stop();
   });
 
-  it('leaves the static count when there is nowhere to write', async () => {
-    const fetcher = vi.fn(async () =>
-      jsonResponse({ stargazers_count: 88 }),
-    ) as unknown as typeof fetch;
-
-    syncStars(document, fetcher);
-    await flush();
-
+  it('does not request when the count slot is missing', () => {
+    const fetcher = vi.fn() as unknown as typeof fetch;
+    syncStars(document, fetcher)();
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it('does nothing without a fetcher', async () => {
-    document.body.innerHTML = `<span id="github-stars-count">${REPO_STARS}</span>`;
-
-    syncStars(document, undefined as unknown as typeof fetch);
+  it('hides the count if fetch is unavailable or fails', async () => {
+    document.body.innerHTML = '<span id="github-stars-count">6</span>';
+    vi.stubGlobal('fetch', undefined);
+    const slot = document.querySelector<HTMLElement>('#github-stars-count')!;
+    syncStars(document)();
+    expect(slot.hidden).toBe(true);
+    expect(slot.textContent).toBe('');
+    const fetcher = vi.fn(async () => jsonResponse(null, false)) as unknown as typeof fetch;
+    const stop = syncStars(document, fetcher);
     await flush();
-
-    expect(document.querySelector('#github-stars-count')?.textContent).toBe(REPO_STARS);
+    expect(slot.hidden).toBe(true);
+    expect(slot.textContent).toBe('');
+    stop();
   });
 
-  it('keeps the static count when the request fails', async () => {
-    document.body.innerHTML = `<span id="github-stars-count">${REPO_STARS}</span>`;
-    const fetcher = vi.fn(async () => jsonResponse(null, false)) as unknown as typeof fetch;
-
-    syncStars(document, fetcher);
+  it('refreshes while visible, hides failures, and refreshes again on return', async () => {
+    document.body.innerHTML = '<span id="github-stars-count" hidden></span>';
+    let visible = true;
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() =>
+      visible ? 'visible' : 'hidden',
+    );
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ stargazers_count: 6 }))
+      .mockResolvedValueOnce(jsonResponse(null, false))
+      .mockResolvedValueOnce(jsonResponse({ stargazers_count: 88 }));
+    const stop = syncStars(document, fetcher as unknown as typeof fetch);
+    const slot = document.querySelector<HTMLElement>('#github-stars-count')!;
     await flush();
+    expect(slot.textContent).toBe('6');
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(slot.hidden).toBe(true);
+    expect(slot.textContent).toBe('');
+    visible = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    visible = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flush();
+    expect(slot.hidden).toBe(false);
+    expect(slot.textContent).toBe('88');
+    stop();
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
 
-    expect(document.querySelector('#github-stars-count')?.textContent).toBe(REPO_STARS);
+  it('ignores an in-flight response after cleanup and avoids overlapping requests', async () => {
+    document.body.innerHTML = '<span id="github-stars-count" hidden></span>';
+    let resolve!: (response: Response) => void;
+    const fetcher = vi.fn(
+      () =>
+        new Promise<Response>((done) => {
+          resolve = done;
+        }),
+    );
+    const stop = syncStars(document, fetcher as unknown as typeof fetch);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    stop();
+    resolve(jsonResponse({ stargazers_count: 88 }));
+    await flush();
+    expect(document.querySelector<HTMLElement>('#github-stars-count')!.hidden).toBe(true);
   });
 });

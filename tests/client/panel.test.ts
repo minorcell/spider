@@ -235,7 +235,7 @@ describe('mountPanel chrome', () => {
 });
 
 describe('GitHub badge', () => {
-  it('links to the repository and shows the star count', () => {
+  it('links to the repository and hides the count until it is fetched', () => {
     installChrome();
     const badge = document.querySelector<HTMLAnchorElement>('#github')!;
     expect(badge.getAttribute('href')).toBe('https://github.com/minorcell/spider');
@@ -248,7 +248,9 @@ describe('GitHub badge', () => {
       'github',
       'settings-open',
     ]);
-    expect(badge.querySelector('#github-stars-count')!.textContent).toBe('6');
+    const count = badge.querySelector<HTMLElement>('#github-stars-count')!;
+    expect(count.textContent).toBe('');
+    expect(count.hidden).toBe(true);
     for (const control of document.querySelector('#corner')!.children) {
       expect((control as HTMLElement).style.height).toBe('32px');
       expect((control as HTMLElement).style.boxSizing).toBe('border-box');

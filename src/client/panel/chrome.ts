@@ -10,7 +10,7 @@ import { border, color, font } from '@/src/ui/token';
 import { switchField } from '@/src/ui/switch';
 import { localModelPanel } from '@/src/client/local/view';
 import { QUICK_PROVIDERS } from '@/src/client/providers';
-import { REPO, REPO_STARS } from '@/src/client/stars';
+import { REPO } from '@/src/client/stars';
 
 function eyebrow(doc: Document, text: string): HTMLParagraphElement {
   const node = h(doc, 'p', { class: 'eyebrow' }, text);
@@ -94,7 +94,7 @@ function githubBadge(doc: Document): HTMLAnchorElement {
   });
   const stars = h(doc, 'span', { id: 'github-stars' });
   const star = icon(doc, 'star');
-  stars.append(star, h(doc, 'span', { id: 'github-stars-count' }, REPO_STARS));
+  stars.append(star, h(doc, 'span', { id: 'github-stars-count', hidden: true }));
   badge.append(stars);
 
   paint(badge, {

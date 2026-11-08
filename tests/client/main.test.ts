@@ -32,7 +32,7 @@ const opening = vi.hoisted(() => ({
 
 const settings = vi.hoisted(() => ({ restoreSettings: vi.fn(async () => {}) }));
 
-const stars = vi.hoisted(() => ({ syncStars: vi.fn() }));
+const stars = vi.hoisted(() => ({ syncStars: vi.fn(() => () => {}) }));
 
 const cloud = vi.hoisted(() => ({
   startCloud: vi.fn(async () => {}),
@@ -45,7 +45,6 @@ vi.mock('@/src/client/settings', () => settings);
 
 vi.mock('@/src/client/stars', () => ({
   REPO: 'minorcell/spider',
-  REPO_STARS: '6',
   syncStars: stars.syncStars,
 }));
 
@@ -123,6 +122,7 @@ beforeEach(() => {
   opening.openJournal.mockReset();
   opening.openJournal.mockResolvedValue({ journal: {}, store: {} });
   stars.syncStars.mockReset();
+  stars.syncStars.mockReturnValue(() => {});
   settings.restoreSettings.mockClear();
   cloud.startCloud.mockReset();
   cloud.cloudHolds.mockReset();
