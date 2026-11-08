@@ -162,6 +162,25 @@ describe('live status', () => {
     status.finish('已完成');
   });
 
+  it('keeps request context and tool history bounded', () => {
+    const status = setup();
+    for (let i = 0; i < 31; i++) {
+      status.event({
+        type: 'context',
+        step: i,
+        instructions: 'system',
+        messages: [],
+        tools: [],
+        local: false,
+      });
+    }
+    expect(panel.querySelector('#status-context')!.childElementCount).toBe(30);
+    for (let i = 0; i < 31; i++) {
+      status.event({ type: 'tool-result', name: 'go', output: { ok: true } });
+    }
+    expect(panel.querySelector('#status-tools')!.childElementCount).toBe(30);
+  });
+
   it('handles incomplete, unusual and bounded diagnostic data', async () => {
     const status = setup();
     const normal = session.sense();
