@@ -1,8 +1,22 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { blankSession } from '@/src/client/journal/session';
-import { onLocalBusy } from '@/src/client/local/activity';
+import { createDbRepository } from '@/src/client/storage/direct';
+import type { PersistenceRepository } from '@/src/client/storage/repository';
 import { createWorkerJournal, WorkerJournal, type WorkerPort } from '@/src/client/worker/client';
 import type { JournalReply, JournalRequest, JournalState } from '@/src/client/worker/protocol';
+
+const storage = vi.hoisted(() => ({
+  repository: { readSnapshot: vi.fn(async () => null) },
+  connect: vi.fn(() => ({}) as MessagePort),
+  close: vi.fn(),
+  onFailure: vi.fn(() => vi.fn()),
+}));
+vi.mock('@/src/client/storage/client', () => ({ createStorageWorker: () => storage }));
+vi.mock('@/src/client/local/backend', () => ({ connectLocalJournal: vi.fn(() => vi.fn()) }));
+let repository: PersistenceRepository;
+beforeEach(() => {
+  repository = createDbRepository();
+});
 
 const STATE: JournalState = {
   date: '2026-11-02',
@@ -36,7 +50,7 @@ function call<T>(port: Port, start: () => Promise<T>, value: unknown): Promise<T
 }
 
 function open(port: Port): WorkerJournal {
-  const journal = new WorkerJournal(port);
+  const journal = new WorkerJournal(port, repository);
   void journal.open();
   port.respond({ id: port.last.id, ok: true, value: STATE });
   return journal;
@@ -47,8 +61,18 @@ afterEach(() => {
 });
 
 describe('WorkerJournal', () => {
+  it('keeps the last state when a dismissal fails without an unhandled rejection', async () => {
+    const port = new Port();
+    const journal = open(port);
+    await Promise.resolve();
+    journal.dismissed = true;
+    port.respond({ id: port.last.id, ok: false, error: 'worker unavailable' });
+    await Promise.resolve();
+    expect(journal.dismissed).toBe(false);
+  });
+
   it('reads empty defaults before the worker answers', () => {
-    const journal = new WorkerJournal(new Port());
+    const journal = new WorkerJournal(new Port(), repository);
     expect(journal.date).toBe('');
     expect(journal.session.messages).toEqual([]);
     expect(journal.behind()).toBe(false);
@@ -57,7 +81,7 @@ describe('WorkerJournal', () => {
 
   it('opens and answers every journal call', async () => {
     const port = new Port();
-    const journal = new WorkerJournal(port);
+    const journal = new WorkerJournal(port, repository);
     const opened = journal.open();
     expect(port.last).toEqual({ id: 1, method: 'open' });
     port.respond({ id: 1, ok: true, value: STATE });
@@ -135,64 +159,35 @@ describe('WorkerJournal', () => {
     port.respond({ id: port.last.id, ok: true, value: { ...STATE, dismissed: true } });
     await Promise.resolve();
     expect(journal.dismissed).toBe(true);
-
-    const usage = { inputTokens: 1, outputTokens: 2, totalTokens: 3 };
-    const now = new Date('2026-11-02T10:00:00Z');
-    await call(port, () => journal.recordUsage(usage, now), STATE);
-    expect(port.last).toMatchObject({
-      method: 'recordUsage',
-      args: [usage, now.getTime()],
-    });
-    await call(
-      port,
-      () => journal.recordUsage(usage, now, { kind: 'summary', modelId: 'm' }),
-      STATE,
-    );
-    expect(port.last).toMatchObject({
-      method: 'recordUsage',
-      args: [usage, now.getTime(), { kind: 'summary', modelId: 'm' }],
-    });
-    expect(await call(port, () => journal.readUsage('2026-11-02'), { days: [] })).toEqual({
-      days: [],
-    });
-
-    const recorded = {
-      id: 'c1:0',
-      ts: now.getTime(),
-      date: '2026-11-02',
-      kind: 'agent' as const,
-      sessionId: '2026-11-02',
-      turnId: 't',
-      step: 0,
-      provider: 'openai-compatible',
-      modelId: 'deepseek-chat',
-      total: 3,
-      input: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-      output: { total: 2, text: 2, reasoning: 0 },
-      tools: [],
-      timing: { responseMs: 10, stepMs: 12 },
-      finishReason: 'stop',
-    };
-    await call(port, () => journal.recordUsageCall(recorded), STATE);
-    expect(port.last).toMatchObject({ method: 'recordUsageCall', args: [recorded] });
-    await call(port, () => journal.recordUsageCalls([recorded]), null);
-    expect(port.last).toMatchObject({ method: 'recordUsageCalls', args: [[recorded]] });
-    expect(await call(port, () => journal.readUsage('2026-11-02', '7'), { range: '7' })).toEqual({
-      range: '7',
-    });
   });
 
-  it('proxies the snapshot store', async () => {
+  it('sends usage and snapshots directly to storage while a digest is pending', async () => {
     const port = new Port();
-    const journal = open(port);
+    const journal = new WorkerJournal(port, repository);
+    const digest = journal.digest({} as never);
+    const usage = { inputTokens: 1, outputTokens: 2, totalTokens: 3 };
+    const now = new Date('2026-11-02T10:00:00Z');
+    await journal.recordUsage(usage, now, { kind: 'summary', modelId: 'm' });
+    await journal.recordUsage(null);
+    expect((await journal.readUsage('2026-11-02', '7')).today.total).toBeGreaterThanOrEqual(3);
+    const call = (await journal.readUsage('2026-11-02')).requests[0];
+    const recordCall = vi.spyOn(repository, 'recordUsageCall').mockResolvedValue();
+    const recordCalls = vi.spyOn(repository, 'recordUsageCalls').mockResolvedValue();
+    await journal.recordUsageCall(call);
+    await journal.recordUsageCalls([call]);
+    expect(recordCall).toHaveBeenCalledWith(call);
+    expect(recordCalls).toHaveBeenCalledWith([call]);
+    expect(await journal.readSnapshot()).toBeNull();
     const record = { id: 'current' } as never;
-    expect(await call(port, () => journal.readSnapshot(), null)).toBeNull();
-    await call(port, () => journal.putSnapshot(record), null);
-    expect(port.last).toMatchObject({ method: 'snapshotPut', args: [record] });
-    await call(port, () => journal.removeSnapshot(), null);
-    expect(port.last).toMatchObject({ method: 'snapshotRemove' });
-    await call(port, () => journal.sweepSnapshots('2026-11-02'), null);
-    expect(port.last).toMatchObject({ method: 'snapshotSweep', args: ['2026-11-02'] });
+    await journal.putSnapshot(record);
+    expect(await journal.readSnapshot()).toEqual(record);
+    await journal.sweepSnapshots('2026-11-02');
+    await journal.removeSnapshot();
+    expect(await journal.readSnapshot()).toBeNull();
+    expect(port.requests).toHaveLength(1);
+    expect(port.last.method).toBe('digest');
+    port.respond({ id: port.last.id, ok: true, value: STATE });
+    await digest;
   });
 
   it('ignores unknown replies and rejects failed ones', async () => {
@@ -218,7 +213,7 @@ describe('WorkerJournal', () => {
     port.postMessage = () => {
       throw new Error('cannot clone');
     };
-    const journal = new WorkerJournal(port);
+    const journal = new WorkerJournal(port, repository);
     await expect(journal.pages()).rejects.toThrow('cannot clone');
     await expect(journal.pages()).rejects.toThrow('cannot clone');
 
@@ -226,7 +221,7 @@ describe('WorkerJournal', () => {
     plainPort.postMessage = () => {
       throw 'cannot clone';
     };
-    await expect(new WorkerJournal(plainPort).pages()).rejects.toThrow('cannot clone');
+    await expect(new WorkerJournal(plainPort, repository).pages()).rejects.toThrow('cannot clone');
   });
 
   it('starts the real worker from the page', async () => {
@@ -245,6 +240,7 @@ describe('WorkerJournal', () => {
 
       postMessage(request: JournalRequest): void {
         queueMicrotask(() => {
+          if (!('method' in request)) return;
           this.onmessage?.({
             data: { id: request.id, ok: true, value: STATE },
           } as MessageEvent<JournalReply>);
@@ -260,49 +256,67 @@ describe('WorkerJournal', () => {
   });
 });
 
-it('routes local model lifecycle and inference through the existing worker', async () => {
-  const port = new Port();
-  const journal = new WorkerJournal(port);
-  await call(port, () => journal.localSession('turn', true), undefined);
-  expect(port.last).toMatchObject({ method: 'localSession', args: ['turn', true] });
-  await call(port, () => journal.localLoad(), undefined);
-  expect(port.last).toMatchObject({ method: 'localLoad', args: [undefined] });
-  await call(port, () => journal.localLoad({ cachedOnly: true }), undefined);
-  expect(port.last).toMatchObject({ method: 'localLoad', args: [{ cachedOnly: true }] });
-  expect(await call(port, () => journal.localStatus(), { ready: true, text: 'ready' })).toEqual({
-    ready: true,
-    text: 'ready',
-  });
-  const messages = [{ role: 'user' as const, content: '走' }];
-  expect(
-    await call(port, () => journal.localComplete('one', messages), {
-      text: 'ok',
-      input: 1,
-      output: 1,
-    }),
-  ).toMatchObject({ text: 'ok' });
-  expect(port.last).toMatchObject({ method: 'localComplete', args: ['one', messages] });
-  await call(port, () => journal.localCancel('one'), undefined);
-  expect(port.last).toMatchObject({ method: 'localCancel', args: ['one'] });
-  await call(port, () => journal.localUnload(), undefined);
-  expect(port.last.method).toBe('localUnload');
+it('relays storage failure and cleans up each connection when the diary worker fails', async () => {
+  class Worker {
+    static last: Worker;
+    onmessage: ((event: MessageEvent<JournalReply>) => void) | null = null;
+    onerror: ((event: ErrorEvent) => void) | null = null;
+    onmessageerror: ((event: MessageEvent) => void) | null = null;
+    terminate = vi.fn();
+    requests: unknown[] = [];
+    constructor() {
+      Worker.last = this;
+    }
+    postMessage(request: JournalRequest) {
+      this.requests.push(request);
+      if (!('method' in request)) return;
+      queueMicrotask(() =>
+        this.onmessage?.({
+          data: { id: request.id, ok: true, value: STATE },
+        } as MessageEvent<JournalReply>),
+      );
+    }
+  }
+  vi.stubGlobal('Worker', Worker);
+  const journal = await createWorkerJournal();
+  const listener = storage.onFailure.mock.calls.at(-1)![0] as (error: Error) => void;
+  listener(new Error('storage died'));
+  expect(Worker.last.requests).toContainEqual({ event: 'storageFailure', error: 'storage died' });
+  Worker.last.postMessage = () => {
+    throw new Error('diary gone');
+  };
+  expect(() => listener(new Error('storage died again'))).not.toThrow();
+  Worker.last.onmessageerror?.({} as MessageEvent);
+  Worker.last.onerror?.({ message: 'second failure' } as ErrorEvent);
+  expect(Worker.last.terminate).toHaveBeenCalledOnce();
+  await expect(journal.pages()).rejects.toThrow('无法读取');
 });
 
-it('routes only matching stream deltas and resets rendering activity on worker failure', async () => {
-  const port = new Port();
-  const journal = new WorkerJournal(port);
-  const delta = vi.fn();
-  const activity = vi.fn();
-  const stop = onLocalBusy(activity);
-  const pending = journal.localComplete('one', [], { kind: 'action' }, delta);
-  expect(port.last).toMatchObject({ stream: true, args: ['one', [], { kind: 'action' }] });
-  port.respond({ event: 'localActivity', busy: true });
-  port.respond({ event: 'localDelta', id: port.last.id + 1, text: 'other request' });
-  port.respond({ event: 'localDelta', id: port.last.id, text: '答：好了' });
-  expect(delta).toHaveBeenCalledExactlyOnceWith('答：好了');
-  const failed = expect(pending).rejects.toThrow('worker failed');
-  port.onerror?.({ message: 'worker failed' } as ErrorEvent);
-  await failed;
-  expect(activity.mock.calls.map((call) => call[0])).toEqual([false, true, false]);
-  stop();
+it('cleans up before a diary Worker exists if storage readiness fails', async () => {
+  storage.repository.readSnapshot.mockRejectedValueOnce(new Error('storage blocked'));
+  await expect(createWorkerJournal()).rejects.toThrow('storage blocked');
+  expect(storage.close).toHaveBeenCalled();
+});
+
+it('cleans up transferred connections if diary initialization fails', async () => {
+  class Worker {
+    static last: Worker;
+    onmessage: ((event: MessageEvent<JournalReply>) => void) | null = null;
+    onerror = null;
+    terminate = vi.fn();
+    constructor() {
+      Worker.last = this;
+    }
+    postMessage(request: JournalRequest) {
+      if (!('method' in request)) return;
+      queueMicrotask(() =>
+        this.onmessage?.({
+          data: { id: request.id, ok: false, error: 'diary cannot open' },
+        } as MessageEvent<JournalReply>),
+      );
+    }
+  }
+  vi.stubGlobal('Worker', Worker);
+  await expect(createWorkerJournal()).rejects.toThrow('diary cannot open');
+  expect(Worker.last.terminate).toHaveBeenCalledOnce();
 });

@@ -1,7 +1,7 @@
 import { localDate } from '@/src/shared/dates';
 import { chooseRecord } from '@/src/shared/sim/snapshot';
 import { onDiaryChange } from '@/src/client/journal/diary';
-import { openSpiderDb } from '@/src/client/journal/db';
+import { openSpiderDb } from '@/src/client/storage/db';
 import { readBuffer } from '@/src/client/world/storage';
 import { onWorldWritten, replaceWorld, setCloudLock } from '@/src/client/worldStore';
 import { worldOf, type CloudBundle } from '@/src/client/cloud/bundle';

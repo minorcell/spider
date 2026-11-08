@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LanguageModelUsage } from 'ai';
-import { openSpiderDb, resetSpiderDb, type UsageDay } from '@/src/client/journal/db';
+import { openSpiderDb, resetSpiderDb, type UsageDay } from '@/src/client/storage/db';
 import {
   byteSize,
   readUsage,

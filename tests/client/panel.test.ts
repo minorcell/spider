@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetSpiderDb } from '@/src/client/journal/db';
+import { resetSpiderDb } from '@/src/client/storage/db';
 import { Diary } from '@/src/client/journal/diary';
 import { localDate, shiftDate } from '@/src/shared/dates';
 import * as usageLedger from '@/src/client/journal/usage';
@@ -1540,7 +1540,7 @@ describe('usage dialog', () => {
   });
 
   it('shows an empty ledger when the read fails', async () => {
-    vi.spyOn(usageLedger, 'readUsage').mockRejectedValueOnce(new Error('down'));
+    vi.spyOn(Diary.prototype, 'readUsage').mockRejectedValueOnce(new Error('down'));
     mount();
     clickButton('#menu-usage');
     await flush();
@@ -1699,7 +1699,7 @@ describe('usage dialog', () => {
     expect(page).toContain('无 id');
     expect(document.querySelectorAll('.model-dot.blue').length).toBeGreaterThan(0);
     document.querySelector<HTMLButtonElement>('#usage-export')!.click();
-    vi.spyOn(usageLedger, 'readUsage').mockRejectedValue(new Error('down'));
+    vi.spyOn(Diary.prototype, 'readUsage').mockRejectedValue(new Error('down'));
     document.querySelector<HTMLButtonElement>('.range')!.click();
     document.querySelector<HTMLButtonElement>('[data-value="30"]')!.click();
     await flush();

@@ -1,8 +1,8 @@
 import type { LanguageModelUsage, ModelMessage } from 'ai';
-import type { MemoryPage } from '@/src/client/journal/db';
+import type { MemoryPage } from '@/src/client/storage/db';
 import type { MemoryApi, MemoryView, MemoryWrite } from '@/src/client/journal/diary';
 import type { ChatSession } from '@/src/client/journal/session';
-import type { SnapshotStore } from '@/src/client/journal/store';
+import type { SnapshotStore } from '@/src/client/storage/snapshot';
 import type {
   UsageCall,
   UsageCallMeta,
@@ -49,7 +49,7 @@ export async function openJournal(): Promise<OpenedJournal> {
   }
   const [{ Diary }, { dbSnapshotStore }] = await Promise.all([
     import('@/src/client/journal/diary'),
-    import('@/src/client/journal/store'),
+    import('@/src/client/storage/snapshot'),
   ]);
   const [journal, store] = await Promise.all([Diary.open(), dbSnapshotStore()]);
   return { journal, store };

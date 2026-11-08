@@ -204,27 +204,20 @@ export async function runAgent({
 
     let answer = '';
     let stepHasTool = false;
-    const pending: string[] = [];
-    const flush = (): void => {
-      if (pending.length === 0) return;
-      const chunks = pending.splice(0, pending.length);
-      for (const text of chunks) {
-        answer += text;
-        onEvent?.({ type: 'text', text });
-      }
-    };
     for await (const part of result.fullStream) {
       if (signal?.aborted) break;
       switch (part.type) {
         case 'text-delta':
-          if (!stepHasTool) pending.push(part.text);
+          if (!stepHasTool) {
+            answer += part.text;
+            onEvent?.({ type: 'text', text: part.text });
+          }
           break;
+        case 'tool-input-start':
         case 'tool-call':
           stepHasTool = true;
-          pending.length = 0;
           break;
         case 'finish-step':
-          if (!stepHasTool) flush();
           stepHasTool = false;
           break;
         case 'tool-result':
@@ -243,7 +236,6 @@ export async function runAgent({
           break;
       }
     }
-    if (!signal?.aborted && !stepHasTool) flush();
     const response = signal?.aborted ? [] : await result.responseMessages;
     return {
       text: answer,

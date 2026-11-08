@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { openSpiderDb, resetSpiderDb } from '@/src/client/journal/db';
+import { resetSpiderDb } from '@/src/client/storage/db';
 import { Diary } from '@/src/client/journal/diary';
 import { localDate } from '@/src/shared/dates';
 import { createHandler } from '@/src/client/worker/handler';
 import type { JournalState } from '@/src/client/worker/protocol';
 import type { PilotSettings } from '@/src/client/settings';
-import { captureBody, type WorldRecord } from '@/src/shared/sim/snapshot';
-import { SimSession } from '@/src/shared/sim/session';
+import { createDbRepository } from '@/src/client/storage/direct';
+import type { PersistenceRepository } from '@/src/client/storage/repository';
+let repository: PersistenceRepository;
 
 vi.mock('@/src/client/journal/summarize', () => ({
   summarizeDiary: vi.fn(async () => ({ line: '记下了', summary: '摘要' })),
@@ -22,28 +23,14 @@ const SETTINGS: PilotSettings = {
   thinking: true,
 };
 
-function record(seq = 1, over: Partial<WorldRecord> = {}): WorldRecord {
-  const body = captureBody(new SimSession(5), null);
-  return {
-    ...body,
-    id: 'current',
-    format: 3,
-    savedAt: Date.now(),
-    day: localDate(new Date()),
-    owner: 'owner',
-    seq,
-    leaseUntil: Date.now() + 60_000,
-    ...over,
-  };
-}
-
 beforeEach(async () => {
   await resetSpiderDb();
+  repository = createDbRepository();
 });
 
 describe('journal worker handler', () => {
   it('opens the diary and returns its cloneable state', async () => {
-    const handle = createHandler();
+    const handle = createHandler(repository);
     const state = (await handle({ id: 1, method: 'open' })) as JournalState;
     expect(state.date).toBe(localDate(new Date()));
     expect(state.session.messages).toEqual([]);
@@ -53,7 +40,7 @@ describe('journal worker handler', () => {
   });
 
   it('records a turn and saves it', async () => {
-    const handle = createHandler();
+    const handle = createHandler(repository);
     const state = (await handle({
       id: 1,
       method: 'record',
@@ -73,7 +60,7 @@ describe('journal worker handler', () => {
   });
 
   it('reads and writes diary pages through the same handle', async () => {
-    const handle = createHandler();
+    const handle = createHandler(repository);
     const date = localDate(new Date());
     expect(await handle({ id: 1, method: 'read', args: [date] })).toBeNull();
     const page = await handle({
@@ -89,7 +76,7 @@ describe('journal worker handler', () => {
   });
 
   it('digests today and backfills yesterday', async () => {
-    const handle = createHandler();
+    const handle = createHandler(repository);
     await handle({
       id: 1,
       method: 'record',
@@ -123,192 +110,25 @@ describe('journal worker handler', () => {
     });
   });
 
-  it('dismisses and records usage', async () => {
-    const handle = createHandler();
-    const state = (await handle({ id: 1, method: 'dismiss', args: [true] })) as JournalState;
-    expect(state.dismissed).toBe(true);
-    await handle({
-      id: 2,
-      method: 'recordUsage',
-      args: [{ inputTokens: 10, outputTokens: 5, totalTokens: 15 }, Date.now()],
-    });
-    await handle({
-      id: 3,
-      method: 'recordUsage',
-      args: [{ inputTokens: 10, outputTokens: 5, totalTokens: 15 }],
-    });
-    const usage = (await handle({ id: 4, method: 'readUsage', args: [localDate(new Date())] })) as {
-      today: { total: number };
-    };
-    expect(usage.today.total).toBe(30);
-    const date = localDate(new Date());
-    await handle({
-      id: 5,
-      method: 'recordUsageCall',
-      args: [
-        {
-          id: 'c1:0',
-          ts: Date.now(),
-          date,
-          kind: 'agent',
-          sessionId: date,
-          turnId: 't',
-          step: 0,
-          provider: 'openai-compatible',
-          modelId: 'deepseek-chat',
-          total: 4,
-          input: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
-          output: { total: 2, text: 2, reasoning: 0 },
-          tools: [
-            { id: 't1', name: 'observe', ok: true, durationMs: 8, inputBytes: 1, outputBytes: 2 },
-          ],
-          timing: { responseMs: 20, stepMs: 30 },
-          finishReason: 'stop',
-        },
-      ],
-    });
-    const detailed = (await handle({
-      id: 6,
-      method: 'readUsage',
-      args: [date, '7'],
-    })) as { kpis: { calls: number }; requests: unknown[] };
-    expect(detailed.kpis.calls).toBeGreaterThanOrEqual(3);
-    expect(detailed.requests.length).toBeGreaterThanOrEqual(3);
-    await handle({
-      id: 7,
-      method: 'recordUsageCalls',
-      args: [
-        [
-          {
-            id: 'c2:0',
-            ts: Date.now(),
-            date,
-            kind: 'agent',
-            sessionId: date,
-            turnId: 't',
-            step: 1,
-            provider: 'openai-compatible',
-            modelId: 'deepseek-chat',
-            total: 2,
-            input: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-            output: { total: 1, text: 1, reasoning: 0 },
-            tools: [],
-            timing: {},
-            finishReason: 'stop',
-          },
-        ],
-      ],
-    });
-    const batched = (await handle({ id: 8, method: 'readUsage', args: [date, '7'] })) as {
-      kpis: { calls: number };
-    };
-    expect(batched.kpis.calls).toBeGreaterThanOrEqual(4);
+  it('dismisses the leave dialog', async () => {
+    const state = await createHandler(repository)({ id: 1, method: 'dismiss', args: [true] });
+    expect(state).toMatchObject({ dismissed: true });
   });
 
-  it('keeps concurrent requests in arrival order', async () => {
-    const handle = createHandler();
+  it('keeps concurrent diary writes in arrival order', async () => {
+    const handle = createHandler(repository);
     const date = localDate(new Date());
-    const writing = handle({
-      id: 1,
-      method: 'recordUsage',
-      args: [{ inputTokens: 2, outputTokens: 3, totalTokens: 5 }],
-    });
-    const reading = handle({ id: 2, method: 'readUsage', args: [date] });
+    const writing = handle({ id: 1, method: 'write', args: [{ date, line: 'first' }] });
+    const reading = handle({ id: 2, method: 'read', args: [date] });
     await writing;
-    expect((await reading) as { today: { total: number } }).toMatchObject({
-      today: { total: 5 },
-    });
+    expect(await reading).toMatchObject({ line: 'first' });
   });
 
   it('advances the queue after a failed request', async () => {
-    const handle = createHandler();
+    const handle = createHandler(repository);
     await expect(handle({ id: 1, method: 'record', args: undefined } as never)).rejects.toThrow();
     expect(await handle({ id: 2, method: 'open' })).toMatchObject({
       date: localDate(new Date()),
     });
-  });
-
-  it('keeps snapshots, sweeps junk, and removes the current one', async () => {
-    const handle = createHandler();
-    const saved = record(2);
-    await handle({ id: 1, method: 'snapshotPut', args: [saved] });
-    expect(await handle({ id: 2, method: 'snapshotRead' })).toEqual(saved);
-
-    const db = await openSpiderDb();
-    await db.put('snapshots', { id: 'old', format: 1 } as unknown as WorldRecord);
-    await handle({ id: 3, method: 'snapshotSweep', args: [localDate(new Date())] });
-    expect(await db.get('snapshots', 'old')).toBeUndefined();
-
-    await db.put('snapshots', { ...saved, day: '2020-01-01' });
-    await handle({ id: 4, method: 'snapshotSweep', args: [localDate(new Date())] });
-    expect(await handle({ id: 5, method: 'snapshotRead' })).toEqual({
-      ...saved,
-      day: '2020-01-01',
-    });
-
-    await handle({ id: 6, method: 'snapshotPut', args: [saved] });
-    await handle({ id: 7, method: 'snapshotRemove' });
-    expect(await handle({ id: 8, method: 'snapshotRead' })).toBeNull();
-  });
-
-  it('sweeps old snapshot formats and keeps future ones', async () => {
-    const handle = createHandler();
-    const db = await openSpiderDb();
-    const old = { ...record(), format: 1, day: '2020-01-01' } as unknown as WorldRecord;
-    await db.put('snapshots', old);
-    await handle({ id: 1, method: 'snapshotSweep', args: [localDate(new Date())] });
-    expect(await handle({ id: 2, method: 'snapshotRead' })).toBeNull();
-
-    const future = { id: 'current', format: 4, futureBody: { seed: 7 } } as unknown as WorldRecord;
-    await db.put('snapshots', future);
-    await handle({ id: 3, method: 'snapshotSweep', args: [localDate(new Date())] });
-    expect(await handle({ id: 4, method: 'snapshotRead' })).toEqual(future);
-
-    await db.put('snapshots', { id: 'current', format: 0 } as unknown as WorldRecord);
-    await handle({ id: 5, method: 'snapshotSweep', args: [localDate(new Date())] });
-    expect(await handle({ id: 6, method: 'snapshotRead' })).toBeNull();
-  });
-});
-
-it('allows model status and cancellation while a local inference is pending', async () => {
-  const { localRuntime } = await import('@/src/client/local/runtime');
-  const load = vi.spyOn(localRuntime, 'localLoad').mockResolvedValue();
-  vi.spyOn(localRuntime, 'localStatus').mockResolvedValue({ ready: true, text: 'ready' });
-  let finish!: (value: { text: string; input: number; output: number }) => void;
-  const complete = vi.spyOn(localRuntime, 'localComplete').mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve;
-      }),
-  );
-  const cancel = vi.spyOn(localRuntime, 'localCancel').mockResolvedValue();
-  const unload = vi.spyOn(localRuntime, 'localUnload').mockResolvedValue();
-  const handle = createHandler();
-  await handle({ id: 1, method: 'localLoad', args: [] });
-  await handle({ id: 7, method: 'localSession', args: ['turn', true] });
-  await handle({ id: 8, method: 'localSession', args: ['turn', false] });
-  expect(load).toHaveBeenCalledOnce();
-  expect(load).toHaveBeenCalledWith();
-  await handle({ id: 9, method: 'localLoad', args: [{ cachedOnly: true }] });
-  expect(load).toHaveBeenLastCalledWith({ cachedOnly: true });
-  const pending = handle({ id: 2, method: 'localComplete', args: ['one', []] });
-  await vi.waitFor(() => expect(complete).toHaveBeenCalled());
-  expect(await handle({ id: 3, method: 'localStatus' })).toEqual({ ready: true, text: 'ready' });
-  await handle({ id: 4, method: 'localCancel', args: ['one'] });
-  expect(cancel).toHaveBeenCalledWith('one');
-  finish({ text: 'ok', input: 1, output: 1 });
-  await pending;
-  await handle({ id: 5, method: 'localUnload' });
-  expect(unload).toHaveBeenCalledOnce();
-  await handle({
-    id: 6,
-    method: 'record',
-    args: [
-      [
-        { role: 'user', content: '走' },
-        { role: 'assistant', content: '好了' },
-      ],
-      { ...SETTINGS, mode: 'local' },
-    ],
   });
 });

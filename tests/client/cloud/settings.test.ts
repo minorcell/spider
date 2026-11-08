@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { openSpiderDb, resetSpiderDb } from '@/src/client/journal/db';
+import { openSpiderDb, resetSpiderDb } from '@/src/client/storage/db';
 import {
   cloudComplete,
   cloudReady,

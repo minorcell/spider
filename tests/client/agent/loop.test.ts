@@ -119,7 +119,7 @@ describe('runAgent', () => {
     expect(messages).toEqual([{ role: 'user', content: 'go' }]);
   });
 
-  it('keeps only the final words when one message mixes prose and tools', async () => {
+  it('streams prose before a tool starts and suppresses text during tool execution', async () => {
     stream([
       { type: 'text-delta', text: '我先看看' },
       { type: 'tool-input-start' },
@@ -139,8 +139,9 @@ describe('runAgent', () => {
       settings,
       onEvent: (event) => events.push(event),
     });
-    expect(answer.text).toBe('到了');
+    expect(answer.text).toBe('我先看看到了');
     expect(events).toEqual([
+      { type: 'text', text: '我先看看' },
       { type: 'tool-result', name: 'walk', output: { ok: true } },
       { type: 'text', text: '到了' },
     ]);
@@ -177,14 +178,40 @@ describe('runAgent', () => {
     expect(answer.text).toBe('ab');
     expect(answer.usage).toBeNull();
     expect(events).toEqual([
+      { type: 'text', text: 'a' },
+      { type: 'text', text: 'b' },
       { type: 'tool-result', name: 'walk', output: { ok: true } },
       { type: 'error', message: 'walk：nope' },
       { type: 'error', message: 'walk：plain' },
       { type: 'error', message: 'boom' },
       { type: 'error', message: 'plain' },
-      { type: 'text', text: 'a' },
-      { type: 'text', text: 'b' },
     ]);
+  });
+
+  it('delivers each text delta while the upstream stream is still open', async () => {
+    const events: AgentEvent[] = [];
+    aiControl.streamText.mockReturnValue({
+      responseMessages: Promise.resolve([]),
+      usage: Promise.resolve(undefined),
+      fullStream: (async function* () {
+        yield { type: 'text-delta', text: '第一段' };
+        expect(events).toEqual([{ type: 'text', text: '第一段' }]);
+        yield { type: 'text-delta', text: '第二段' };
+        expect(events).toEqual([
+          { type: 'text', text: '第一段' },
+          { type: 'text', text: '第二段' },
+        ]);
+        yield { type: 'finish-step' };
+      })(),
+    });
+    await expect(
+      runAgent({
+        goal: '说两句话',
+        session: fakeSession(),
+        settings,
+        onEvent: (e) => events.push(e),
+      }),
+    ).resolves.toMatchObject({ text: '第一段第二段' });
   });
 
   it('reports a tool call when its execution starts', async () => {

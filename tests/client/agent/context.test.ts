@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { runAgent } from '@/src/client/agent/loop';
 import { Diary } from '@/src/client/journal/diary';
-import { resetSpiderDb } from '@/src/client/journal/db';
+import { resetSpiderDb } from '@/src/client/storage/db';
 import { SimSession } from '@/src/shared/sim/session';
 import type { PilotSettings } from '@/src/client/settings';
 import {

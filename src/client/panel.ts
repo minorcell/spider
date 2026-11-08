@@ -20,6 +20,7 @@ import { bindLeave } from '@/src/client/panel/leave';
 import { bindMemory } from '@/src/client/panel/memory';
 import { bindUsage } from '@/src/client/panel/usage';
 import { bindStatus } from '@/src/client/panel/status';
+import { streamSpeech } from '@/src/client/panel/speech';
 import { explain, isAbort, numberOrNull, thoughtOf } from '@/src/client/panel/helpers';
 import { QUICK_PROVIDERS, discoverModels, type ModelProvider } from '@/src/client/providers';
 import { pilotReady, readPilot, writePilot, type PilotSettings } from '@/src/client/settings';
@@ -186,7 +187,6 @@ export function mountPanel(
   });
 
   const say = (chunk: string): void => {
-    if (!chunk) return;
     if (live?.dataset.kind !== 'speech') {
       trace.replaceChildren();
       live = doc.createElement('li');
@@ -194,7 +194,9 @@ export function mountPanel(
       live.textContent = '';
       trace.append(live);
     }
-    live.textContent = `${live.textContent ?? ''}${chunk}`;
+    const text = live.firstChild;
+    if (text?.nodeType === 3) (text as Text).appendData(chunk);
+    else live.append(doc.createTextNode(chunk));
     touch();
     stage.voice();
   };
@@ -526,6 +528,9 @@ export function mountPanel(
   ): Promise<void> => {
     let sawText = false;
     let finalStatus = '已完成';
+    const speech = streamSpeech(say);
+    const abortSpeech = (): void => speech.cancel();
+    controller.signal.addEventListener('abort', abortSpeech, { once: true });
     status.start(settings);
     lastActivity = Date.now();
     setPending({ text, tool: null });
@@ -552,9 +557,10 @@ export function mountPanel(
           switch (event.type) {
             case 'text':
               sawText = true;
-              say(event.text);
+              speech.write(event.text);
               break;
             case 'tool-call':
+              speech.flush();
               setPending({ text, tool: event.name });
               flushSoon('poke');
               show(thoughtOf(event.input), 'thought');
@@ -563,6 +569,7 @@ export function mountPanel(
               flushSoon('poke');
               break;
             case 'error':
+              speech.flush();
               show(explain(event.message), 'note');
               break;
             default:
@@ -570,6 +577,7 @@ export function mountPanel(
           }
         },
       });
+      speech.finish();
       const answer = reply.text;
       if (reply.calls && reply.calls.length > 0) {
         await opened?.recordUsageCalls(reply.calls);
@@ -598,6 +606,8 @@ export function mountPanel(
       }
       if (dialog.open && !usagePanel.hidden) await usage.refresh();
     } catch (error) {
+      if (controller.signal.aborted) speech.cancel();
+      else speech.finish();
       if (controller.signal.aborted || isAbort(error)) {
         finalStatus = '已停止';
         if (!replaced.has(controller)) show('已停止', 'note');
@@ -607,6 +617,7 @@ export function mountPanel(
         show(explain(error instanceof Error ? error.message : String(error)), 'note');
       }
     } finally {
+      controller.signal.removeEventListener('abort', abortSpeech);
       if (current === controller) {
         status.finish(finalStatus);
         current = null;

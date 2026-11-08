@@ -441,3 +441,49 @@ it('loads immutable model and wasm URLs with the matching model id', async () =>
     context_window_size: 4096,
   });
 });
+
+it('closes an idle action session without starting inference', async () => {
+  const runtime = createLocalRuntime();
+  await runtime.localSession!('idle', true);
+  await runtime.localSession!('idle', false);
+  expect(mock.create).not.toHaveBeenCalled();
+});
+
+it('shares one MLCEngine between page actions and diary MessagePort requests', async () => {
+  const { MessageChannel } = await import('node:worker_threads');
+  const { WorkerLocalBackend } = await import('@/src/client/local/workerClient');
+  const { attachInferenceWorker } = await import('@/src/client/local/workerAttach');
+  const channel = new MessageChannel();
+  const pagePort = {
+    onmessage: null as ((event: MessageEvent<any>) => void) | null,
+    postMessage(data: any) {
+      scope.onmessage?.({ data } as MessageEvent);
+    },
+  };
+  const scope = {
+    onmessage: null as ((event: MessageEvent<any>) => void) | null,
+    postMessage(data: any) {
+      pagePort.onmessage?.({ data } as MessageEvent);
+    },
+  };
+  attachInferenceWorker(scope, createLocalRuntime());
+  const page = new WorkerLocalBackend(pagePort);
+  scope.onmessage?.({ data: { event: 'connect', key: 1, port: channel.port1 } } as MessageEvent);
+  const diary = new WorkerLocalBackend(
+    channel.port2 as unknown as import('@/src/client/local/workerClient').LocalPort,
+  );
+  try {
+    await Promise.all([page.localLoad(), diary.localLoad()]);
+    expect(mock.construct).toHaveBeenCalledOnce();
+    expect(mock.reload).toHaveBeenCalledOnce();
+    const replies = await Promise.all([
+      diary.localComplete('same-id', [], { kind: 'summary' }),
+      page.localComplete('same-id', []),
+    ]);
+    expect(replies.map((reply) => reply.text)).toEqual(['done', 'done']);
+    expect(mock.create).toHaveBeenCalledTimes(2);
+  } finally {
+    channel.port1.close();
+    channel.port2.close();
+  }
+});

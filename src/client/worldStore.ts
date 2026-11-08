@@ -1,5 +1,5 @@
 import { localDate } from '@/src/shared/dates';
-import type { SnapshotStore } from '@/src/client/journal/store';
+import type { SnapshotStore } from '@/src/client/storage/snapshot';
 import { PersistentCache } from '@/src/client/store/cache';
 import {
   applyBody,
@@ -78,7 +78,9 @@ export function setWorldTerrainSource(source: ((seed: number) => Promise<Terrain
 
 function resolveStore(): Promise<SnapshotStore> {
   if (providedStore) return Promise.resolve(providedStore);
-  storePromise ??= import('@/src/client/journal/store').then((module) => module.dbSnapshotStore());
+  storePromise ??= import('@/src/client/storage/snapshot').then((module) =>
+    module.dbSnapshotStore(),
+  );
   return storePromise;
 }
 

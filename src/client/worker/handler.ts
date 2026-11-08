@@ -1,11 +1,8 @@
 import { Diary } from '@/src/client/journal/diary';
-import { dbSnapshotStore, type SnapshotStore } from '@/src/client/journal/store';
+import type { PersistenceRepository } from '@/src/client/storage/repository';
 import type { JournalRequest, JournalState } from '@/src/client/worker/protocol';
 
-export type Handler = (
-  request: JournalRequest,
-  onDelta?: (text: string) => void,
-) => Promise<unknown>;
+export type Handler = (request: JournalRequest) => Promise<unknown>;
 
 function stateOf(diary: Diary): JournalState {
   return {
@@ -16,16 +13,12 @@ function stateOf(diary: Diary): JournalState {
   };
 }
 
-export function createHandler(): Handler {
+export function createHandler(repository: PersistenceRepository): Handler {
   let diary: Diary | null = null;
-  let snapshots: SnapshotStore | null = null;
 
   let diaryQueue = Promise.resolve();
-  let snapshotQueue = Promise.resolve();
 
-  const open = async (): Promise<Diary> => (diary ??= await Diary.open());
-  const store = async (): Promise<SnapshotStore> => (snapshots ??= await dbSnapshotStore());
-
+  const open = async (): Promise<Diary> => (diary ??= await Diary.open(new Date(), repository));
   const dispatch = async (request: JournalRequest): Promise<unknown> => {
     switch (request.method) {
       case 'open':
@@ -61,69 +54,16 @@ export function createHandler(): Handler {
         opened.dismissed = request.args[0];
         return stateOf(opened);
       }
-      case 'recordUsage': {
-        const opened = await open();
-        const [usage, now, meta] = request.args;
-        await opened.recordUsage(usage, now == null ? undefined : new Date(now), meta);
-        return null;
-      }
-      case 'recordUsageCall': {
-        const opened = await open();
-        await opened.recordUsageCall(request.args[0]);
-        return null;
-      }
-      case 'recordUsageCalls': {
-        const opened = await open();
-        await opened.recordUsageCalls(request.args[0]);
-        return null;
-      }
-      case 'readUsage':
-        return (await open()).readUsage(request.args[0], request.args[1]);
-      case 'snapshotRead':
-        return (await store()).readSnapshot();
-      case 'snapshotPut':
-        await (await store()).putSnapshot(request.args[0]);
-        return null;
-      case 'snapshotRemove':
-        await (await store()).removeSnapshot();
-        return null;
-      case 'snapshotSweep':
-        await (await store()).sweepSnapshots(request.args[0]);
-        return null;
     }
   };
 
-  return (request, onDelta) => {
-    if (request.method.startsWith('local'))
-      return import('@/src/client/local/runtime').then<unknown>(({ localRuntime }) => {
-        switch (request.method) {
-          case 'localSession':
-            return localRuntime.localSession!(...request.args);
-          case 'localLoad':
-            return localRuntime.localLoad(...request.args);
-          case 'localStatus':
-            return localRuntime.localStatus();
-          case 'localUnload':
-            return localRuntime.localUnload();
-          case 'localComplete':
-            return localRuntime.localComplete(
-              request.args[0],
-              request.args[1],
-              request.args[2],
-              onDelta,
-            );
-          case 'localCancel':
-            return localRuntime.localCancel(...request.args);
-        }
-      });
-    const snapshotsOnly = request.method.startsWith('snapshot');
-    const task = (snapshotsOnly ? snapshotQueue : diaryQueue).then(() => dispatch(request));
+  return (request) => {
+    const task = diaryQueue.then(() => dispatch(request));
     const settled = task.then(
       () => undefined,
       () => undefined,
     );
-    if (snapshotsOnly) snapshotQueue = settled;
-    else diaryQueue = settled;
+    diaryQueue = settled;
     return task;
   };
 }

@@ -5,7 +5,7 @@ import { localProgress } from '@/src/client/local/progress';
 import { localText } from '@/src/client/local/text';
 import { LOCAL_MODEL, type LocalBackend, type LocalStatus } from '@/src/client/local/types';
 
-/** One engine in the journal worker, shared by actions and diary summaries. */
+/** One engine in the dedicated inference worker, shared by actions and diary summaries. */
 export function createLocalRuntime(): LocalBackend {
   let engine: MLCEngine | null = null;
   let status: LocalStatus = { ready: false, text: '尚未加载本机模型' };
@@ -216,4 +216,3 @@ export function createLocalRuntime(): LocalBackend {
       }),
   };
 }
-export const localRuntime = createLocalRuntime();
