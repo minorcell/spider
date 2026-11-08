@@ -1,6 +1,6 @@
-import { h } from '../dom/index.js';
-import { onMedia, paint } from '../style.js';
-import { border, color, media } from '../token.js';
+import { h } from '@/src/ui/dom';
+import { onMedia, paint } from '@/src/ui/style';
+import { border, color, media } from '@/src/ui/token';
 
 export type DialogKind = 'card' | 'sheet';
 

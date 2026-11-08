@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { localProgress } from '../../../src/client/local/progress.js';
+import { localProgress } from '@/src/client/local/progress';
 
 it('translates download progress and estimates only the current download stage', () => {
   expect(

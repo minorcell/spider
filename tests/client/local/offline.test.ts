@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { prepareOffline } from '../../../src/client/local/offline.js';
+import { prepareOffline } from '@/src/client/local/offline';
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();

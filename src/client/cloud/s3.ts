@@ -1,5 +1,5 @@
-import type { CloudSettings } from './settings.js';
-import { signedHeaders } from './sigv4.js';
+import type { CloudSettings } from '@/src/client/cloud/settings';
+import { signedHeaders } from '@/src/client/cloud/sigv4';
 
 export interface ObjectResult {
   status: number;

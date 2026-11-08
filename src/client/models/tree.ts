@@ -8,10 +8,10 @@ import {
   Vector3,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { PALETTE } from '../../shared/config.js';
-import { mulberry32 } from '../../shared/noise.js';
-import { growShell, inkMat, inkSolidMat, stemMat } from '../../shared/sim/parts.js';
-import { groupHeight, lineFrom, pushLine, tubeGeometry } from './geometry.js';
+import { PALETTE } from '@/src/shared/config';
+import { mulberry32 } from '@/src/shared/noise';
+import { growShell, inkMat, inkSolidMat, stemMat } from '@/src/shared/sim/parts';
+import { groupHeight, lineFrom, pushLine, tubeGeometry } from '@/src/client/models/geometry';
 
 const TAU = Math.PI * 2;
 

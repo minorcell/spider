@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { bundleBytes, parseBundle, parseLease, worldOf } from '../../../src/client/cloud/bundle.js';
-import { progressHash } from '../../../src/client/cloud/bytes.js';
-import { captureBody, type WorldRecord } from '../../../src/shared/sim/snapshot.js';
-import { SimSession } from '../../../src/shared/sim/session.js';
+import { bundleBytes, parseBundle, parseLease, worldOf } from '@/src/client/cloud/bundle';
+import { progressHash } from '@/src/client/cloud/bytes';
+import { captureBody, type WorldRecord } from '@/src/shared/sim/snapshot';
+import { SimSession } from '@/src/shared/sim/session';
 
 const memory = {
   date: '2026-11-06',

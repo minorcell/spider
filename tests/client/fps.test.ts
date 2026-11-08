@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FpsDisplay } from '../../src/client/fps.js';
+import { FpsDisplay } from '@/src/client/fps';
 
 describe('FpsDisplay', () => {
   it('exposes slow frames even when the average frame rate hides them', () => {

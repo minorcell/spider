@@ -9,15 +9,15 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import { BONES, CONTACT, GAIT, MOUNTS } from '../config.js';
-import { WORLD_RADIUS } from '../terrain.js';
-import type { SpiderState } from '../state.js';
-import { IDLE_CONTROLS, type Controls } from '../types.js';
-import { floatHeight, WATER, waterPace, type Water } from '../water.js';
-import { Leg } from './Leg.js';
-import { solveLeg, supportY, type LegSphere } from './legPose.js';
-import { ballGeo, ballShell, inkSolidMat, spiderMat } from './parts.js';
-import { buildSpiderBody } from './spiderBody.js';
+import { BONES, CONTACT, GAIT, MOUNTS } from '@/src/shared/config';
+import { WORLD_RADIUS } from '@/src/shared/terrain';
+import type { SpiderState } from '@/src/shared/state';
+import { IDLE_CONTROLS, type Controls } from '@/src/shared/types';
+import { floatHeight, WATER, waterPace, type Water } from '@/src/shared/water';
+import { Leg } from '@/src/shared/sim/Leg';
+import { solveLeg, supportY, type LegSphere } from '@/src/shared/sim/legPose';
+import { ballGeo, ballShell, inkSolidMat, spiderMat } from '@/src/shared/sim/parts';
+import { buildSpiderBody } from '@/src/shared/sim/spiderBody';
 
 // A cephalothorax on eight jointed legs, an abdomen hung behind it, and an
 // alternating tetrapod gait. The drawn shell is finer than these two clearance

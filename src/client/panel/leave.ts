@@ -1,7 +1,7 @@
-import { closeDialog, showDialog } from '../../ui/dialog/index.js';
-import type { Journal } from '../journal/api.js';
-import { readPilot } from '../settings.js';
-import { explain } from './helpers.js';
+import { closeDialog, showDialog } from '@/src/ui/dialog';
+import type { Journal } from '@/src/client/journal/api';
+import { readPilot } from '@/src/client/settings';
+import { explain } from '@/src/client/panel/helpers';
 
 export function bindLeave(opts: {
   leave: HTMLDialogElement;

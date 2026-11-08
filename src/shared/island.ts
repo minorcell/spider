@@ -1,7 +1,7 @@
 import { Color, MathUtils } from 'three';
-import { PALETTE } from './config.js';
-import { mulberry32 } from './noise.js';
-import { TERRAIN } from './terrain.js';
+import { PALETTE } from '@/src/shared/config';
+import { mulberry32 } from '@/src/shared/noise';
+import { TERRAIN } from '@/src/shared/terrain';
 
 const water = new Color(PALETTE.water);
 const lowland = new Color(PALETTE.ground);

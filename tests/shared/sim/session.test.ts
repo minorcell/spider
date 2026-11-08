@@ -1,22 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { KINDS } from '../../../src/shared/kinds.js';
-import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '../../../src/shared/config.js';
-import { STUCK_LIMIT, type Goal } from '../../../src/shared/sim/goals.js';
-import { visualRange, worldClock } from '../../../src/shared/ecology.js';
-import { SimSession } from '../../../src/shared/sim/session.js';
-import { insideHome } from '../../../src/shared/sight.js';
-import { Terrain } from '../../../src/shared/terrain.js';
-import type { EntityState } from '../../../src/shared/state.js';
-import type { Controls } from '../../../src/shared/types.js';
-import { block } from '../../helpers.js';
-import { drive } from '../../simHelpers.js';
+import { KINDS } from '@/src/shared/kinds';
+import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
+import { STUCK_LIMIT, type Goal } from '@/src/shared/sim/goals';
+import { visualRange, worldClock } from '@/src/shared/ecology';
+import { SimSession } from '@/src/shared/sim/session';
+import { insideHome } from '@/src/shared/sight';
+import { Terrain } from '@/src/shared/terrain';
+import type { EntityState } from '@/src/shared/state';
+import type { Controls } from '@/src/shared/types';
+import { block } from '@/tests/helpers';
+import { drive } from '@/tests/simHelpers';
 
 const routeControl = vi.hoisted(() => ({
   plan: null as null | ((...args: unknown[]) => unknown),
 }));
 
-vi.mock('../../../src/shared/route.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../src/shared/route.js')>();
+vi.mock('@/src/shared/route', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/src/shared/route')>();
   return {
     ...actual,
     planRoute: (...args: Parameters<typeof actual.planRoute>) =>

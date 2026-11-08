@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Quaternion, Vector3 } from 'three';
-import { groundSupport } from '../../../src/shared/contact.js';
-import { CONTACT, PHYSICS } from '../../../src/shared/config.js';
-import { KINDS } from '../../../src/shared/kinds.js';
-import { stepPhysics } from '../../../src/shared/sim/physics.js';
-import type { Block, EntityState, WorldState } from '../../../src/shared/state.js';
+import { groundSupport } from '@/src/shared/contact';
+import { CONTACT, PHYSICS } from '@/src/shared/config';
+import { KINDS } from '@/src/shared/kinds';
+import { stepPhysics } from '@/src/shared/sim/physics';
+import type { Block, EntityState, WorldState } from '@/src/shared/state';
 
 const body = { x: 100, z: 100, speed: 0 };
 const APPLE_RADIUS = KINDS.apple.physics!.radius;

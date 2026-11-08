@@ -6,8 +6,8 @@ vi.mock('ai', () => ({ generateText: ai.generateText }));
 const compat = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock('@ai-sdk/openai-compatible', () => ({ createOpenAICompatible: compat.create }));
 
-import { summarizeDiary } from '../../src/client/journal/summarize.js';
-import type { PilotSettings } from '../../src/client/settings.js';
+import { summarizeDiary } from '@/src/client/journal/summarize';
+import type { PilotSettings } from '@/src/client/settings';
 
 const settings: PilotSettings = {
   provider: 'custom',

@@ -1,7 +1,7 @@
-import { h } from '../../ui/dom/index.js';
-import { button } from '../../ui/button/index.js';
-import { paint } from '../../ui/style.js';
-import { border, color } from '../../ui/token.js';
+import { h } from '@/src/ui/dom';
+import { button } from '@/src/ui/button';
+import { paint } from '@/src/ui/style';
+import { border, color } from '@/src/ui/token';
 
 export function localModelPanel(doc: Document): HTMLElement {
   const panel = h(doc, 'div', { id: 'local-model-panel', hidden: true });

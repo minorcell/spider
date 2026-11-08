@@ -8,7 +8,7 @@ import {
   modelsURL,
   providerById,
   providerNeedsKey,
-} from '../../src/client/providers.js';
+} from '@/src/client/providers';
 
 function response(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as unknown as Response;

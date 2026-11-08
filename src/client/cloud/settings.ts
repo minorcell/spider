@@ -1,6 +1,6 @@
-import type { PreferenceRecord } from '../journal/db.js';
-import { openSpiderDb } from '../journal/db.js';
-import { PersistentCache } from '../store/cache.js';
+import type { PreferenceRecord } from '@/src/client/journal/db';
+import { openSpiderDb } from '@/src/client/journal/db';
+import { PersistentCache } from '@/src/client/store/cache';
 
 const STORAGE_KEY = 'spider.cloud';
 const OPEN_MS = 1500;

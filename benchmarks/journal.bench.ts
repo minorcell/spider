@@ -7,7 +7,7 @@ import {
   transcript,
   type ChatSession,
   type CompactLimits,
-} from '../src/client/journal/session.js';
+} from '@/src/client/journal/session';
 
 function longDay(turns: number): ChatSession {
   return {

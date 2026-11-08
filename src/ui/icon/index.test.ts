@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { icon, iconButton } from './index.js';
+import { icon, iconButton } from '@/src/ui/icon';
 
 describe('icon', () => {
   it('draws a gear', () => {

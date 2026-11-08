@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
-import { parseInlineCalls, withInlineCalls } from '../src/client/agent/inline.js';
-import { spiderTools } from '../src/client/agent/tools.js';
-import { localMessages } from '../src/client/local/fetch.js';
-import { SimSession } from '../src/shared/sim/session.js';
+import { parseInlineCalls, withInlineCalls } from '@/src/client/agent/inline';
+import { spiderTools } from '@/src/client/agent/tools';
+import { localMessages } from '@/src/client/local/fetch';
+import { SimSession } from '@/src/shared/sim/session';
 
 const all = spiderTools(new SimSession(1234));
 const tools = [all.observe, all.go, all.set_height].map((tool, i) => ({

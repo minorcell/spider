@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNoise, fbm, mulberry32 } from '../../src/shared/noise.js';
+import { createNoise, fbm, mulberry32 } from '@/src/shared/noise';
 
 describe('mulberry32', () => {
   it('is deterministic and stays in [0, 1)', () => {

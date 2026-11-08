@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetSpiderDb } from '../../../src/client/journal/db.js';
-import { Diary } from '../../../src/client/journal/diary.js';
-import { openJournal } from '../../../src/client/journal/api.js';
-import { WorkerJournal } from '../../../src/client/worker/client.js';
-import type { JournalReply, JournalRequest } from '../../../src/client/worker/protocol.js';
-import { blankSession } from '../../../src/client/journal/session.js';
+import { resetSpiderDb } from '@/src/client/journal/db';
+import { Diary } from '@/src/client/journal/diary';
+import { openJournal } from '@/src/client/journal/api';
+import { WorkerJournal } from '@/src/client/worker/client';
+import type { JournalReply, JournalRequest } from '@/src/client/worker/protocol';
+import { blankSession } from '@/src/client/journal/session';
 
 const STATE = {
   date: '2026-11-02',

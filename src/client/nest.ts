@@ -5,8 +5,8 @@ import {
   NEST_ROOT_SKIN,
   nestPebbleGeometry,
   nestRootGeometry,
-} from '../shared/nestDetails.js';
-import { NEST_RO, NEST_SCALE_XZ, NEST_SCALE_Y, nestLocalHeight } from '../shared/nestShape.js';
+} from '@/src/shared/nestDetails';
+import { NEST_RO, NEST_SCALE_XZ, NEST_SCALE_Y, nestLocalHeight } from '@/src/shared/nestShape';
 import {
   growShell,
   inkSolidMat,
@@ -14,9 +14,9 @@ import {
   soilMat,
   stemMat,
   stoneMat,
-} from '../shared/sim/parts.js';
-import { buildGrass } from './grassMesh.js';
-import { lineFrom, pushLine } from './models/geometry.js';
+} from '@/src/shared/sim/parts';
+import { buildGrass } from '@/src/client/grassMesh';
+import { lineFrom, pushLine } from '@/src/client/models/geometry';
 
 const TAU = Math.PI * 2;
 

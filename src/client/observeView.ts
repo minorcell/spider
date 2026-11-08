@@ -12,15 +12,15 @@ import {
   Vector3,
   type Camera,
 } from 'three';
-import { PALETTE } from '../shared/config.js';
-import { paintObserve, paintPin } from '../ui/dress.js';
-import { aheadAt } from '../shared/sense.js';
-import { EYE_HEIGHT, grassHere, sightOutline } from '../shared/sight.js';
-import { surfaceOf } from '../shared/terrain.js';
-import { toHeading, toObservation, type Observation, type WorldState } from '../shared/state.js';
+import { PALETTE } from '@/src/shared/config';
+import { paintObserve, paintPin } from '@/src/ui/dress';
+import { aheadAt } from '@/src/shared/sense';
+import { EYE_HEIGHT, grassHere, sightOutline } from '@/src/shared/sight';
+import { surfaceOf } from '@/src/shared/terrain';
+import { toHeading, toObservation, type Observation, type WorldState } from '@/src/shared/state';
 
-import { GRASS_VIEW, REACH, REACH_Y, VIEW_DISTANCE } from '../shared/world.js';
-import type { Spider } from '../shared/sim/Spider.js';
+import { GRASS_VIEW, REACH, REACH_Y, VIEW_DISTANCE } from '@/src/shared/world';
+import type { Spider } from '@/src/shared/sim/Spider';
 
 const RING = 72;
 const OBSERVE_REFRESH_MS = 100;

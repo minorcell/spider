@@ -1,20 +1,20 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { buildChrome } from '../../../src/client/panel/chrome.js';
-import { bindLocalPanel } from '../../../src/client/local/panel.js';
+import { buildChrome } from '@/src/client/panel/chrome';
+import { bindLocalPanel } from '@/src/client/local/panel';
 const mock = vi.hoisted(() => ({
   load: vi.fn(),
   status: vi.fn(),
   unload: vi.fn(),
   offline: vi.fn(),
 }));
-vi.mock('../../../src/client/local/backend.js', () => ({
+vi.mock('@/src/client/local/backend', () => ({
   localBackend: async () => ({
     localLoad: mock.load,
     localStatus: mock.status,
     localUnload: mock.unload,
   }),
 }));
-vi.mock('../../../src/client/local/offline.js', () => ({ prepareOffline: mock.offline }));
+vi.mock('@/src/client/local/offline', () => ({ prepareOffline: mock.offline }));
 const button = (id: string) => document.querySelector<HTMLButtonElement>(id)!;
 const status = () => document.querySelector('#local-status')!.textContent;
 beforeEach(() => {

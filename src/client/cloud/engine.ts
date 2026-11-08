@@ -1,13 +1,13 @@
-import { canonicalBytes, progressHash } from './bytes.js';
+import { canonicalBytes, progressHash } from '@/src/client/cloud/bytes';
 import {
   bundleBytes,
   parseBundle,
   parseLease,
   type CloudBundle,
   type CloudLease,
-} from './bundle.js';
-import type { ObjectMatch, ObjectResult } from './s3.js';
-import { cloudReady, type CloudSettings } from './settings.js';
+} from '@/src/client/cloud/bundle';
+import type { ObjectMatch, ObjectResult } from '@/src/client/cloud/s3';
+import { cloudReady, type CloudSettings } from '@/src/client/cloud/settings';
 
 export const WORLD_KEY = 'spider/world.json';
 export const LEASE_KEY = 'spider/lease.json';

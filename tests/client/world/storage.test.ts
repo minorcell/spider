@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { captureBody, type WorldRecord } from '../../../src/shared/sim/snapshot.js';
-import { SimSession } from '../../../src/shared/sim/session.js';
-import { localDate } from '../../../src/shared/dates.js';
+import { captureBody, type WorldRecord } from '@/src/shared/sim/snapshot';
+import { SimSession } from '@/src/shared/sim/session';
+import { localDate } from '@/src/shared/dates';
 import {
   LEASE_KEY,
   OWNER_KEY,
@@ -15,7 +15,7 @@ import {
   readBuffer,
   readLease,
   setLease,
-} from '../../../src/client/world/storage.js';
+} from '@/src/client/world/storage';
 
 function record(over: Partial<WorldRecord> = {}): WorldRecord {
   const body = captureBody(new SimSession(3), null);

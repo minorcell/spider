@@ -1,8 +1,8 @@
-import { PALETTE } from '../../src/shared/config.js';
+import { PALETTE } from '@/src/shared/config';
 import { describe, expect, it, vi } from 'vitest';
-import { applyEcologyLighting, EcologySky } from '../../src/client/ecologyView.js';
-import { buildIsland } from '../../src/client/groundView.js';
-import { worldClock } from '../../src/shared/ecology.js';
+import { applyEcologyLighting, EcologySky } from '@/src/client/ecologyView';
+import { buildIsland } from '@/src/client/groundView';
+import { worldClock } from '@/src/shared/ecology';
 import { Color, InstancedMesh, Matrix4, Mesh, Vector3 } from 'three';
 
 describe('applyEcologyLighting', () => {

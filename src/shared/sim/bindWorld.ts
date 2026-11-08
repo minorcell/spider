@@ -1,8 +1,8 @@
-import { kindOf } from '../kinds.js';
-import { nestSolidSurface } from '../nestCollision.js';
-import type { WorldState } from '../state.js';
-import type { LegSphere } from './legPose.js';
-import type { Spider } from './Spider.js';
+import { kindOf } from '@/src/shared/kinds';
+import { nestSolidSurface } from '@/src/shared/nestCollision';
+import type { WorldState } from '@/src/shared/state';
+import type { LegSphere } from '@/src/shared/sim/legPose';
+import type { Spider } from '@/src/shared/sim/Spider';
 
 export function bindLegWorld(spider: Spider, world: WorldState): void {
   const pool: LegSphere[] = [];

@@ -1,7 +1,7 @@
 import { CylinderGeometry, Group, Mesh, MeshBasicMaterial, PointLight, type Object3D } from 'three';
-import { DECK_Y } from '../shared/config.js';
-import { dayBrightness } from './ecologyView.js';
-import type { WorldClock } from '../shared/ecology.js';
+import { DECK_Y } from '@/src/shared/config';
+import { dayBrightness } from '@/src/client/ecologyView';
+import type { WorldClock } from '@/src/shared/ecology';
 
 const POOL = { color: 0xffc56a, intensity: 2.6, distance: 6.5, decay: 1 } as const;
 

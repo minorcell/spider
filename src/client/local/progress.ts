@@ -1,5 +1,5 @@
 import type { InitProgressReport } from '@mlc-ai/web-llm';
-import type { LocalStatus } from './types.js';
+import type { LocalStatus } from '@/src/client/local/types';
 
 /** Progress is per stage: downloading, copying cached weights, then compiling shaders. */
 export function localProgress(report: InitProgressReport): LocalStatus {

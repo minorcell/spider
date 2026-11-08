@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { openSpiderDb, resetSpiderDb } from '../../../src/client/journal/db.js';
+import { openSpiderDb, resetSpiderDb } from '@/src/client/journal/db';
 import {
   cloudComplete,
   cloudReady,
@@ -9,7 +9,7 @@ import {
   restoreCloud,
   writeCloud,
   type CloudSettings,
-} from '../../../src/client/cloud/settings.js';
+} from '@/src/client/cloud/settings';
 
 const EMPTY: CloudSettings = {
   endpoint: '',

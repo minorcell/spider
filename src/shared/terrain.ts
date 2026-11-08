@@ -1,4 +1,4 @@
-import { createNoise } from './noise.js';
+import { createNoise } from '@/src/shared/noise';
 
 export const TERRAIN = {
   half: 52,

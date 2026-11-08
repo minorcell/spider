@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pill } from './index.js';
+import { pill } from '@/src/ui/pill';
 
 describe('pill', () => {
   it('wraps a short label in an outline', () => {

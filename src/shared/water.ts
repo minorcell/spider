@@ -1,5 +1,5 @@
-import { SPIDER_BODY } from './config.js';
-import { nearestWater, TERRAIN } from './terrain.js';
+import { SPIDER_BODY } from '@/src/shared/config';
+import { nearestWater, TERRAIN } from '@/src/shared/terrain';
 
 export const WATER = {
   density: 1,

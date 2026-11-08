@@ -1,5 +1,5 @@
-import { useLocalBackend } from '../local/backend.js';
-import { setLocalBusy } from '../local/activity.js';
+import { useLocalBackend } from '@/src/client/local/backend';
+import { setLocalBusy } from '@/src/client/local/activity';
 import type {
   LocalBackend,
   LocalLoadOptions,
@@ -7,17 +7,22 @@ import type {
   LocalOptions,
   LocalReply,
   LocalStatus,
-} from '../local/types.js';
+} from '@/src/client/local/types';
 import type { LanguageModelUsage } from 'ai';
-import type { WorldRecord } from '../../shared/sim/snapshot.js';
-import type { Journal } from '../journal/api.js';
-import type { MemoryPage } from '../journal/db.js';
-import type { MemoryApi, MemoryView, MemoryWrite } from '../journal/diary.js';
-import { blankSession, type ChatSession, type Trace } from '../journal/session.js';
-import type { SnapshotStore } from '../journal/store.js';
-import type { UsageCall, UsageCallMeta, UsageRange, UsageSnapshot } from '../journal/usage.js';
-import type { PilotSettings } from '../settings.js';
-import type { JournalReply, JournalRequest, JournalResultMap } from './protocol.js';
+import type { WorldRecord } from '@/src/shared/sim/snapshot';
+import type { Journal } from '@/src/client/journal/api';
+import type { MemoryPage } from '@/src/client/journal/db';
+import type { MemoryApi, MemoryView, MemoryWrite } from '@/src/client/journal/diary';
+import { blankSession, type ChatSession, type Trace } from '@/src/client/journal/session';
+import type { SnapshotStore } from '@/src/client/journal/store';
+import type {
+  UsageCall,
+  UsageCallMeta,
+  UsageRange,
+  UsageSnapshot,
+} from '@/src/client/journal/usage';
+import type { PilotSettings } from '@/src/client/settings';
+import type { JournalReply, JournalRequest, JournalResultMap } from '@/src/client/worker/protocol';
 
 export interface WorkerPort {
   postMessage(message: JournalRequest): void;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { kpi, kpiGrid } from './index.js';
+import { kpi, kpiGrid } from '@/src/ui/kpi';
 
 afterEach(() => {
   vi.unstubAllGlobals();

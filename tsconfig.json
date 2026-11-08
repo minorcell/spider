@@ -9,6 +9,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "paths": {
+      "@/*": ["./*"]
+    }
   }
 }

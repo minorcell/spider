@@ -5,7 +5,7 @@ import {
   startThemeClock,
   themeAt,
   themeForPeriod,
-} from '../../src/client/themeClock.js';
+} from '@/src/client/themeClock';
 
 afterEach(() => {
   vi.useRealTimers();

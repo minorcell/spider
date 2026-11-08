@@ -1,5 +1,5 @@
-import { mulberry32 } from './noise.js';
-import { TERRAIN } from './terrain.js';
+import { mulberry32 } from '@/src/shared/noise';
+import { TERRAIN } from '@/src/shared/terrain';
 
 export function grassOnDryGround(
   height: (x: number, z: number) => number,

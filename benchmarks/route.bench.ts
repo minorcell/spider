@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { surfaceOf } from '../src/shared/terrain.js';
-import { createWorld } from '../src/shared/world.js';
-import { planAroundNest, SEED } from '../tests/perf/scenarios.js';
+import { surfaceOf } from '@/src/shared/terrain';
+import { createWorld } from '@/src/shared/world';
+import { planAroundNest, SEED } from '@/tests/perf/scenarios';
 
 const world = createWorld(SEED);
 const nestWalls = world.blocks.filter((wall) => wall.id.startsWith('nest-ring-'));

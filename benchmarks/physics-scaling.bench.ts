@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { CARRY_LIMIT, PHYSICS } from '../src/shared/config.js';
-import { stepPhysics } from '../src/shared/sim/physics.js';
-import { SimSession } from '../src/shared/sim/session.js';
-import { applyBody, captureBody } from '../src/shared/sim/snapshot.js';
-import type { EntityState, WorldState } from '../src/shared/state.js';
-import { Terrain } from '../src/shared/terrain.js';
-import { SEED, stepDriven } from '../tests/perf/scenarios.js';
+import { CARRY_LIMIT, PHYSICS } from '@/src/shared/config';
+import { stepPhysics } from '@/src/shared/sim/physics';
+import { SimSession } from '@/src/shared/sim/session';
+import { applyBody, captureBody } from '@/src/shared/sim/snapshot';
+import type { EntityState, WorldState } from '@/src/shared/state';
+import { Terrain } from '@/src/shared/terrain';
+import { SEED, stepDriven } from '@/tests/perf/scenarios';
 
 describe('loose-body scaling', () => {
   for (const count of [20, 40, 80, 160]) {

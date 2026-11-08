@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { bindFocus, onMedia, paint } from './style.js';
+import { bindFocus, onMedia, paint } from '@/src/ui/style';
 
 afterEach(() => {
   vi.unstubAllGlobals();

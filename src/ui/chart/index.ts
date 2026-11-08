@@ -1,7 +1,7 @@
-import { card } from '../card/index.js';
-import { h } from '../dom/index.js';
-import { paint } from '../style.js';
-import { border, color, ring as RING } from '../token.js';
+import { card } from '@/src/ui/card';
+import { h } from '@/src/ui/dom';
+import { paint } from '@/src/ui/style';
+import { border, color, ring as RING } from '@/src/ui/token';
 
 export type StackedBar = {
   label: string;

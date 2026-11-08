@@ -1,8 +1,8 @@
 import { expect, it, vi } from 'vitest';
-import { runAgent, type AgentEvent } from '../../../src/client/agent/loop.js';
-import { useLocalBackend } from '../../../src/client/local/backend.js';
-import type { LocalBackend } from '../../../src/client/local/types.js';
-import { SimSession } from '../../../src/shared/sim/session.js';
+import { runAgent, type AgentEvent } from '@/src/client/agent/loop';
+import { useLocalBackend } from '@/src/client/local/backend';
+import type { LocalBackend } from '@/src/client/local/types';
+import { SimSession } from '@/src/shared/sim/session';
 
 it('executes a wrapped local tool call through the real SDK without showing its JSON or result', async () => {
   const raw =

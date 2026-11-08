@@ -40,18 +40,18 @@ const cloud = vi.hoisted(() => ({
   keepaliveCloud: vi.fn(),
 }));
 
-vi.mock('../../src/client/journal/api.js', () => ({ openJournal: opening.openJournal }));
-vi.mock('../../src/client/settings.js', () => settings);
+vi.mock('@/src/client/journal/api', () => ({ openJournal: opening.openJournal }));
+vi.mock('@/src/client/settings', () => settings);
 
-vi.mock('../../src/client/stars.js', () => ({
+vi.mock('@/src/client/stars', () => ({
   REPO: 'minorcell/spider',
   REPO_STARS: '6',
   syncStars: stars.syncStars,
 }));
 
-vi.mock('../../src/client/cloud/sync.js', () => cloud);
+vi.mock('@/src/client/cloud/sync', () => cloud);
 
-vi.mock('../../src/client/stage.js', () => ({
+vi.mock('@/src/client/stage', () => ({
   Stage: class {
     bind = control.bind;
     start = control.start;
@@ -68,20 +68,20 @@ vi.mock('../../src/client/stage.js', () => ({
   },
 }));
 
-vi.mock('../../src/client/panel.js', () => ({
+vi.mock('@/src/client/panel', () => ({
   mountPanel: (...args: unknown[]) => {
     control.panels.push(args);
   },
 }));
 
-vi.mock('../../src/client/worldStore.js', () => ({
+vi.mock('@/src/client/worldStore', () => ({
   restoreWorld: world.restoreWorld,
   installWorldStore: world.installWorldStore,
   flushWorld: world.flushWorld,
   setWorldTerrainSource: world.setWorldTerrainSource,
 }));
 
-vi.mock('../../src/shared/sim/session.js', () => ({
+vi.mock('@/src/shared/sim/session', () => ({
   SimSession: class {
     spider = { tag: 'spider' };
     world = { tag: 'world' };
@@ -133,7 +133,7 @@ beforeEach(() => {
 
 describe('main', () => {
   it('refuses to start without the stage host', async () => {
-    await expect(import('../../src/client/main.js')).rejects.toThrow('Missing #stage host element');
+    await expect(import('@/src/client/main')).rejects.toThrow('Missing #stage host element');
   });
 
   it('wires the session, stage, and panel together', async () => {
@@ -145,7 +145,7 @@ describe('main', () => {
       return { restored: false, cause: null, pendingText: null };
     });
 
-    await import('../../src/client/main.js');
+    await import('@/src/client/main');
     await Promise.resolve();
 
     const session = control.sessions[0] as { spider: unknown; world: unknown; frame: unknown };
@@ -209,7 +209,7 @@ describe('main', () => {
     document.body.append(host);
     opening.openJournal.mockRejectedValueOnce(new Error('no worker'));
 
-    await import('../../src/client/main.js');
+    await import('@/src/client/main');
     await Promise.resolve();
 
     expect(control.stages).toHaveLength(1);
@@ -233,7 +233,7 @@ describe('main', () => {
     };
     opening.openJournal.mockResolvedValueOnce({ journal: {}, store });
 
-    await import('../../src/client/main.js');
+    await import('@/src/client/main');
 
     const adapter = world.restoreWorld.mock.calls[0][2] as unknown as typeof store;
     expect(world.installWorldStore.mock.calls[0][1]).toBe(adapter);
@@ -254,7 +254,7 @@ describe('main', () => {
     document.body.append(host);
     cloud.cloudHolds.mockReturnValue(true);
 
-    await import('../../src/client/main.js');
+    await import('@/src/client/main');
 
     expect(cloud.startCloud).toHaveBeenCalledTimes(1);
     expect(world.flushWorld).not.toHaveBeenCalledWith('poke');
@@ -265,14 +265,13 @@ describe('main', () => {
     host.id = 'stage';
     document.body.append(host);
     const { SimSession: RealSession } = await vi.importActual<
-      typeof import('../../src/shared/sim/session.js')
-    >('../../src/shared/sim/session.js');
-    const { captureBody } = await vi.importActual<
-      typeof import('../../src/shared/sim/snapshot.js')
-    >('../../src/shared/sim/snapshot.js');
-    const { localDate } = await vi.importActual<typeof import('../../src/shared/dates.js')>(
-      '../../src/shared/dates.js',
+      typeof import('@/src/shared/sim/session')
+    >('@/src/shared/sim/session');
+    const { captureBody } = await vi.importActual<typeof import('@/src/shared/sim/snapshot')>(
+      '@/src/shared/sim/snapshot',
     );
+    const { localDate } =
+      await vi.importActual<typeof import('@/src/shared/dates')>('@/src/shared/dates');
     localStorage.setItem(
       'spider.world',
       JSON.stringify({
@@ -287,7 +286,7 @@ describe('main', () => {
       }),
     );
 
-    await import('../../src/client/main.js');
+    await import('@/src/client/main');
 
     expect(control.sessionArgs[0]?.[0]).toBe(42);
     const terrain = control.sessionArgs[0]?.[1] as { height(x: number, z: number): number };

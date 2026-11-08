@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CylinderGeometry, Group } from 'three';
-import { DECK_Y, MOUNTS } from '../../src/shared/config.js';
-import { Headlamp } from '../../src/client/headlamp.js';
-import { worldClock } from '../../src/shared/ecology.js';
+import { DECK_Y, MOUNTS } from '@/src/shared/config';
+import { Headlamp } from '@/src/client/headlamp';
+import { worldClock } from '@/src/shared/ecology';
 
 describe('Headlamp', () => {
   it('lies flat on the cephalothorax, between the leg mounts', () => {

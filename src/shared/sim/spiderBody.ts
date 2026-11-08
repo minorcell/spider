@@ -12,7 +12,7 @@ import {
   Vector3,
   type Object3D,
 } from 'three';
-import { DECK_Y } from '../config.js';
+import { DECK_Y } from '@/src/shared/config';
 import {
   eyeMat,
   growShell,
@@ -22,7 +22,7 @@ import {
   tubeCrest,
   tubeGeo,
   tubeShell,
-} from './parts.js';
+} from '@/src/shared/sim/parts';
 
 const CEPH_REAR_Z = 0.36;
 const CEPH_Y_SCALE = 0.18 / 0.55;

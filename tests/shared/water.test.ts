@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SPIDER_BODY } from '../../src/shared/config.js';
-import { TERRAIN } from '../../src/shared/terrain.js';
+import { SPIDER_BODY } from '@/src/shared/config';
+import { TERRAIN } from '@/src/shared/terrain';
 import {
   capHeight,
   floatHeight,
@@ -13,7 +13,7 @@ import {
   WATER,
   waterAt,
   waterPace,
-} from '../../src/shared/water.js';
+} from '@/src/shared/water';
 
 describe('waterAt', () => {
   it('reports the column over a hollow and nothing on dry ground', () => {

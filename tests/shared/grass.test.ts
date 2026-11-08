@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Mesh } from 'three';
-import { grassClumps, grassOnDryGround, grassRadius, grassSeed } from '../../src/shared/grass.js';
-import { grassHere } from '../../src/shared/sight.js';
-import { buildProp } from '../../src/client/props.js';
+import { grassClumps, grassOnDryGround, grassRadius, grassSeed } from '@/src/shared/grass';
+import { grassHere } from '@/src/shared/sight';
+import { buildProp } from '@/src/client/props';
 
 describe('grass shape', () => {
   it('invalidates cached cover when a patch is resized or renamed', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { table } from './index.js';
+import { table } from '@/src/ui/table';
 
 describe('table', () => {
   it('builds text and numeric columns and drops the rule under the last row', () => {

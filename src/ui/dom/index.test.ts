@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { h } from './index.js';
+import { h } from '@/src/ui/dom';
 
 describe('h', () => {
   it('sets class, hidden, and attributes, and skips undefined', () => {

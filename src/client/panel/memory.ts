@@ -1,7 +1,7 @@
-import type { MenuSelect } from '../../ui/select/index.js';
-import { reflectSwitch } from '../../ui/switch/index.js';
-import type { Journal } from '../journal/api.js';
-import { readPilot, writePilot } from '../settings.js';
+import type { MenuSelect } from '@/src/ui/select';
+import { reflectSwitch } from '@/src/ui/switch';
+import type { Journal } from '@/src/client/journal/api';
+import { readPilot, writePilot } from '@/src/client/settings';
 
 export function bindMemory(opts: {
   menuMemory: HTMLButtonElement;

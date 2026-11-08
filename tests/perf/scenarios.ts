@@ -1,11 +1,11 @@
-import { buildProp, drapeGrass } from '../../src/client/props.js';
-import { createWorldHandler } from '../../src/client/worker/worldHandler.js';
-import { planRoute } from '../../src/shared/route.js';
-import { SimSession } from '../../src/shared/sim/session.js';
-import type { Block, WorldState } from '../../src/shared/state.js';
-import { WORLD_RADIUS } from '../../src/shared/terrain.js';
-import type { Controls } from '../../src/shared/types.js';
-import { drive } from '../simHelpers.js';
+import { buildProp, drapeGrass } from '@/src/client/props';
+import { createWorldHandler } from '@/src/client/worker/worldHandler';
+import { planRoute } from '@/src/shared/route';
+import { SimSession } from '@/src/shared/sim/session';
+import type { Block, WorldState } from '@/src/shared/state';
+import { WORLD_RADIUS } from '@/src/shared/terrain';
+import type { Controls } from '@/src/shared/types';
+import { drive } from '@/tests/simHelpers';
 
 export const FRAME_DT = 1 / 60;
 export const FRAME_COUNT = 120;

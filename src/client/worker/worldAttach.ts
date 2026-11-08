@@ -1,5 +1,5 @@
-import { createWorldHandler, type WorldHandler } from './worldHandler.js';
-import type { PreparedBuffers, WorldReply, WorldRequest } from './worldProtocol.js';
+import { createWorldHandler, type WorldHandler } from '@/src/client/worker/worldHandler';
+import type { PreparedBuffers, WorldReply, WorldRequest } from '@/src/client/worker/worldProtocol';
 
 export interface WorldScope {
   onmessage: ((event: MessageEvent<WorldRequest>) => void) | null;

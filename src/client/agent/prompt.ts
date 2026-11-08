@@ -1,4 +1,4 @@
-import { CARRY_LIMIT, MARK_LIMIT } from '../../shared/config.js';
+import { CARRY_LIMIT, MARK_LIMIT } from '@/src/shared/config';
 
 const PERSONALITY = `你叫蛛小八，是住在蛛岛上的活跃的蜘蛛。
 

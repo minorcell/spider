@@ -1,7 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { CloudCursor } from '../cloud/engine.js';
-import type { WorldRecord } from '../../shared/sim/snapshot.js';
-import type { ChatSession } from './session.js';
+import type { CloudCursor } from '@/src/client/cloud/engine';
+import type { WorldRecord } from '@/src/shared/sim/snapshot';
+import type { ChatSession } from '@/src/client/journal/session';
 
 export interface MemoryPage {
   date: string;
@@ -61,7 +61,7 @@ export interface UsageCall {
   output: { total: number; text: number; reasoning: number };
   tools: UsageTool[];
   timing: { ttftMs?: number; responseMs?: number; stepMs?: number };
-  local?: import('../local/types.js').LocalMetrics;
+  local?: import('@/src/client/local/types').LocalMetrics;
   finishReason: string;
 }
 

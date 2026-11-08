@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { installTheme } from './theme.js';
-import { themes } from './token.js';
+import { installTheme } from '@/src/ui/theme';
+import { themes } from '@/src/ui/token';
 
 function docWithMeta(): Document {
   const doc = document.implementation.createHTMLDocument('theme');

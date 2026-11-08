@@ -1,8 +1,14 @@
-import { grassOnDryGround, grassRadius } from '../grass.js';
-import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX, MOUNTS } from '../config.js';
-import { KINDS } from '../kinds.js';
-import type { EntityState, Footprint, PlaceMark, SpiderState, WorldState } from '../state.js';
-import { blockedAt, BODY_RADIUS } from '../sight.js';
+import { grassOnDryGround, grassRadius } from '@/src/shared/grass';
+import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX, MOUNTS } from '@/src/shared/config';
+import { KINDS } from '@/src/shared/kinds';
+import type {
+  EntityState,
+  Footprint,
+  PlaceMark,
+  SpiderState,
+  WorldState,
+} from '@/src/shared/state';
+import { blockedAt, BODY_RADIUS } from '@/src/shared/sight';
 import {
   APPLE_EVERY,
   GRASS,
@@ -11,11 +17,11 @@ import {
   populateScenery,
   propBlocks,
   restingY,
-} from '../world.js';
-import { insideLand, Terrain } from '../terrain.js';
-import { waterAt } from '../water.js';
-import { bindLegWorld } from './bindWorld.js';
-import type { Spider } from './Spider.js';
+} from '@/src/shared/world';
+import { insideLand, Terrain } from '@/src/shared/terrain';
+import { waterAt } from '@/src/shared/water';
+import { bindLegWorld } from '@/src/shared/sim/bindWorld';
+import type { Spider } from '@/src/shared/sim/Spider';
 
 export const FORMAT = 3;
 export const MAX_ENTITIES = 160;

@@ -9,7 +9,7 @@ import {
   paintStage,
   paintTrace,
   placeTail,
-} from './dress.js';
+} from '@/src/ui/dress';
 
 afterEach(() => {
   vi.unstubAllGlobals();

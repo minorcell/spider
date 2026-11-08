@@ -10,7 +10,7 @@ import {
   Vector2,
   Vector3,
 } from 'three';
-import { APPLE_SCALE } from '../shared/config.js';
+import { APPLE_SCALE } from '@/src/shared/config';
 import {
   appleMat,
   growShell,
@@ -19,7 +19,7 @@ import {
   leafMat,
   paperMat,
   stemMat,
-} from '../shared/sim/parts.js';
+} from '@/src/shared/sim/parts';
 
 function appleProfile(): Vector2[] {
   const raw: readonly (readonly [number, number])[] = [

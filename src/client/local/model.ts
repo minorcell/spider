@@ -1,5 +1,5 @@
 import type { AppConfig } from '@mlc-ai/web-llm';
-import { LOCAL_MODEL } from './types.js';
+import { LOCAL_MODEL } from '@/src/client/local/types';
 
 // Pinned artifacts compatible with @mlc-ai/web-llm 0.2.87.
 export const LOCAL_APP_CONFIG: AppConfig = {

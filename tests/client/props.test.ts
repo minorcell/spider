@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Box3, Group, LineSegments, Mesh, Vector3 } from 'three';
-import { buildProp, drapeGrass } from '../../src/client/props.js';
-import { nestSurface } from '../../src/shared/nestShape.js';
+import { buildProp, drapeGrass } from '@/src/client/props';
+import { nestSurface } from '@/src/shared/nestShape';
 
 describe('buildProp', () => {
   it('batches a tree into four draws while retaining crown and trunk detail', () => {

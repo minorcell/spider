@@ -14,22 +14,22 @@ import {
   type Object3D,
 } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
-import { PALETTE } from '../shared/config.js';
-import { kindOf } from '../shared/kinds.js';
-import { WORLD_RADIUS } from '../shared/terrain.js';
-import type { EntityState, WorldState } from '../shared/state.js';
-import type { Spider } from '../shared/sim/Spider.js';
-import { paintCanvas } from '../ui/dress.js';
-import { FpsDisplay } from './fps.js';
-import { onLocalBusy } from './local/activity.js';
-import { buildIsland, tickWater } from './groundView.js';
-import { waterContact, waterSplashes } from './waterMotion.js';
-import { applyEcologyLighting, EcologySky, enableWorldShadows } from './ecologyView.js';
-import { Headlamp } from './headlamp.js';
-import { worldClock } from '../shared/ecology.js';
-import { ObserveOverlay } from './observeView.js';
-import { buildProp, drapeGrass } from './props.js';
-import { createSound } from './sound.js';
+import { PALETTE } from '@/src/shared/config';
+import { kindOf } from '@/src/shared/kinds';
+import { WORLD_RADIUS } from '@/src/shared/terrain';
+import type { EntityState, WorldState } from '@/src/shared/state';
+import type { Spider } from '@/src/shared/sim/Spider';
+import { paintCanvas } from '@/src/ui/dress';
+import { FpsDisplay } from '@/src/client/fps';
+import { onLocalBusy } from '@/src/client/local/activity';
+import { buildIsland, tickWater } from '@/src/client/groundView';
+import { waterContact, waterSplashes } from '@/src/client/waterMotion';
+import { applyEcologyLighting, EcologySky, enableWorldShadows } from '@/src/client/ecologyView';
+import { Headlamp } from '@/src/client/headlamp';
+import { worldClock } from '@/src/shared/ecology';
+import { ObserveOverlay } from '@/src/client/observeView';
+import { buildProp, drapeGrass } from '@/src/client/props';
+import { createSound } from '@/src/client/sound';
 
 // Camera framing. Drag orbits, wheel dollies; both clamp at the same limits.
 const VIEW = {

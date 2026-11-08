@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  cleanInlineText,
-  parseInlineCalls,
-  withInlineCalls,
-} from '../../../src/client/agent/inline.js';
+import { cleanInlineText, parseInlineCalls, withInlineCalls } from '@/src/client/agent/inline';
 
 const names = ['move_to', 'observe', 'pick_up'];
 

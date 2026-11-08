@@ -1,4 +1,4 @@
-import { paintFps } from '../ui/dress.js';
+import { paintFps } from '@/src/ui/dress';
 
 export class FpsDisplay {
   readonly element: HTMLSpanElement;

@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { GAIT } from '../../../src/shared/config.js';
-import type { Spider } from '../../../src/shared/sim/Spider.js';
-import {
-  heightGoal,
-  routeGoal,
-  STUCK_LIMIT,
-  turnGoal,
-  walkGoal,
-} from '../../../src/shared/sim/goals.js';
+import { GAIT } from '@/src/shared/config';
+import type { Spider } from '@/src/shared/sim/Spider';
+import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal } from '@/src/shared/sim/goals';
 
 interface Fake {
   root: { position: { x: number; z: number } };

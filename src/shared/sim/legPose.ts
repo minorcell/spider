@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { BONES } from '../config.js';
+import { BONES } from '@/src/shared/config';
 
 export interface LegSphere {
   x: number;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { card } from './index.js';
+import { card } from '@/src/ui/card';
 
 describe('card', () => {
   it('builds a titled section and adds the spaced rule only when asked', () => {

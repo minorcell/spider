@@ -1,16 +1,10 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import type { GoalOutcome, SimSession } from '../../shared/sim/session.js';
-import type { ActionHint, NearEntity, Observation, Sense, WorldInfo } from '../../shared/state.js';
-import {
-  CARRY_LIMIT,
-  GAIT,
-  MARK_LIMIT,
-  MARK_NAME_MAX,
-  MARK_NOTE_MAX,
-} from '../../shared/config.js';
-import { VIEW_DISTANCE } from '../../shared/world.js';
-import type { MemoryApi } from '../journal/diary.js';
+import type { GoalOutcome, SimSession } from '@/src/shared/sim/session';
+import type { ActionHint, NearEntity, Observation, Sense, WorldInfo } from '@/src/shared/state';
+import { CARRY_LIMIT, GAIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
+import { VIEW_DISTANCE } from '@/src/shared/world';
+import type { MemoryApi } from '@/src/client/journal/diary';
 
 export interface ToolResult extends GoalOutcome {
   observation?: Observation;

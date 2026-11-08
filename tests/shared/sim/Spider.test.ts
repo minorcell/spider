@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { Matrix4, Vector3 } from 'three';
-import { BONES, CONTACT, GAIT } from '../../../src/shared/config.js';
-import { NEST_SCALE_XZ, NEST_SCALE_Y, nestSurface } from '../../../src/shared/nestShape.js';
-import { nestSolidSurface } from '../../../src/shared/nestCollision.js';
-import { NEST_DETAILS } from '../../../src/shared/nestDetails.js';
-import { bindLegWorld } from '../../../src/shared/sim/bindWorld.js';
-import { Spider } from '../../../src/shared/sim/Spider.js';
-import { createWorld } from '../../../src/shared/world.js';
-import { Terrain, TERRAIN } from '../../../src/shared/terrain.js';
-import { floatHeight, WATER, waterAt } from '../../../src/shared/water.js';
+import { BONES, CONTACT, GAIT } from '@/src/shared/config';
+import { NEST_SCALE_XZ, NEST_SCALE_Y, nestSurface } from '@/src/shared/nestShape';
+import { nestSolidSurface } from '@/src/shared/nestCollision';
+import { NEST_DETAILS } from '@/src/shared/nestDetails';
+import { bindLegWorld } from '@/src/shared/sim/bindWorld';
+import { Spider } from '@/src/shared/sim/Spider';
+import { createWorld } from '@/src/shared/world';
+import { Terrain, TERRAIN } from '@/src/shared/terrain';
+import { floatHeight, WATER, waterAt } from '@/src/shared/water';
 
 const IDLE = { throttle: 0, turn: 0, lift: 0, boost: 0 };
 const FLAT = (): number => 0;

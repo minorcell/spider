@@ -5,8 +5,8 @@ import {
   probeEndpoint,
   requestObject,
   strongEtag,
-} from '../../../src/client/cloud/s3.js';
-import type { CloudSettings } from '../../../src/client/cloud/settings.js';
+} from '@/src/client/cloud/s3';
+import type { CloudSettings } from '@/src/client/cloud/settings';
 
 const settings: CloudSettings = {
   endpoint: 'https://s3.example.com/',

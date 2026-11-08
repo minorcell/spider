@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { visualRange, worldClock } from '../../src/shared/ecology.js';
+import { visualRange, worldClock } from '@/src/shared/ecology';
 
 describe('worldClock', () => {
   it('uses local time and reports smooth daylight', () => {

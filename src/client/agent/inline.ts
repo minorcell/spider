@@ -1,4 +1,4 @@
-import { hasMachineText, speechText } from './speech.js';
+import { hasMachineText, speechText } from '@/src/client/agent/speech';
 
 export interface InlineCall {
   name: string;

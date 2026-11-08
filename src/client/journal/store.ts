@@ -1,4 +1,4 @@
-import type { WorldRecord } from '../../shared/sim/snapshot.js';
+import type { WorldRecord } from '@/src/shared/sim/snapshot';
 
 export interface SnapshotStore {
   readSnapshot(): Promise<unknown>;
@@ -9,8 +9,8 @@ export interface SnapshotStore {
 
 export async function dbSnapshotStore(): Promise<SnapshotStore> {
   const [{ openSpiderDb }, { classify }] = await Promise.all([
-    import('./db.js'),
-    import('../../shared/sim/snapshot.js'),
+    import('@/src/client/journal/db'),
+    import('@/src/shared/sim/snapshot'),
   ]);
   return {
     async readSnapshot() {

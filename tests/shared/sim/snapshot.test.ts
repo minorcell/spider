@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { localDate } from '../../../src/shared/dates.js';
-import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '../../../src/shared/config.js';
-import { SimSession } from '../../../src/shared/sim/session.js';
-import { Terrain, TERRAIN } from '../../../src/shared/terrain.js';
-import { APPLE_EVERY } from '../../../src/shared/world.js';
+import { localDate } from '@/src/shared/dates';
+import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
+import { SimSession } from '@/src/shared/sim/session';
+import { Terrain, TERRAIN } from '@/src/shared/terrain';
+import { APPLE_EVERY } from '@/src/shared/world';
 import {
   applyBody,
   captureBody,
@@ -13,7 +13,7 @@ import {
   MAX_ENTITIES,
   newer,
   type WorldRecord,
-} from '../../../src/shared/sim/snapshot.js';
+} from '@/src/shared/sim/snapshot';
 
 const today = '2026-11-02';
 

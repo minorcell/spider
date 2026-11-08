@@ -1,6 +1,6 @@
-import { h } from '../dom/index.js';
-import { bindFocus, paint } from '../style.js';
-import { border, color, font } from '../token.js';
+import { h } from '@/src/ui/dom';
+import { bindFocus, paint } from '@/src/ui/style';
+import { border, color, font } from '@/src/ui/token';
 
 export type SelectChoice = { value: string; label: string };
 

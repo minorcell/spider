@@ -1,10 +1,10 @@
-import { localDate } from '../../shared/dates.js';
-import { chooseRecord } from '../../shared/sim/snapshot.js';
-import { onDiaryChange } from '../journal/diary.js';
-import { openSpiderDb } from '../journal/db.js';
-import { readBuffer } from '../world/storage.js';
-import { onWorldWritten, replaceWorld, setCloudLock } from '../worldStore.js';
-import { worldOf, type CloudBundle } from './bundle.js';
+import { localDate } from '@/src/shared/dates';
+import { chooseRecord } from '@/src/shared/sim/snapshot';
+import { onDiaryChange } from '@/src/client/journal/diary';
+import { openSpiderDb } from '@/src/client/journal/db';
+import { readBuffer } from '@/src/client/world/storage';
+import { onWorldWritten, replaceWorld, setCloudLock } from '@/src/client/worldStore';
+import { worldOf, type CloudBundle } from '@/src/client/cloud/bundle';
 import {
   blankEngine,
   chooseLocal,
@@ -18,11 +18,11 @@ import {
   type CloudIo,
   type CloudPhase,
   type Engine,
-} from './engine.js';
-import { keepaliveObject, requestObject } from './s3.js';
-import { cloudReady, readCloud, restoreCloud } from './settings.js';
+} from '@/src/client/cloud/engine';
+import { keepaliveObject, requestObject } from '@/src/client/cloud/s3';
+import { cloudReady, readCloud, restoreCloud } from '@/src/client/cloud/settings';
 
-export type { CloudPhase } from './engine.js';
+export type { CloudPhase } from '@/src/client/cloud/engine';
 
 const IDLE_MS = 60_000;
 const RENEW_MS = 30_000;

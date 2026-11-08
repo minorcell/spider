@@ -8,7 +8,7 @@ import {
   Terrain,
   TERRAIN,
   WORLD_RADIUS,
-} from '../../src/shared/terrain.js';
+} from '@/src/shared/terrain';
 
 describe('Terrain', () => {
   it.each([1, 7, 99])('gives seed %s plains, mountains, uneven lowlands and water', (seed) => {
