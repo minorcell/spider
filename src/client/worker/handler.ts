@@ -102,7 +102,7 @@ export function createHandler(): Handler {
           case 'localSession':
             return localRuntime.localSession!(...request.args);
           case 'localLoad':
-            return localRuntime.localLoad();
+            return localRuntime.localLoad(...request.args);
           case 'localStatus':
             return localRuntime.localStatus();
           case 'localUnload':

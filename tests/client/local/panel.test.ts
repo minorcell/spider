@@ -19,6 +19,7 @@ const button = (id: string) => document.querySelector<HTMLButtonElement>(id)!;
 const status = () => document.querySelector('#local-status')!.textContent;
 beforeEach(() => {
   vi.resetAllMocks();
+  localStorage.clear();
   mock.offline.mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { gpu: {} });
   document.body.replaceChildren(buildChrome(document));
@@ -31,22 +32,64 @@ afterEach(() => {
 });
 it('disables cloud fields only for local mode and downloads only after a click', async () => {
   const reflect = bindLocalPanel(document);
-  reflect(true);
+  expect(reflect.wasLoaded()).toBe(false);
+  reflect.show(true);
   expect(document.querySelector<HTMLElement>('#online-model-panel')!.hidden).toBe(true);
   expect(document.querySelector<HTMLInputElement>('[name="apiKey"]')!.disabled).toBe(true);
   expect(mock.load).not.toHaveBeenCalled();
   button('#local-load').click();
   await vi.waitFor(() => expect(status()).toBe('ready'));
+  expect(mock.load).toHaveBeenCalledExactlyOnceWith({ cachedOnly: false });
+  expect(localStorage.getItem('spider.localLoaded')).toBe('1');
+  expect(reflect.wasLoaded()).toBe(true);
   expect(document.querySelector('#offline-status')!.textContent).toContain('开发模式');
   expect(button('#local-load').disabled).toBe(false);
   button('#local-unload').click();
   await vi.waitFor(() => expect(button('#local-unload').disabled).toBe(false));
   expect(mock.unload).toHaveBeenCalledOnce();
-  reflect(false);
+  expect(localStorage.getItem('spider.localLoaded')).toBeNull();
+  expect(reflect.wasLoaded()).toBe(false);
+  reflect.show(false);
   expect(document.querySelector<HTMLElement>('#online-model-panel')!.hidden).toBe(false);
   expect(document.querySelector<HTMLElement>('#local-model-panel')!.hidden).toBe(true);
   expect(document.querySelector<HTMLInputElement>('[name="apiKey"]')!.disabled).toBe(false);
 });
+
+it('loads automatically from cache without allowing a download', async () => {
+  localStorage.setItem('spider.localLoaded', '1');
+  const onReady = vi.fn();
+  const panel = bindLocalPanel(document, onReady);
+  expect(panel.wasLoaded()).toBe(true);
+  await expect(panel.load()).resolves.toBe(true);
+  expect(mock.load).toHaveBeenCalledExactlyOnceWith({ cachedOnly: true });
+  expect(onReady).toHaveBeenLastCalledWith(true);
+  expect(button('#local-load').disabled).toBe(false);
+});
+
+it('opens manual setup when browser storage cannot be read', () => {
+  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    throw new Error('storage unavailable');
+  });
+  expect(bindLocalPanel(document).wasLoaded()).toBe(false);
+  expect(mock.load).not.toHaveBeenCalled();
+});
+
+it.each(['setItem', 'removeItem'] as const)(
+  'keeps loading and unloading available when storage %s fails',
+  async (method) => {
+    vi.spyOn(Storage.prototype, method).mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    const panel = bindLocalPanel(document);
+    await expect(panel.load()).resolves.toBe(true);
+    expect(status()).toBe('ready');
+    button('#local-unload').click();
+    await vi.waitFor(() => expect(button('#local-unload').disabled).toBe(false));
+    expect(mock.unload).toHaveBeenCalledOnce();
+    expect(status()).toBe('ready');
+  },
+);
+
 it('shows progress during loading and leaves retry available after failure', async () => {
   vi.stubEnv('DEV', false);
   vi.useFakeTimers();
@@ -63,7 +106,7 @@ it('shows progress during loading and leaves retry available after failure', asy
     progress: 0.29,
     detail: '预计还需约 22 秒',
   });
-  bindLocalPanel(document)(true);
+  bindLocalPanel(document).show(true);
   button('#local-load').click();
   const progress = document.querySelector<HTMLProgressElement>('#local-progress')!;
   expect(progress.hidden).toBe(false);
@@ -78,6 +121,7 @@ it('shows progress during loading and leaves retry available after failure', asy
   reject(new Error('download failed'));
   await vi.advanceTimersByTimeAsync(0);
   expect(status()).toContain('模型加载失败');
+  expect(localStorage.getItem('spider.localLoaded')).toBeNull();
   expect(button('#local-load').disabled).toBe(false);
   expect(progress.hidden).toBe(true);
   mock.unload.mockRejectedValueOnce(new Error('unload failed'));
@@ -103,7 +147,7 @@ it('ignores late polling responses after loading completes', async () => {
         reply = resolve;
       }),
   );
-  bindLocalPanel(document)(true);
+  bindLocalPanel(document).show(true);
   button('#local-load').click();
   await vi.advanceTimersByTimeAsync(500);
   mock.status.mockResolvedValue({ ready: true, text: '本机模型已就绪', progress: 1 });
@@ -116,7 +160,7 @@ it('ignores late polling responses after loading completes', async () => {
 });
 it('explains missing WebGPU before downloading anything', async () => {
   vi.stubGlobal('navigator', {});
-  bindLocalPanel(document)(true);
+  bindLocalPanel(document).show(true);
   button('#local-load').click();
   await vi.waitFor(() => expect(status()).toContain('浏览器不支持'));
   expect(mock.load).not.toHaveBeenCalled();
@@ -125,7 +169,7 @@ it('explains missing WebGPU before downloading anything', async () => {
 
 it('loads the model even when page caching fails, without claiming offline readiness', async () => {
   mock.offline.mockRejectedValueOnce(new Error('storage unavailable'));
-  bindLocalPanel(document)(true);
+  bindLocalPanel(document).show(true);
   button('#local-load').click();
   await vi.waitFor(() => expect(status()).toBe('ready'));
   expect(mock.load).toHaveBeenCalledOnce();
@@ -144,7 +188,7 @@ it.each(['resolve', 'reject'] as const)(
           reject = no;
         }),
     );
-    bindLocalPanel(document)(true);
+    bindLocalPanel(document).show(true);
     button('#local-load').click();
     await vi.waitFor(() => expect(status()).toBe('ready'));
     expect(document.querySelector('#offline-status')!.textContent).toContain('正在准备');

@@ -682,7 +682,6 @@ export function mountPanel(
   if (readPilot().mode === 'local') {
     fill(readPilot());
     if (localPanel.wasLoaded()) {
-      // Reload from the browser cache; open settings only if that fails.
       void localPanel.load().then((ok) => {
         if (!ok) {
           fill(readPilot());

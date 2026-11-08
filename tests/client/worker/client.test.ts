@@ -266,7 +266,9 @@ it('routes local model lifecycle and inference through the existing worker', asy
   await call(port, () => journal.localSession('turn', true), undefined);
   expect(port.last).toMatchObject({ method: 'localSession', args: ['turn', true] });
   await call(port, () => journal.localLoad(), undefined);
-  expect(port.last.method).toBe('localLoad');
+  expect(port.last).toMatchObject({ method: 'localLoad', args: [undefined] });
+  await call(port, () => journal.localLoad({ cachedOnly: true }), undefined);
+  expect(port.last).toMatchObject({ method: 'localLoad', args: [{ cachedOnly: true }] });
   expect(await call(port, () => journal.localStatus(), { ready: true, text: 'ready' })).toEqual({
     ready: true,
     text: 'ready',

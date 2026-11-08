@@ -2,6 +2,7 @@ import { useLocalBackend } from '../local/backend.js';
 import { setLocalBusy } from '../local/activity.js';
 import type {
   LocalBackend,
+  LocalLoadOptions,
   LocalMessage,
   LocalOptions,
   LocalReply,
@@ -43,8 +44,8 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
     port.onerror = (event) => this.#fail(new Error(event.message));
   }
 
-  localLoad(): Promise<void> {
-    return this.#call<'localLoad'>((id) => ({ id, method: 'localLoad' }));
+  localLoad(options?: LocalLoadOptions): Promise<void> {
+    return this.#call<'localLoad'>((id) => ({ id, method: 'localLoad', args: [options] }));
   }
   localSession(id: string, active: boolean): Promise<void> {
     return this.#call<'localSession'>((seq) => ({

@@ -95,7 +95,6 @@ export function createLocalRuntime(): LocalBackend {
       serial(async () => {
         if (engine) return;
         const { MLCEngine, hasModelInCache } = await import('@mlc-ai/web-llm');
-        // Automatic loading must never download: without a cached copy, ask the user instead.
         if (options?.cachedOnly && !(await hasModelInCache(LOCAL_MODEL, LOCAL_APP_CONFIG)))
           throw new Error('本机模型缓存已清除，请在设置里重新加载本机模型');
         status = { ready: false, text: '正在加载本机模型…' };

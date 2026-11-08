@@ -2151,6 +2151,60 @@ it('switches between local inference and the saved API configuration', () => {
   expect(document.querySelector<HTMLElement>('#online-model-panel')!.hidden).toBe(false);
 });
 
+it('opens local setup without loading when no previous successful load is saved', () => {
+  const load = vi.fn();
+  useLocalBackend({
+    localLoad: load,
+    localUnload: vi.fn(),
+    localStatus: vi.fn(),
+    localComplete: vi.fn(),
+    localCancel: vi.fn(),
+  });
+  writePilot({ ...readPilot(), mode: 'local' });
+  mount();
+  expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(true);
+  expect(document.querySelector<HTMLElement>('#local-model-panel')!.hidden).toBe(false);
+  expect(load).not.toHaveBeenCalled();
+});
+
+it.each(['本机模型缓存已清除，请在设置里重新加载本机模型', 'download failed'])(
+  'opens local setup after automatic loading fails with %s and allows a manual retry',
+  async (message) => {
+    vi.stubGlobal('navigator', { gpu: {} });
+    localStorage.setItem('spider.localLoaded', '1');
+    let loaded = false;
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(new Error(message))
+      .mockImplementation(async () => {
+        loaded = true;
+      });
+    useLocalBackend({
+      localLoad: load,
+      localUnload: vi.fn(),
+      localStatus: async () => ({ ready: loaded, text: '本机模型已就绪' }),
+      localComplete: vi.fn(),
+      localCancel: vi.fn(),
+    });
+    writePilot({ ...readPilot(), mode: 'local' });
+    mount();
+    await vi.waitFor(() =>
+      expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(true),
+    );
+    expect(load).toHaveBeenCalledExactlyOnceWith({ cachedOnly: true });
+    expect(document.querySelector<HTMLElement>('#local-model-panel')!.hidden).toBe(false);
+    expect(document.querySelector('#local-status')!.textContent).toBe(
+      message.startsWith('本机') ? message : '模型加载失败，请检查网络、存储空间和浏览器支持后重试',
+    );
+    expect(document.querySelector<HTMLElement>('#pilot-model')!.style.display).toBe('none');
+    clickButton('#local-load');
+    await vi.waitFor(() =>
+      expect(document.querySelector('#pilot-model')!.textContent).toBe('Qwen3 · 本机'),
+    );
+    expect(load).toHaveBeenLastCalledWith({ cachedOnly: false });
+  },
+);
+
 it('reloads a previously loaded local model from cache and preserves unsent input until it is ready', async () => {
   vi.stubGlobal('navigator', { gpu: {} });
   localStorage.setItem('spider.localLoaded', '1');
@@ -2180,7 +2234,6 @@ it('reloads a previously loaded local model from cache and preserves unsent inpu
   const dialog = document.querySelector<HTMLDialogElement>('#settings')!;
   const goal = document.querySelector<HTMLInputElement>('#goal')!;
   const badge = document.querySelector<HTMLElement>('#pilot-model')!;
-  // Auto-load from cache on mount; settings stay closed while it runs.
   await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
   expect(load).toHaveBeenCalledWith({ cachedOnly: true });
   expect(dialog.open).toBe(false);

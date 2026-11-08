@@ -1,7 +1,6 @@
 import { localBackend } from './backend.js';
 import { prepareOffline } from './offline.js';
 
-/** Remembers that the local model loaded successfully, so a reload can load it from cache. */
 const LOADED_KEY = 'spider.localLoaded';
 
 function rememberLoaded(on: boolean): void {
@@ -9,16 +8,13 @@ function rememberLoaded(on: boolean): void {
     if (on) localStorage.setItem(LOADED_KEY, '1');
     else localStorage.removeItem(LOADED_KEY);
   } catch {
-    // Storage may be unavailable; the model then simply is not auto-loaded.
+    return;
   }
 }
 
 export interface LocalPanel {
-  /** Shows or hides the local model controls for the current mode. */
   show(local: boolean): void;
-  /** Whether a previous session loaded the local model successfully. */
   wasLoaded(): boolean;
-  /** Loads the local model; resolves true on success and shows the reason on failure. */
   load(): Promise<boolean>;
 }
 
@@ -102,7 +98,6 @@ export function bindLocalPanel(doc: Document, onReady?: (ready: boolean) => void
       });
   };
   load.addEventListener('click', () => void loadModel());
-  // Manual loading (the button) may download; only the automatic path is cache-only.
   unload.addEventListener('click', () => {
     ++statusVersion;
     onReady?.(false);

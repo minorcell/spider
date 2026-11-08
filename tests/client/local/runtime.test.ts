@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 const mock = vi.hoisted(() => ({
+  cached: vi.fn(),
   reload: vi.fn(),
   construct: vi.fn(),
   unload: vi.fn(),
@@ -7,6 +8,7 @@ const mock = vi.hoisted(() => ({
   interrupt: vi.fn(),
 }));
 vi.mock('@mlc-ai/web-llm', () => ({
+  hasModelInCache: mock.cached,
   MLCEngine: class {
     constructor(options: {
       initProgressCallback: (report: {
@@ -30,6 +32,8 @@ vi.mock('@mlc-ai/web-llm', () => ({
 }));
 import { createLocalRuntime } from '../../../src/client/local/runtime.js';
 import { onLocalBusy } from '../../../src/client/local/activity.js';
+import { LOCAL_APP_CONFIG } from '../../../src/client/local/model.js';
+import { LOCAL_MODEL } from '../../../src/client/local/types.js';
 const reply = {
   choices: [{ message: { content: '<think>hidden</think> done' } }],
   usage: { prompt_tokens: 5, completion_tokens: 2 },
@@ -59,6 +63,41 @@ it('loads once, shares the model, strips reasoning and releases GPU memory witho
   await runtime.localUnload();
   expect(mock.unload).toHaveBeenCalledTimes(1);
   expect((await runtime.localStatus()).ready).toBe(false);
+});
+
+it('restores a cached model and reuses the ready engine without checking the cache again', async () => {
+  const runtime = createLocalRuntime();
+  mock.cached.mockResolvedValueOnce(true);
+  await runtime.localLoad({ cachedOnly: true });
+  expect(mock.cached).toHaveBeenCalledExactlyOnceWith(LOCAL_MODEL, LOCAL_APP_CONFIG);
+  expect(mock.reload).toHaveBeenCalledOnce();
+  expect((await runtime.localStatus()).ready).toBe(true);
+  await runtime.localLoad({ cachedOnly: true });
+  expect(mock.cached).toHaveBeenCalledOnce();
+  expect(mock.reload).toHaveBeenCalledOnce();
+});
+
+it('rejects a missing cache without starting a download and permits an explicit manual load', async () => {
+  const runtime = createLocalRuntime();
+  mock.cached.mockResolvedValueOnce(false);
+  await expect(runtime.localLoad({ cachedOnly: true })).rejects.toThrow('本机模型缓存已清除');
+  expect(mock.construct).not.toHaveBeenCalled();
+  expect(mock.reload).not.toHaveBeenCalled();
+  expect((await runtime.localStatus()).ready).toBe(false);
+  await runtime.localLoad({ cachedOnly: false });
+  expect(mock.cached).toHaveBeenCalledOnce();
+  expect(mock.reload).toHaveBeenCalledOnce();
+  expect((await runtime.localStatus()).ready).toBe(true);
+});
+
+it('keeps loading available when checking the browser cache fails', async () => {
+  const runtime = createLocalRuntime();
+  const error = new Error('cache unavailable');
+  mock.cached.mockRejectedValueOnce(error);
+  await expect(runtime.localLoad({ cachedOnly: true })).rejects.toBe(error);
+  expect(mock.construct).not.toHaveBeenCalled();
+  await runtime.localLoad();
+  expect((await runtime.localStatus()).ready).toBe(true);
 });
 
 it('streams token deltas and returns actual engine timings and the unmodified reply', async () => {
