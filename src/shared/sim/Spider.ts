@@ -159,6 +159,8 @@ export class Spider {
   bindLegs(fill: (into: LegSphere[]) => void, mound: (x: number, z: number) => number): void {
     this.#fillLegs = fill;
     this.#mound = mound;
+    this.#shellX = Number.NaN;
+    this.#held = null;
   }
 
   /** The water column the body floats or wades through. */
@@ -441,7 +443,8 @@ export class Spider {
       shellPoint.copy(point).applyQuaternion(shellRotation);
       const wx = x + shellPoint.x * cos + shellPoint.z * sin;
       const wz = z - shellPoint.x * sin + shellPoint.z * cos;
-      lift = Math.max(lift, this.#ground(wx, wz) - center - shellPoint.y);
+      const surface = Math.max(this.#ground(wx, wz), this.#mound(wx, wz));
+      lift = Math.max(lift, surface - center - shellPoint.y);
     }
     this.#shellX = x;
     this.#shellZ = z;
