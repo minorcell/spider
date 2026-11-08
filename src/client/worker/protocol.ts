@@ -5,12 +5,12 @@ import type {
   LocalReply,
   LocalStatus,
 } from '@/src/client/local/types';
-import type { LanguageModelUsage } from 'ai';
+import type { LanguageModelUsage, ModelMessage } from 'ai';
 import type { WorldRecord } from '@/src/shared/sim/snapshot';
 import type { PilotSettings } from '@/src/client/settings';
 import type { MemoryPage } from '@/src/client/journal/db';
 import type { MemoryView, MemoryWrite } from '@/src/client/journal/diary';
-import type { ChatSession, Trace } from '@/src/client/journal/session';
+import type { ChatSession } from '@/src/client/journal/session';
 import type {
   UsageCall,
   UsageCallMeta,
@@ -38,10 +38,9 @@ export type JournalRequest =
   | { id: number; method: 'localCancel'; args: [string] }
   | { id: number; method: 'open' }
   | { id: number; method: 'save' }
-  | { id: number; method: 'record'; args: [string, string, Trace[], PilotSettings] }
+  | { id: number; method: 'record'; args: [ModelMessage[], PilotSettings] }
   | { id: number; method: 'digest'; args: [PilotSettings] }
   | { id: number; method: 'backfill'; args: [PilotSettings] }
-  | { id: number; method: 'indexBlock' }
   | { id: number; method: 'pages' }
   | { id: number; method: 'read'; args: [string] }
   | { id: number; method: 'write'; args: [MemoryWrite] }
@@ -77,7 +76,6 @@ export interface JournalResultMap {
   record: JournalState;
   digest: JournalState;
   backfill: JournalState;
-  indexBlock: string;
   pages: MemoryPage[];
   read: MemoryView | null;
   write: MemoryView;

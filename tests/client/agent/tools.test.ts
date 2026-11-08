@@ -255,47 +255,30 @@ describe('spiderTools', () => {
     session.worldInfo.mockReturnValue({ ...world, lamp: true, view: 0.64 });
     const on = (await execute(tools.lamp, { on: true })) as Record<string, unknown>;
     expect(session.setLamp).toHaveBeenCalledWith(true);
-    expect(on).toMatchObject({ ok: true, action: 'lamp-on' });
+    expect(on).toMatchObject({ ok: true, on: true });
     const off = (await execute(tools.lamp, { on: false })) as Record<string, unknown>;
     expect(session.setLamp).toHaveBeenCalledWith(false);
-    expect(off).toMatchObject({ ok: true, action: 'lamp-off' });
+    expect(off).toMatchObject({ ok: true, on: false });
   });
 
-  it('drinks through the session and returns the body', async () => {
+  it('returns only the drinking result', async () => {
     const tools = spiderTools(session as unknown as SimSession);
     const result = (await execute(tools.act, { verb: 'drink' })) as Record<string, unknown>;
     expect(session.drink).toHaveBeenCalledOnce();
     expect(result).toMatchObject({ ok: true, action: 'drink' });
-    expect(result).toHaveProperty('self');
-    expect(result).toHaveProperty('near');
+    expect(result).not.toHaveProperty('self');
+    expect(result).not.toHaveProperty('near');
   });
 
-  it('returns the body and what is in reach, and strips the halt field', async () => {
+  it('returns movement state without an unrelated world snapshot', async () => {
     const tools = spiderTools(session as unknown as SimSession);
     session.moveTo.mockResolvedValue(outcome({ halt: 'solid', achieved: 1 }));
-    const result = (await execute(tools.go, {
-      mode: 'point',
-      x: 2,
-      z: 0,
-    })) as Record<string, unknown>;
-    expect(session.sense).toHaveBeenCalledWith(false);
-    expect(session.near).toHaveBeenCalledOnce();
+    const result = await execute(tools.go, { mode: 'point', x: 2, z: 0 });
+    expect(result).toEqual({ ok: true, achieved: 1, self: { x: 0, z: 0, heading: 0 } });
+    expect(session.near).not.toHaveBeenCalled();
+    expect(session.worldInfo).not.toHaveBeenCalled();
     expect(session.observe).not.toHaveBeenCalled();
     expect(session.moveTo).toHaveBeenCalledWith(2, 0, false);
-    expect(result).not.toHaveProperty('halt');
-    expect(result).not.toHaveProperty('observation');
-    expect(result.achieved).toBe(1);
-    expect(result.near).toEqual([
-      {
-        id: 'apple-1',
-        kind: 'apple',
-        stage: 0,
-        properties: ['edible', 'carryable'],
-        distance: 0.8,
-        bearing: 0,
-      },
-    ]);
-    expect(result.self).not.toHaveProperty('ways');
   });
 
   it('attaches ways when a move is blocked', async () => {
@@ -309,9 +292,9 @@ describe('spiderTools', () => {
         z: 0,
       })) as Record<string, unknown>;
       expect(session.sense).toHaveBeenCalledWith(true);
-      expect(session.near).toHaveBeenCalled();
+      expect(session.near).not.toHaveBeenCalled();
       expect(result.self).toHaveProperty('ways');
-      expect(result).toHaveProperty('near');
+      expect(result).not.toHaveProperty('near');
     }
   });
 
@@ -328,8 +311,8 @@ describe('spiderTools', () => {
     session.moveTo.mockResolvedValue(outcome({ reason }));
     const result = (await execute(tools.go, { mode: 'point', x: 1, z: 0 })) as Record<string, any>;
     expect(result.hint).toMatchObject({ next });
-    expect(result).toHaveProperty('world.clock.localTime');
-    expect(result).toHaveProperty('near');
+    expect(result).not.toHaveProperty('world');
+    expect(result).not.toHaveProperty('near');
   });
 
   it('still says to go when a block has no openings attached', async () => {
@@ -340,37 +323,31 @@ describe('spiderTools', () => {
     expect(result.hint).toMatchObject({ code: 'blocked', next: 'go' });
   });
 
-  it('attaches the same near context after every spatial action', async () => {
+  it('keeps simple successful actions small and reserves full context for observe', async () => {
     const tools = spiderTools(session as unknown as SimSession);
-    const beside = [
-      ['go', { mode: 'point', x: 1, z: 2 }],
-      ['go', { mode: 'id', id: 'apple-1' }],
-      ['act', { verb: 'eat', id: 'apple-1' }],
-      ['act', { verb: 'pick_up', id: 'apple-1' }],
-      ['act', { verb: 'drop', id: 'apple-1' }],
-      ['act', { verb: 'store', id: 'apple-1' }],
-    ] as const;
-    for (const [name, input] of beside) {
-      session.near.mockClear();
-      const result = (await execute(tools[name], input)) as Record<string, unknown>;
-      expect(session.near).toHaveBeenCalledOnce();
-      expect(result).toHaveProperty('near');
-      expect(result).not.toHaveProperty('observation');
+    for (const input of [
+      { verb: 'eat', id: 'apple-1' },
+      { verb: 'pick_up', id: 'apple-1' },
+      { verb: 'drop', id: 'apple-1' },
+      { verb: 'store', id: 'apple-1' },
+      { verb: 'sleep' },
+    ]) {
+      expect(await execute(tools.act, input)).toEqual({ ok: true });
     }
-    const plain = [
-      ['go', { mode: 'degrees', degrees: 10 }],
-      ['go', { mode: 'heading', heading: 0 }],
-      ['act', { verb: 'drink' }],
-      ['set_height', { level: 0 }],
-      ['act', { verb: 'sleep' }],
-      ['observe', {}],
-    ] as const;
-    for (const [name, input] of plain) {
-      session.near.mockClear();
-      const result = (await execute(tools[name], input)) as Record<string, unknown>;
-      expect(session.near).toHaveBeenCalledOnce();
-      expect(result).toHaveProperty('near');
-    }
+    expect(await execute(tools.go, { mode: 'degrees', degrees: 10 })).toEqual({
+      ok: true,
+      self: { heading: 0 },
+    });
+    expect(await execute(tools.set_height, { level: 0 })).toEqual({
+      ok: true,
+      self: { height: 0 },
+    });
+    expect(session.near).not.toHaveBeenCalled();
+    expect(session.worldInfo).not.toHaveBeenCalled();
+    const observed = await execute(tools.observe, {});
+    expect(observed).toHaveProperty('near');
+    expect(observed).toHaveProperty('world');
+    expect(observed).toHaveProperty('observation');
   });
 
   it('marks, lists, and forgets named places', async () => {
@@ -437,10 +414,9 @@ describe('spiderTools', () => {
       ok: false,
       reason: 'not-found',
       id: 'apple-1',
-      world,
       hint: { code: 'stale-target', next: 'observe' },
     });
-    expect(session.near).toHaveBeenCalledOnce();
+    expect(session.near).not.toHaveBeenCalled();
   });
 
   it('passes movement arguments through', async () => {
@@ -454,7 +430,7 @@ describe('spiderTools', () => {
     await execute(tools.go, { mode: 'id', id: 'apple-1', standoff: 0.5, fast: true });
     expect(session.turn).toHaveBeenCalledWith(45);
     expect(session.turnTo).toHaveBeenCalledWith(-90);
-    expect(byHeading.heading).toBe(-90);
+    expect(byHeading.self).toEqual({ heading: 0 });
     expect(session.moveTo).toHaveBeenCalledWith(1, 2, true);
     expect(session.approach).toHaveBeenCalledWith('apple-1', 0.5, true);
   });

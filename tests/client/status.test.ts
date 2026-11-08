@@ -150,7 +150,25 @@ describe('live status', () => {
   it('shows saved tool traces when available and handles results without a matching call', async () => {
     const journal = {
       session: {
-        turns: [{}, { tools: [{ name: 'mark', input: { name: 'home' }, output: { ok: true } }] }],
+        messages: [
+          {
+            role: 'assistant',
+            content: [
+              { type: 'tool-call', toolCallId: '1', toolName: 'mark', input: { name: 'home' } },
+            ],
+          },
+          {
+            role: 'tool',
+            content: [
+              {
+                type: 'tool-result',
+                toolCallId: '1',
+                toolName: 'mark',
+                output: { type: 'json', value: { ok: true } },
+              },
+            ],
+          },
+        ],
       },
     } as unknown as Journal;
     const status = setup(journal);

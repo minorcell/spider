@@ -46,7 +46,7 @@ describe('journal worker handler', () => {
     const handle = createHandler();
     const state = (await handle({ id: 1, method: 'open' })) as JournalState;
     expect(state.date).toBe(localDate(new Date()));
-    expect(state.session.turns).toEqual([]);
+    expect(state.session.messages).toEqual([]);
     expect(state.behind).toBe(false);
     expect(state.dismissed).toBe(false);
     expect(await handle({ id: 2, method: 'open' })).toEqual(state);
@@ -57,13 +57,19 @@ describe('journal worker handler', () => {
     const state = (await handle({
       id: 1,
       method: 'record',
-      args: ['走', '好。', [], SETTINGS],
+      args: [
+        [
+          { role: 'user', content: '走' },
+          { role: 'assistant', content: '好。' },
+        ],
+        SETTINGS,
+      ],
     })) as JournalState;
-    expect(state.session.turns).toHaveLength(2);
+    expect(state.session.messages).toHaveLength(2);
     expect(await handle({ id: 2, method: 'pages' })).toEqual([]);
     await handle({ id: 3, method: 'save' });
     const reopened = await Diary.open(new Date());
-    expect(reopened.session.turns).toHaveLength(2);
+    expect(reopened.session.messages).toHaveLength(2);
   });
 
   it('reads and writes diary pages through the same handle', async () => {
@@ -80,12 +86,21 @@ describe('journal worker handler', () => {
     expect(await handle({ id: 4, method: 'pages' })).toEqual([
       expect.objectContaining({ date, description: '目录句' }),
     ]);
-    expect(await handle({ id: 5, method: 'indexBlock' })).toContain('目录句');
   });
 
   it('digests today and backfills yesterday', async () => {
     const handle = createHandler();
-    await handle({ id: 1, method: 'record', args: ['走', '好。', [], SETTINGS] });
+    await handle({
+      id: 1,
+      method: 'record',
+      args: [
+        [
+          { role: 'user', content: '走' },
+          { role: 'assistant', content: '好。' },
+        ],
+        SETTINGS,
+      ],
+    });
     const state = (await handle({ id: 2, method: 'digest', args: [SETTINGS] })) as JournalState;
     expect(state.behind).toBe(false);
     expect(
@@ -95,7 +110,13 @@ describe('journal worker handler', () => {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const day = await Diary.open(yesterday);
-    await day.record('昨天', '在。', [], SETTINGS);
+    await day.record(
+      [
+        { role: 'user', content: '昨天' },
+        { role: 'assistant', content: '在。' },
+      ],
+      SETTINGS,
+    );
     await handle({ id: 4, method: 'backfill', args: [SETTINGS] });
     expect(await handle({ id: 5, method: 'read', args: [day.date] })).toMatchObject({
       line: '记下了',
@@ -282,6 +303,12 @@ it('allows model status and cancellation while a local inference is pending', as
   await handle({
     id: 6,
     method: 'record',
-    args: ['走', '好了', [], { ...SETTINGS, mode: 'local' }],
+    args: [
+      [
+        { role: 'user', content: '走' },
+        { role: 'assistant', content: '好了' },
+      ],
+      { ...SETTINGS, mode: 'local' },
+    ],
   });
 });

@@ -71,7 +71,7 @@ describe('local inference application overhead (no GPU)', () => {
       }),
     };
     await bench('classify 8-character tool chunks', async () => {
-      const { stream } = await withInlineCalls(model, names, true).doStream();
+      const { stream } = await withInlineCalls(model, names).doStream();
       const reader = stream.getReader();
       while (!(await reader.read()).done) {
         /* drain */

@@ -14,7 +14,6 @@ import {
   setPending,
   type BootNote,
 } from '@/src/client/worldStore';
-import type { Trace } from '@/src/client/journal/session';
 import { cloudHolds } from '@/src/client/cloud/sync';
 import { bindCloud } from '@/src/client/panel/cloud';
 import { bindLeave } from '@/src/client/panel/leave';
@@ -528,8 +527,6 @@ export function mountPanel(
     let sawText = false;
     let finalStatus = '已完成';
     status.start(settings);
-    const traces: Trace[] = [];
-    let pending: { name: string; input: unknown } | null = null;
     lastActivity = Date.now();
     setPending({ text, tool: null });
     flushWorld('poke');
@@ -547,7 +544,6 @@ export function mountPanel(
         session,
         settings,
         chat: opened?.session,
-        memoryIndex: opened ? await opened.indexBlock() : undefined,
         memory: opened?.api(),
         signal: controller.signal,
         onEvent(event) {
@@ -559,18 +555,11 @@ export function mountPanel(
               say(event.text);
               break;
             case 'tool-call':
-              pending = { name: event.name, input: event.input };
               setPending({ text, tool: event.name });
               flushSoon('poke');
               show(thoughtOf(event.input), 'thought');
               break;
             case 'tool-result':
-              traces.push({
-                name: event.name,
-                input: pending?.name === event.name ? pending.input : null,
-                output: event.output,
-              });
-              pending = null;
               flushSoon('poke');
               break;
             case 'error':
@@ -596,7 +585,7 @@ export function mountPanel(
         let failed = false;
         if (opened) {
           try {
-            await opened.record(text, answer, traces, settings);
+            await opened.record(reply.messages, settings);
             recorded = true;
           } catch (error) {
             failed = true;

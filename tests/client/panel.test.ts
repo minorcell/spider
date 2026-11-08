@@ -384,7 +384,7 @@ describe('running a goal', () => {
 
   it('ignores an empty message', () => {
     ready();
-    loop.runAgent.mockResolvedValue({ text: 'unused', usage: null });
+    loop.runAgent.mockResolvedValue({ text: 'unused', messages: [], usage: null });
     mount();
     submit();
     expect(loop.runAgent).not.toHaveBeenCalled();
@@ -406,7 +406,7 @@ describe('running a goal', () => {
         set() {},
       });
       onEvent({ type: 'text', text: '好' });
-      return { text: '', usage: null };
+      return { text: '', messages: [], usage: null };
     });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
@@ -426,7 +426,7 @@ describe('running a goal', () => {
       onEvent({ type: 'text', text: '你' });
       onEvent({ type: 'text', text: '好' });
       onEvent({ type: 'unknown' });
-      return { text: '', usage: null };
+      return { text: '', messages: [], usage: null };
     });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
@@ -441,7 +441,7 @@ describe('running a goal', () => {
 
   it('shows the final answer when no text streamed', async () => {
     ready();
-    loop.runAgent.mockResolvedValue({ text: ' 完成 ', usage: null });
+    loop.runAgent.mockResolvedValue({ text: ' 完成 ', messages: [], usage: null });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
@@ -451,7 +451,7 @@ describe('running a goal', () => {
 
   it('stays quiet for a blank answer', async () => {
     ready();
-    loop.runAgent.mockResolvedValue({ text: '   ', usage: null });
+    loop.runAgent.mockResolvedValue({ text: '   ', messages: [], usage: null });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
@@ -468,7 +468,7 @@ describe('running a goal', () => {
       onEvent({ type: 'tool-call', input: null });
       onEvent({ type: 'tool-call', input: 'x' });
       onEvent({ type: 'tool-call', input: {} });
-      return { text: '', usage: null };
+      return { text: '', messages: [], usage: null };
     });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
@@ -486,7 +486,7 @@ describe('running a goal', () => {
       onEvent({ type: 'error', message: 'Failed to fetch' });
       onEvent({ type: 'error', message: 'boom' });
       onEvent({ type: 'error', message: '' });
-      return { text: '', usage: null };
+      return { text: '', messages: [], usage: null };
     });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
@@ -499,7 +499,7 @@ describe('running a goal', () => {
     ready();
     loop.runAgent.mockImplementation(async ({ onEvent }: { onEvent: (event: unknown) => void }) => {
       onEvent({ type: 'error', message: 'TypeError: Failed to fetch' });
-      return { text: '', usage: null };
+      return { text: '', messages: [], usage: null };
     });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
@@ -533,7 +533,7 @@ describe('running a goal', () => {
     loop.runAgent.mockImplementation(
       ({ signal }: { signal: AbortSignal }) =>
         new Promise((resolve) => {
-          signal.addEventListener('abort', () => resolve({ text: '', usage: null }));
+          signal.addEventListener('abort', () => resolve({ text: '', messages: [], usage: null }));
         }),
     );
     mount();
@@ -553,11 +553,13 @@ describe('running a goal', () => {
         call += 1;
         if (call === 1) {
           return new Promise((resolve) => {
-            signal.addEventListener('abort', () => resolve({ text: '', usage: null }));
+            signal.addEventListener('abort', () =>
+              resolve({ text: '', messages: [], usage: null }),
+            );
           });
         }
         onEvent({ type: 'text', text: '新的' });
-        return Promise.resolve({ text: '', usage: null });
+        return Promise.resolve({ text: '', messages: [], usage: null });
       },
     );
     mount();
@@ -645,7 +647,7 @@ describe('running a goal', () => {
           });
         }
         onEvent({ type: 'text', text: '新的' });
-        return Promise.resolve({ text: '', usage: null });
+        return Promise.resolve({ text: '', messages: [], usage: null });
       },
     );
     mount();
@@ -693,7 +695,7 @@ describe('speech bubble follow', () => {
     ready();
     loop.runAgent.mockImplementation(async ({ onEvent }: { onEvent: (event: unknown) => void }) => {
       onEvent({ type: 'text', text });
-      return { text: '', usage: null };
+      return { text: '', messages: [], usage: null };
     });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
@@ -765,7 +767,7 @@ describe('speech bubble follow', () => {
     ready();
     loop.runAgent.mockImplementation(async ({ onEvent }: { onEvent: (event: unknown) => void }) => {
       onEvent({ type: 'text', text: '你好' });
-      return { text: '', usage: null };
+      return { text: '', messages: [], usage: null };
     });
     mount();
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
@@ -802,7 +804,14 @@ describe('diary panel', () => {
 
   async function seedDay(withTurns = true): Promise<Diary> {
     const diary = await Diary.open(new Date());
-    if (withTurns) await diary.record('走', '好。', [], PILOT);
+    if (withTurns)
+      await diary.record(
+        [
+          { role: 'user', content: '走' },
+          { role: 'assistant', content: '好。' },
+        ],
+        PILOT,
+      );
     return diary;
   }
 
@@ -1092,7 +1101,7 @@ describe('diary panel', () => {
       onEvent({ type: 'tool-result', name: 'pick_up', output: { ok: true } });
       onEvent({ type: 'tool-result', name: 'drop', output: { ok: true } });
       onEvent({ type: 'error', message: 'boom' });
-      return { text: '', usage: null };
+      return { text: '', messages: [], usage: null };
     });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
@@ -1107,7 +1116,7 @@ describe('diary panel', () => {
     loop.runAgent.mockImplementation(async ({ onEvent }: { onEvent: (event: unknown) => void }) => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       onEvent({ type: 'text', text: '晚了' });
-      return { text: '', usage: null };
+      return { text: '', messages: [], usage: null };
     });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
@@ -1123,7 +1132,7 @@ describe('diary panel', () => {
     vi.spyOn(Diary.prototype, 'record').mockRejectedValueOnce('disk');
     mount();
     await flush();
-    loop.runAgent.mockResolvedValue({ text: '', usage: null });
+    loop.runAgent.mockResolvedValue({ text: '', messages: [], usage: null });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
     await flush();
@@ -1136,7 +1145,7 @@ describe('diary panel', () => {
     vi.spyOn(Diary.prototype, 'record').mockRejectedValueOnce(new Error('disk full'));
     mount();
     await flush();
-    loop.runAgent.mockResolvedValue({ text: '', usage: null });
+    loop.runAgent.mockResolvedValue({ text: '', messages: [], usage: null });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
     await flush();
@@ -1166,7 +1175,7 @@ describe('diary panel', () => {
     const spy = vi.spyOn(Diary, 'open').mockRejectedValueOnce(new Error('no db'));
     mount();
     await flush();
-    loop.runAgent.mockResolvedValue({ text: '', usage: null });
+    loop.runAgent.mockResolvedValue({ text: '', messages: [], usage: null });
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
     await flush();
@@ -1397,7 +1406,7 @@ describe('usage dialog', () => {
 
   it('refreshes an open ledger after a reply', async () => {
     ready();
-    loop.runAgent.mockResolvedValue({ text: '好', usage: reported });
+    loop.runAgent.mockResolvedValue({ text: '好', messages: [], usage: reported });
     mount();
     clickButton('#menu-usage');
     await flush();
@@ -1413,6 +1422,7 @@ describe('usage dialog', () => {
     ready();
     loop.runAgent.mockResolvedValue({
       text: '好',
+      messages: [],
       usage: reported,
       calls: [
         usageLedger.usageCallFromStep(
@@ -1420,6 +1430,7 @@ describe('usage dialog', () => {
             callId: 'c1',
             stepNumber: 0,
             model: { provider: 'openai-compatible', modelId: 'deepseek-chat' },
+            messages: [],
             usage: reported,
             finishReason: 'tool-calls',
             providerMetadata: {
@@ -1453,6 +1464,7 @@ describe('usage dialog', () => {
             callId: 'c1',
             stepNumber: 1,
             model: { provider: 'openai-compatible', modelId: 'deepseek-chat' },
+            messages: [],
             usage: reported,
             finishReason: 'stop',
             toolCalls: [],
@@ -1472,6 +1484,7 @@ describe('usage dialog', () => {
             callId: 'c1',
             stepNumber: 2,
             model: { provider: 'openai-compatible', modelId: 'deepseek-chat' },
+            messages: [],
             usage: reported,
             finishReason: 'stop',
             toolCalls: [],
@@ -1510,7 +1523,9 @@ describe('usage dialog', () => {
     loop.runAgent.mockImplementation(
       ({ signal }: { signal: AbortSignal }) =>
         new Promise((resolve) => {
-          signal.addEventListener('abort', () => resolve({ text: '', usage: reported }));
+          signal.addEventListener('abort', () =>
+            resolve({ text: '', messages: [], usage: reported }),
+          );
         }),
     );
     mount();
@@ -1617,6 +1632,7 @@ describe('usage dialog', () => {
           callId: 'c-slow',
           stepNumber: 0,
           model: { provider: 'openai-compatible', modelId: 'deepseek-chat' },
+          messages: [],
           usage: reported,
           finishReason: 'mystery',
           toolCalls: [{ toolCallId: 't1', toolName: 'observe', input: {} }],
@@ -1651,6 +1667,7 @@ describe('usage dialog', () => {
         {
           callId: 'c-bare',
           stepNumber: 0,
+          messages: [],
           usage: reported,
           toolCalls: [{}],
           toolResults: [],
@@ -1736,7 +1753,7 @@ describe('saved sentence', () => {
       onEvent({ type: 'tool-call', name: 'look', input: { description: '看' } });
       expect(pendingNow()?.tool).toBe('look');
       onEvent({ type: 'tool-result', name: 'look', output: {} });
-      return { text: '到了', usage: null };
+      return { text: '到了', messages: [], usage: null };
     });
     vi.spyOn(Diary.prototype, 'record').mockRejectedValueOnce(new Error('disk'));
     mount();
@@ -1749,7 +1766,7 @@ describe('saved sentence', () => {
 
   it('does not let a replaced run clear the new sentence', async () => {
     ready();
-    let finishFirst: ((value: { text: string; usage: null }) => void) | undefined;
+    let finishFirst: ((value: { text: string; messages: []; usage: null }) => void) | undefined;
     let call = 0;
     loop.runAgent.mockImplementation(
       () =>
@@ -1767,7 +1784,7 @@ describe('saved sentence', () => {
     submit();
     await flush();
     expect(pendingNow()?.text).toBe('第二句');
-    finishFirst?.({ text: '', usage: null });
+    finishFirst?.({ text: '', messages: [], usage: null });
     await flush();
     expect(pendingNow()?.text).toBe('第二句');
   });
@@ -1777,7 +1794,7 @@ describe('saved sentence', () => {
     loop.runAgent.mockImplementation(
       ({ signal }: { signal: AbortSignal }) =>
         new Promise((resolve) => {
-          signal.addEventListener('abort', () => resolve({ text: '', usage: null }));
+          signal.addEventListener('abort', () => resolve({ text: '', messages: [], usage: null }));
         }),
     );
     mount();

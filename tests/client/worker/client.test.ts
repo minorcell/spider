@@ -50,7 +50,7 @@ describe('WorkerJournal', () => {
   it('reads empty defaults before the worker answers', () => {
     const journal = new WorkerJournal(new Port());
     expect(journal.date).toBe('');
-    expect(journal.session.turns).toEqual([]);
+    expect(journal.session.messages).toEqual([]);
     expect(journal.behind()).toBe(false);
     expect(journal.dismissed).toBe(false);
   });
@@ -63,24 +63,33 @@ describe('WorkerJournal', () => {
     port.respond({ id: 1, ok: true, value: STATE });
     await opened;
     expect(journal.date).toBe('2026-11-02');
-    expect(journal.session.turns).toEqual([]);
+    expect(journal.session.messages).toEqual([]);
 
     expect(await call(port, () => journal.save(), STATE)).toBeUndefined();
     await call(
       port,
       () =>
-        journal.record('走', '好。', [], {
-          baseURL: 'x',
-          model: 'm',
-          apiKey: 'k',
-          contextTokens: null,
-          autoMemory: false,
-          thinking: true,
-        }),
+        journal.record(
+          [
+            { role: 'user', content: '走' },
+            { role: 'assistant', content: '好。' },
+          ],
+          {
+            baseURL: 'x',
+            model: 'm',
+            apiKey: 'k',
+            contextTokens: null,
+            autoMemory: false,
+            thinking: true,
+          },
+        ),
       { ...STATE, behind: true },
     );
     expect(port.last.method).toBe('record');
-    expect((port.last as { args: unknown[] }).args.slice(0, 3)).toEqual(['走', '好。', []]);
+    expect((port.last as { args: unknown[] }).args[0]).toEqual([
+      { role: 'user', content: '走' },
+      { role: 'assistant', content: '好。' },
+    ]);
     expect(journal.behind()).toBe(true);
 
     const settings = {
@@ -93,7 +102,6 @@ describe('WorkerJournal', () => {
     };
     expect(await call(port, () => journal.digest(settings), STATE)).toBeUndefined();
     expect(await call(port, () => journal.backfill(settings), STATE)).toBeUndefined();
-    expect(await call(port, () => journal.indexBlock(), '目录')).toBe('目录');
     expect(await call(port, () => journal.pages(), [])).toEqual([]);
     expect(await call(port, () => journal.read('2026-11-02'), null)).toBeNull();
     expect(

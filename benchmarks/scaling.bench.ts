@@ -20,7 +20,7 @@ function streamReply(text: string) {
 }
 
 async function classify(model: ReturnType<typeof streamReply>) {
-  const { stream } = await withInlineCalls(model, names, true).doStream();
+  const { stream } = await withInlineCalls(model, names).doStream();
   const reader = stream.getReader();
   let text = '';
   let calls = 0;
@@ -53,11 +53,11 @@ describe('message scaling', () => {
   }
 
   for (const size of [256, 1024, 4096, 16384]) {
-    test(`marked answer ${size} chars in 8-char chunks`, async ({ bench }) => {
+    test(`plain answer ${size} chars in 8-char chunks`, async ({ bench }) => {
       const body = '好'.repeat(size);
-      const model = streamReply(`答：${body}`);
+      const model = streamReply(body);
       expect(await classify(model)).toEqual({ text: body, calls: 0 });
-      await bench(`marked answer ${size} chars`, () => classify(model)).run();
+      await bench(`plain answer ${size} chars`, () => classify(model)).run();
     });
 
     test(`tool envelope ${size} chars in 8-char chunks`, async ({ bench }) => {
@@ -78,15 +78,15 @@ describe('journal scaling', () => {
     test(`drop oldest of ${turns} turns`, async ({ bench }) => {
       const session: ChatSession = {
         ...blankSession('2026-11-08'),
-        turns: Array.from({ length: turns }, (_, i) => ({
+        messages: Array.from({ length: turns }, (_, i) => ({
           role: i % 2 === 0 ? 'user' : 'assistant',
-          text: '对话内容'.repeat(20),
+          content: '对话内容'.repeat(20),
         })),
       };
       const limits = { contextTokens: 4000 };
       const trimmed = dropOldest(session, limits);
-      expect(trimmed.turns.length).toBeLessThan(turns);
-      expect(trimmed.turns.at(-1)).toBe(session.turns.at(-1));
+      expect(trimmed.messages.length).toBeLessThan(turns);
+      expect(trimmed.messages.at(-1)).toBe(session.messages.at(-1));
       await bench(`drop oldest of ${turns} turns`, () => {
         dropOldest(session, limits);
       }).run();
