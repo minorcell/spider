@@ -1,7 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { CloudCursor } from '@/src/client/cloud/engine';
 import type { WorldRecord } from '@/src/shared/sim/snapshot';
-import type { ChatSession } from '@/src/client/journal/session';
+import type { ChatSession, LegacySession } from '@/src/client/journal/session';
 
 export interface MemoryPage {
   date: string;
@@ -66,7 +66,7 @@ export interface UsageCall {
 }
 
 interface SpiderDB extends DBSchema {
-  sessions: { key: string; value: ChatSession };
+  sessions: { key: string; value: ChatSession | LegacySession };
   memories: { key: string; value: MemoryPage };
   usage: { key: string; value: UsageDay };
   usageCalls: { key: string; value: UsageCall; indexes: { date: string } };

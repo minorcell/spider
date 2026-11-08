@@ -1,5 +1,3 @@
-import { hasMachineText, speechText } from '@/src/client/agent/speech';
-
 export interface InlineCall {
   name: string;
   input: Record<string, unknown>;
@@ -76,18 +74,14 @@ interface StreamingModel {
   doStream: (options: never) => PromiseLike<{ stream: ReadableStream<unknown> }>;
 }
 
-export function withInlineCalls<M extends object>(
-  model: M,
-  names: readonly string[],
-  local = false,
-): M {
+export function withInlineCalls<M extends object>(model: M, names: readonly string[]): M {
   const source = model as unknown as Partial<StreamingModel>;
   if (names.length === 0 || typeof source.doStream !== 'function') return model;
   const stream = source.doStream.bind(model);
   const wrapped = Object.create(model) as M & StreamingModel;
   wrapped.doStream = async (options: never) => {
     const result = await stream(options);
-    return { ...result, stream: recover(result.stream, names, local) };
+    return { ...result, stream: recover(result.stream, names) };
   };
   return wrapped;
 }
@@ -95,80 +89,20 @@ export function withInlineCalls<M extends object>(
 function recover(
   source: ReadableStream<unknown>,
   names: readonly string[],
-  local: boolean,
 ): ReadableStream<unknown> {
   let text = '';
   let textId = inlineId('text');
   let hasToolCall = false;
   let flushed = false;
-  let emitted = 0;
-  let opened = false;
-  const emit = (controller: TransformStreamDefaultController<unknown>, delta: string): void => {
-    if (!delta) return;
-    if (!opened) {
-      opened = true;
-      controller.enqueue({ type: 'text-start', id: textId });
-    }
-    controller.enqueue({ type: 'text-delta', id: textId, delta });
-    emitted += delta.length;
-  };
-
-  let answer: boolean | null = null;
-  let prefix = '';
-  let speechTail = '';
-  let speechLength = 0;
-  let pendingSpeech = '';
-  let blockedSpeech = false;
-  const speak = (controller: TransformStreamDefaultController<unknown>, delta: string): void => {
-    if (answer === false || blockedSpeech) return;
-    if (answer === null) {
-      prefix = (prefix + delta).trimStart();
-      const marker = /^答[：:]/.exec(prefix);
-      if (!marker) {
-        if (!/^答?$/.test(prefix)) answer = false;
-        return;
-      }
-      answer = true;
-      delta = prefix.slice(marker[0].length);
-      prefix = '';
-    }
-    if (speechLength === 0) delta = delta.trimStart();
-    const probe = (speechTail + delta).replace(/\s+/g, ' ');
-    speechTail = probe.slice(-24);
-    if (hasMachineText(probe)) {
-      blockedSpeech = true;
-      return;
-    }
-    speechLength += delta.length;
-    if (speechLength < 6) {
-      pendingSpeech += delta;
-      return;
-    }
-    const next = pendingSpeech + delta;
-    pendingSpeech = '';
-    emit(controller, next);
-  };
-
   const flush = (controller: TransformStreamDefaultController<unknown>, parse: boolean): void => {
     if (!flushed) {
       flushed = true;
       const calls = parse && !hasToolCall ? parseInlineCalls(text, names) : [];
-      const body = local
-        ? calls.length || hasToolCall || !parse
-          ? ''
-          : speechText(text)
-        : calls.length > 0
-          ? cleanInlineText(text, calls)
-          : text;
-      if (body !== '') {
-        emit(controller, body.slice(emitted));
-      }
-      if (opened) controller.enqueue({ type: 'text-end', id: textId });
-      if (local && parse && text.trim() && !body && !calls.length && !hasToolCall) {
-        controller.enqueue({
-          type: 'error',
-          error: new Error('本机模型返回了无法识别的工具消息，请重试'),
-        });
+      const body = calls.length > 0 ? cleanInlineText(text, calls) : text;
+      if (body) {
+        controller.enqueue({ type: 'text-start', id: textId });
+        controller.enqueue({ type: 'text-delta', id: textId, delta: body });
+        controller.enqueue({ type: 'text-end', id: textId });
       }
       for (const call of calls) {
         controller.enqueue({
@@ -196,7 +130,6 @@ function recover(
             if (typeof chunk.id === 'string') textId = chunk.id;
             const delta = chunk.delta ?? chunk.text ?? '';
             text += delta;
-            if (local && !hasToolCall) speak(controller, delta);
             return;
           }
           case 'text-end':

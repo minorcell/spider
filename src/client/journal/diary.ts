@@ -11,7 +11,6 @@ import {
   transcript,
   type ChatSession,
   type CompactLimits,
-  type LegacySession,
 } from '@/src/client/journal/session';
 import {
   readUsage,
@@ -193,19 +192,23 @@ export class Diary implements Journal {
 }
 
 async function loadSession(db: Awaited<ReturnType<typeof openSpiderDb>>, date: string) {
-  const stored = await db.get('sessions', date);
-  if (!stored || 'messages' in stored) return stored;
-  const legacy = stored as LegacySession;
-  const session = restoreSession(legacy);
-  // Keep an older compacted summary in the diary, without injecting it into the prompt.
-  if (legacy.summary) {
-    const page = (await db.get('memories', date)) ?? blankMemory(date);
-    await db.put('memories', {
+  const tx = db.transaction(['sessions', 'memories'], 'readwrite');
+  const stored = await tx.objectStore('sessions').get(date);
+  if (!stored || 'messages' in stored) {
+    await tx.done;
+    return stored;
+  }
+  const session = restoreSession(stored);
+  // Archive older summaries with the diary, atomically with the session migration.
+  if (stored.summary) {
+    const page = (await tx.objectStore('memories').get(date)) ?? blankMemory(date);
+    await tx.objectStore('memories').put({
       ...page,
-      summary: [page.summary, legacy.summary].filter(Boolean).join('\n'),
+      summary: [page.summary, stored.summary].filter(Boolean).join('\n'),
       updatedAt: Date.now(),
     });
   }
-  await db.put('sessions', session);
+  await tx.objectStore('sessions').put(session);
+  await tx.done;
   return session;
 }

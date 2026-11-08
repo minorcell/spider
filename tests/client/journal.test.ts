@@ -188,6 +188,15 @@ describe('conversation messages', () => {
     ).toHaveLength(1);
   });
 
+  it('keeps the newest complete turn even when it alone exceeds the budget', () => {
+    const chat = session([
+      ...dialogue('x'.repeat(4000), 'old'),
+      ...dialogue('y'.repeat(4000), 'middle'),
+      ...toolMessages,
+    ]);
+    expect(dropOldest(chat, { contextTokens: 1 }).messages).toEqual(toolMessages);
+  });
+
   it('compresses at 80% of the context window', () => {
     const chat = session([{ role: 'user', content: 'x'.repeat(400) }]);
     expect(estimateTokens(chat)).toBeGreaterThan(100);
@@ -224,6 +233,15 @@ describe('conversation messages', () => {
         session([{ role: 'assistant', content: [{ type: 'reasoning', text: 'private' }] }]),
       ),
     ).not.toContain('private');
+  });
+
+  it('exports SDK text parts to the diary without changing the stored messages', () => {
+    const messages: ModelMessage[] = [
+      { role: 'user', content: [{ type: 'text', text: '看看附近' }] },
+      { role: 'assistant', content: [{ type: 'text', text: '看到了。' }] },
+    ];
+    expect(transcript(session(messages))).toBe('user：看看附近\nassistant：看到了。');
+    expect(toolTraces(messages)).toEqual([]);
   });
 
   it('restores old conversations as linked tool messages once', () => {
@@ -400,6 +418,34 @@ describe('Diary', () => {
     expect(await db.get('sessions', date)).toEqual(diary.session);
     await Diary.open(new Date(2026, 10, 11, 9));
     expect(await diary.read(date)).toMatchObject({ summary: '更早的摘要' });
+  });
+
+  it('migrates empty old saves without creating a memory page', async () => {
+    const date = '2026-11-15';
+    const db = await openSpiderDb();
+    await db.put('sessions', {
+      date,
+      summary: '',
+      turns: [{ role: 'assistant', text: '', tools: [{ name: 'act', input: {}, output: null }] }],
+      updatedAt: 1,
+      digestedAt: 0,
+    });
+    const diary = await Diary.open(new Date(2026, 10, 15, 8));
+    expect(toolTraces(diary.session.messages)[0].output).toBeNull();
+    expect(await diary.read(date)).toBeNull();
+  });
+
+  it('preserves existing memory content when migrating an old summary', async () => {
+    const date = '2026-11-16';
+    const db = await openSpiderDb();
+    const diary = await Diary.open(new Date(2026, 10, 16, 8));
+    await diary.write({ date, summary: '已有日记', noted: '明确记录' });
+    await db.put('sessions', { date, summary: '旧摘要', turns: [], updatedAt: 1, digestedAt: 0 });
+    const reopened = await Diary.open(new Date(2026, 10, 16, 9));
+    expect(await reopened.read(date)).toMatchObject({
+      summary: '已有日记\n旧摘要',
+      noted: '明确记录',
+    });
   });
 
   it('records tokens spent writing the diary', async () => {

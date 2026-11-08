@@ -172,94 +172,41 @@ describe('cleanInlineText', () => {
 
 describe('withInlineCalls', () => {
   it.each([
+    '普通回答：这里有 `{}` 和 [苹果]。',
     '{"ok":true,"observation":{"x":1}}',
     '{"name":"unknown","arguments":{}}',
     '```json\n{"name":"observe","arguments":',
     '工具执行结果：{"ok":true}',
-  ])('never sends an unrecognized local tool payload to speech: %s', async (text) => {
+  ])('preserves text that is not a recognized tool call: %s', async (text) => {
     const { stream } = await withInlineCalls(
       fakeModel([{ type: 'text-delta', delta: text }, { type: 'finish' }]),
       names,
-      true,
-    ).doStream({} as never);
+    ).doStream();
     const chunks = await read(stream);
-    expect(chunks.some((chunk) => chunk.type === 'text-delta')).toBe(false);
-    expect(chunks.some((chunk) => chunk.type === 'error')).toBe(true);
+    expect(
+      chunks
+        .filter((chunk) => chunk.type === 'text-delta')
+        .map((chunk) => chunk.delta)
+        .join(''),
+    ).toBe(text);
+    expect(chunks.some((chunk) => chunk.type === 'error')).toBe(false);
   });
 
-  it('streams marked answers before generation finishes', async () => {
-    let finish!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
-    const model = {
-      doStream: async () => ({
-        stream: new ReadableStream({
-          async start(controller) {
-            controller.enqueue({ type: 'text-delta', delta: '答：我已经看清周围了' });
-            await gate;
-            controller.enqueue({ type: 'text-delta', delta: '。' });
-            controller.enqueue({ type: 'finish' });
-            controller.close();
-          },
-        }),
-      }),
-    };
-    const { stream } = await withInlineCalls(model, names, true).doStream();
-    const reader = stream.getReader();
-    expect((await reader.read()).value).toMatchObject({ type: 'text-start' });
-    expect((await reader.read()).value).toMatchObject({
-      type: 'text-delta',
-      delta: '我已经看清周围了',
-    });
-    finish();
-    while (!(await reader.read()).done) {
-      /* drain */
-    }
-  });
-
-  it.each([
-    ['答', '：', ' \t', '你好', '，朋友', '。', ''],
-    [' \n答:', ' ', '你好，朋友。'],
-    ['答：', '小步走'],
-  ])(
-    'preserves an answer when its prefix and body cross chunk boundaries: %j',
-    async (...parts) => {
-      const { stream } = await withInlineCalls(
-        fakeModel([...parts.map((delta) => ({ type: 'text-delta', delta })), { type: 'finish' }]),
-        names,
-        true,
-      ).doStream();
-      const chunks = await read(stream);
-      expect(
-        chunks
-          .filter((chunk) => chunk.type === 'text-delta')
-          .map((chunk) => chunk.delta)
-          .join(''),
-      ).toBe(parts.join('').replace(/^\s*答[：:]\s*/, ''));
-    },
-  );
-
-  it.each([
-    ['答：我到', '{', '了', '}'],
-    ['答：', '<func', 'tion', '后续内容'],
-    ['答：', '工具执行结果', ' '.repeat(128), ':', '后续内容'],
-    ['答：', '"observ', 'ation"', ' '.repeat(128), ':', '后续内容'],
-  ])('stops streaming machine text split across chunks: %j', async (...parts) => {
+  it('preserves ordinary text across chunk boundaries without a reply marker', async () => {
+    const parts = ['这里有 ', '`{', '}` 和 [', '苹果]。'];
     const { stream } = await withInlineCalls(
       fakeModel([...parts.map((delta) => ({ type: 'text-delta', delta })), { type: 'finish' }]),
       names,
-      true,
     ).doStream();
     const chunks = await read(stream);
-    const text = chunks
-      .filter((chunk) => chunk.type === 'text-delta')
-      .map((chunk) => chunk.delta)
-      .join('');
-    expect(text).not.toContain('后续内容');
-    expect(text).not.toContain('{');
-    expect(chunks.some((chunk) => chunk.type === 'error')).toBe(true);
+    expect(
+      chunks
+        .filter((chunk) => chunk.type === 'text-delta')
+        .map((chunk) => chunk.delta)
+        .join(''),
+    ).toBe(parts.join(''));
   });
+
   it('turns inline text into tool-call chunks before finish', async () => {
     const model = fakeModel([
       { type: 'text-start', id: 't0' },

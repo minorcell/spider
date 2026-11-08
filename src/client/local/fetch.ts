@@ -44,7 +44,7 @@ export function localMessages(body: RequestBody): LocalMessage[] {
   const instruction = body.tools?.length
     ? '你是一只蜘蛛。按用户要求调用工具。需要行动时只输出一个 JSON：{"name":"工具名","arguments":{参数}}。arguments 必须包含 description 和工具要求的全部参数。例：右转九十度 → {"name":"go","arguments":{"description":"我向右转","mode":"degrees","degrees":90}}。移动前先 observe 获取当前位置和朝向，再用 go 的 point 模式走到目标坐标。执行成功后用简短中文回答，不重复调用。只会观察、移动、转向和升降；不能拿取物品。工具结果是事实，失败时按 hint 恢复。' +
       'description 用20字内第一人称短句。go 的 point 用 x、z 坐标，id 用对象 id；heading 是绝对角度，0 朝 -Z，degrees 是顺时针相对角度。set_height 的 level 是离地高度。observe 不填 distance 就尽量看远。landmarks 是家园地标，后山在山顶背离巢穴的一侧；按 x、z 前往但路线未必畅通。rise 是相对脚下的高度差，物体未列 stage 表示 0、未列 properties 表示空，terrain 未列 by 表示没有发现限制。' +
-      '无需行动时，以“答：”开头简短回答。不要复述工具 JSON 或工具结果。可用工具：' +
+      '无需行动时用简短中文回答。不要复述工具 JSON 或工具结果。可用工具：' +
       JSON.stringify(body.tools.map((tool) => compactTool(tool)))
     : system;
   // Keep the current instruction and its tool results together. Earlier turns

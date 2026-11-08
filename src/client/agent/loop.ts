@@ -113,11 +113,7 @@ export async function runAgent({
       { contextTokens: contextTokensOf(local ? 4 : settings.contextTokens) },
     ).messages;
     const result = streamText({
-      model: withInlineCalls(
-        provider(local ? LOCAL_MODEL : settings.model),
-        Object.keys(tools),
-        local,
-      ),
+      model: withInlineCalls(provider(local ? LOCAL_MODEL : settings.model), Object.keys(tools)),
       system: systemFor(),
       messages,
       tools,
@@ -207,7 +203,6 @@ export async function runAgent({
       switch (part.type) {
         case 'text-delta':
           if (!stepHasTool) pending.push(part.text);
-          if (local) flush();
           break;
         case 'tool-call':
           stepHasTool = true;

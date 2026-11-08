@@ -13,7 +13,7 @@ it('executes a wrapped local tool call through the real SDK without showing its 
   const complete = vi
     .fn<LocalBackend['localComplete']>()
     .mockImplementation(async (_id, _messages, _options, onDelta) => {
-      const text = complete.mock.calls.length === 1 ? raw : '答：我已经看清周围了';
+      const text = complete.mock.calls.length === 1 ? raw : '我已经看清周围了';
       for (const part of [text.slice(0, 15), text.slice(15)]) onDelta?.(part);
       return {
         text: text.replace('<think></think>', '').trim(),
@@ -74,7 +74,7 @@ it('does not hide a successful answer if the worker fails while releasing its se
     localStatus: vi.fn(),
     localUnload: vi.fn(),
     localCancel: vi.fn(),
-    localComplete: vi.fn().mockResolvedValue({ text: '答：你好', input: 1, output: 1 }),
+    localComplete: vi.fn().mockResolvedValue({ text: '你好', input: 1, output: 1 }),
     localSession: vi.fn(async (_id, open) => {
       if (!open) throw new Error('worker stopped');
     }),

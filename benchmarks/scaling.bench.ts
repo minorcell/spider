@@ -20,7 +20,7 @@ function streamReply(text: string) {
 }
 
 async function classify(model: ReturnType<typeof streamReply>) {
-  const { stream } = await withInlineCalls(model, names, true).doStream();
+  const { stream } = await withInlineCalls(model, names).doStream();
   const reader = stream.getReader();
   let text = '';
   let calls = 0;
@@ -53,11 +53,11 @@ describe('message scaling', () => {
   }
 
   for (const size of [256, 1024, 4096, 16384]) {
-    test(`marked answer ${size} chars in 8-char chunks`, async ({ bench }) => {
+    test(`plain answer ${size} chars in 8-char chunks`, async ({ bench }) => {
       const body = '好'.repeat(size);
-      const model = streamReply(`答：${body}`);
+      const model = streamReply(body);
       expect(await classify(model)).toEqual({ text: body, calls: 0 });
-      await bench(`marked answer ${size} chars`, () => classify(model)).run();
+      await bench(`plain answer ${size} chars`, () => classify(model)).run();
     });
 
     test(`tool envelope ${size} chars in 8-char chunks`, async ({ bench }) => {
