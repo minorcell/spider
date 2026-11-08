@@ -7,6 +7,22 @@ import { SimSession } from '@/src/shared/sim/session';
 import { WORLD_RADIUS } from '@/src/shared/terrain';
 
 describe('home landmarks', () => {
+  it('keeps home when no dry landmark can be placed', () => {
+    const world = new SimSession(1).world;
+    world.terrain = { height: () => -2 };
+    world.blocks = [];
+    expect(homeLandmarks(world).map((place) => place.name)).toEqual(['巢穴']);
+  });
+
+  it('omits the rear when the only high point is the center or has no dry land beyond it', () => {
+    const world = new SimSession(1).world;
+    world.blocks = [];
+    world.terrain = { height: (x, z) => (x === 0 && z === 0 ? 1 : -2) };
+    expect(homeLandmarks(world).map((place) => place.name)).toEqual(['巢穴', '山顶']);
+    world.terrain = { height: (x, z) => (x === 5 && z === 0 ? 1 : -2) };
+    expect(homeLandmarks(world).map((place) => place.name)).toEqual(['巢穴', '山顶']);
+  });
+
   it('derives mountain and rear from each island and preserves user marks on restore', () => {
     for (const seed of Array.from({ length: 20 }, (_, index) => index + 1)) {
       const session = new SimSession(seed);
