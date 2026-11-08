@@ -1,10 +1,24 @@
 import { localBackend } from './backend.js';
 import { prepareOffline } from './offline.js';
 
-export function bindLocalPanel(
-  doc: Document,
-  onReady?: (ready: boolean) => void,
-): (local: boolean) => void {
+const LOADED_KEY = 'spider.localLoaded';
+
+function rememberLoaded(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(LOADED_KEY, '1');
+    else localStorage.removeItem(LOADED_KEY);
+  } catch {
+    return;
+  }
+}
+
+export interface LocalPanel {
+  show(local: boolean): void;
+  wasLoaded(): boolean;
+  load(): Promise<boolean>;
+}
+
+export function bindLocalPanel(doc: Document, onReady?: (ready: boolean) => void): LocalPanel {
   const panel = doc.querySelector<HTMLElement>('#local-model-panel')!;
   const load = doc.querySelector<HTMLButtonElement>('#local-load')!;
   const unload = doc.querySelector<HTMLButtonElement>('#local-unload')!;
@@ -33,7 +47,7 @@ export function bindLocalPanel(
     detail.textContent = '';
   };
   let loadAttempt = 0;
-  load.addEventListener('click', () => {
+  const loadModel = (cachedOnly = false): Promise<boolean> => {
     const attempt = ++loadAttempt;
     const version = ++statusVersion;
     onReady?.(false);
@@ -47,7 +61,7 @@ export function bindLocalPanel(
     const timer = setInterval(() => {
       void report(version).catch(() => undefined);
     }, 500);
-    void (async () => {
+    return (async () => {
       if (!('gpu' in navigator))
         throw new Error('当前浏览器不支持 WebGPU，请使用支持 WebGPU 的桌面浏览器');
       offline.textContent = '正在准备网页离线缓存…';
@@ -63,8 +77,10 @@ export function bindLocalPanel(
           offline.textContent = '网页离线缓存不可用，本机模型仍可加载；暂不支持断网重开页面。';
         },
       );
-      await (await localBackend()).localLoad();
+      await (await localBackend()).localLoad({ cachedOnly });
       await report(++statusVersion);
+      rememberLoaded(true);
+      return true;
     })()
       .catch((error: unknown) => {
         fail(
@@ -72,6 +88,7 @@ export function bindLocalPanel(
             ? error.message
             : '模型加载失败，请检查网络、存储空间和浏览器支持后重试',
         );
+        return false;
       })
       .finally(() => {
         clearInterval(timer);
@@ -79,7 +96,8 @@ export function bindLocalPanel(
         load.textContent = '加载本机模型';
         unload.disabled = false;
       });
-  });
+  };
+  load.addEventListener('click', () => void loadModel());
   unload.addEventListener('click', () => {
     ++statusVersion;
     onReady?.(false);
@@ -87,6 +105,7 @@ export function bindLocalPanel(
     load.disabled = true;
     void (async () => {
       await (await localBackend()).localUnload();
+      rememberLoaded(false);
       await report(++statusVersion);
       progress.hidden = true;
     })()
@@ -98,13 +117,23 @@ export function bindLocalPanel(
         load.disabled = false;
       });
   });
-  return (local) => {
-    panel.hidden = !local;
-    doc.querySelector<HTMLElement>('#online-model-panel')!.hidden = local;
-    for (const input of doc.querySelectorAll<HTMLInputElement>(
-      '#settings-form input:not([name="localModel"])',
-    )) {
-      input.disabled = local;
-    }
+  return {
+    show(local) {
+      panel.hidden = !local;
+      doc.querySelector<HTMLElement>('#online-model-panel')!.hidden = local;
+      for (const input of doc.querySelectorAll<HTMLInputElement>(
+        '#settings-form input:not([name="localModel"])',
+      )) {
+        input.disabled = local;
+      }
+    },
+    wasLoaded() {
+      try {
+        return localStorage.getItem(LOADED_KEY) === '1';
+      } catch {
+        return false;
+      }
+    },
+    load: () => loadModel(true),
   };
 }

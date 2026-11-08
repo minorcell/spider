@@ -20,6 +20,9 @@ export interface LocalMetrics {
 export interface LocalOptions {
   kind?: 'action' | 'summary';
 }
+export interface LocalLoadOptions {
+  cachedOnly?: boolean;
+}
 export interface LocalStatus {
   ready: boolean;
   text: string;
@@ -28,7 +31,7 @@ export interface LocalStatus {
 }
 export interface LocalBackend {
   localSession?(id: string, active: boolean): Promise<void>;
-  localLoad(): Promise<void>;
+  localLoad(options?: LocalLoadOptions): Promise<void>;
   localStatus(): Promise<LocalStatus>;
   localComplete(
     id: string,

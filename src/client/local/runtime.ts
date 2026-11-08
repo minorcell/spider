@@ -91,13 +91,15 @@ export function createLocalRuntime(): LocalBackend {
       }
     },
     localStatus: async () => ({ ...status }),
-    localLoad: () =>
+    localLoad: (options) =>
       serial(async () => {
         if (engine) return;
+        const { MLCEngine, hasModelInCache } = await import('@mlc-ai/web-llm');
+        if (options?.cachedOnly && !(await hasModelInCache(LOCAL_MODEL, LOCAL_APP_CONFIG)))
+          throw new Error('本机模型缓存已清除，请在设置里重新加载本机模型');
         status = { ready: false, text: '正在加载本机模型…' };
         let next: MLCEngine | null = null;
         try {
-          const { MLCEngine } = await import('@mlc-ai/web-llm');
           next = new MLCEngine({
             appConfig: LOCAL_APP_CONFIG,
             initProgressCallback: (report) => {
