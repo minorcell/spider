@@ -1,4 +1,4 @@
-import { CONTACT } from './config.js';
+import { CONTACT } from '@/src/shared/config';
 
 const SLOPE = 0.6;
 

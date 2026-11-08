@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { formatStars, readStars, REPO, REPO_STARS, syncStars } from '../../src/client/stars.js';
+import { formatStars, readStars, REPO, REPO_STARS, syncStars } from '@/src/client/stars';
 
 const API = `https://api.github.com/repos/${REPO}`;
 

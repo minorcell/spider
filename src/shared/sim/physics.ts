@@ -1,11 +1,11 @@
 import { Quaternion, Vector3 } from 'three';
-import { groundSupport } from '../contact.js';
-import { CONTACT, PHYSICS } from '../config.js';
-import { kindOf } from '../kinds.js';
-import { BODY_RADIUS, blockedAt } from '../sight.js';
-import { insideLand } from '../terrain.js';
-import { sphereVolume, submergedFraction, WATER, waterAt } from '../water.js';
-import type { EntityState, WorldState } from '../state.js';
+import { groundSupport } from '@/src/shared/contact';
+import { CONTACT, PHYSICS } from '@/src/shared/config';
+import { kindOf } from '@/src/shared/kinds';
+import { BODY_RADIUS, blockedAt } from '@/src/shared/sight';
+import { insideLand } from '@/src/shared/terrain';
+import { sphereVolume, submergedFraction, WATER, waterAt } from '@/src/shared/water';
+import type { EntityState, WorldState } from '@/src/shared/state';
 
 export interface Body {
   readonly x: number;

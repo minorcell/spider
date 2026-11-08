@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { signedHeaders } from '../../../src/client/cloud/sigv4.js';
+import { signedHeaders } from '@/src/client/cloud/sigv4';
 
 describe('SigV4', () => {
   it('matches the AWS GET Object test vector', async () => {

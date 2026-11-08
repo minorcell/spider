@@ -1,12 +1,12 @@
 import type { Group } from 'three';
-import type { Footprint } from '../shared/state.js';
-import { buildApple } from './appleMesh.js';
-import { buildGrass, type GrassStyle } from './grassMesh.js';
-import { buildStone } from './models/stone.js';
-import { buildTree } from './models/tree.js';
-import { buildNest } from './nest.js';
+import type { Footprint } from '@/src/shared/state';
+import { buildApple } from '@/src/client/appleMesh';
+import { buildGrass, type GrassStyle } from '@/src/client/grassMesh';
+import { buildStone } from '@/src/client/models/stone';
+import { buildTree } from '@/src/client/models/tree';
+import { buildNest } from '@/src/client/nest';
 
-export { drapeGrass } from './grassMesh.js';
+export { drapeGrass } from '@/src/client/grassMesh';
 
 const STYLES: readonly GrassStyle[] = ['thin', 'seed', 'broad'];
 

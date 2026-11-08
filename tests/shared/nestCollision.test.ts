@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DoubleSide, Mesh, MeshBasicMaterial, Raycaster, Vector3 } from 'three';
-import { buildNest } from '../../src/client/nest.js';
-import { nestDetailHeight, nestSolidSurface } from '../../src/shared/nestCollision.js';
-import { NEST_DETAILS } from '../../src/shared/nestDetails.js';
+import { buildNest } from '@/src/client/nest';
+import { nestDetailHeight, nestSolidSurface } from '@/src/shared/nestCollision';
+import { NEST_DETAILS } from '@/src/shared/nestDetails';
 import {
   NEST_DOOR,
   NEST_FLOOR,
@@ -10,7 +10,7 @@ import {
   NEST_SCALE_XZ,
   NEST_SCALE_Y,
   nestSurface,
-} from '../../src/shared/nestShape.js';
+} from '@/src/shared/nestShape';
 
 describe('nest solid surface', () => {
   it('matches raycast tops of every pebble and root, including their ink shells', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseInlineCalls } from '../../src/client/agent/inline.js';
-import { islandGroup } from '../../src/client/groundView.js';
+import { parseInlineCalls } from '@/src/client/agent/inline';
+import { islandGroup } from '@/src/client/groundView';
 import {
   blankSession,
   dropOldest,
@@ -9,21 +9,27 @@ import {
   transcript,
   type ChatSession,
   type CompactLimits,
-} from '../../src/client/journal/session.js';
-import { localDate } from '../../src/shared/dates.js';
+} from '@/src/client/journal/session';
+import { localDate } from '@/src/shared/dates';
 import {
   applyBody,
   captureBody,
   classify,
   MAX_JSON,
   type WorldRecord,
-} from '../../src/shared/sim/snapshot.js';
-import { SimSession } from '../../src/shared/sim/session.js';
-import { EYE_HEIGHT, sightOutline } from '../../src/shared/sight.js';
-import { toObservation } from '../../src/shared/state.js';
-import { surfaceOf, Terrain } from '../../src/shared/terrain.js';
-import { createWorld, REACH, REACH_Y, VIEW_DISTANCE } from '../../src/shared/world.js';
-import { bakeWorkerIsland, dressIsland, planAroundNest, SEED, stepDriven } from './scenarios.js';
+} from '@/src/shared/sim/snapshot';
+import { SimSession } from '@/src/shared/sim/session';
+import { EYE_HEIGHT, sightOutline } from '@/src/shared/sight';
+import { toObservation } from '@/src/shared/state';
+import { surfaceOf, Terrain } from '@/src/shared/terrain';
+import { createWorld, REACH, REACH_Y, VIEW_DISTANCE } from '@/src/shared/world';
+import {
+  bakeWorkerIsland,
+  dressIsland,
+  planAroundNest,
+  SEED,
+  stepDriven,
+} from '@/tests/perf/scenarios';
 
 function bestOf(runs: number, work: () => void, reset?: () => void): number {
   reset?.();

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { parseInlineCalls, withInlineCalls } from '../src/client/agent/inline.js';
-import { blankSession, dropOldest, type ChatSession } from '../src/client/journal/session.js';
+import { parseInlineCalls, withInlineCalls } from '@/src/client/agent/inline';
+import { blankSession, dropOldest, type ChatSession } from '@/src/client/journal/session';
 
 const names = ['observe', 'go', 'set_height'];
 

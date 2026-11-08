@@ -1,14 +1,14 @@
 import { describe, test } from 'vitest';
-import { buildProp } from '../src/client/props.js';
-import { localDate } from '../src/shared/dates.js';
+import { buildProp } from '@/src/client/props';
+import { localDate } from '@/src/shared/dates';
 import {
   applyBody,
   captureBody,
   classify,
   FORMAT,
   type WorldRecord,
-} from '../src/shared/sim/snapshot.js';
-import { SimSession } from '../src/shared/sim/session.js';
+} from '@/src/shared/sim/snapshot';
+import { SimSession } from '@/src/shared/sim/session';
 
 const idle = new SimSession(7);
 const body = captureBody(idle, { text: '去巢边', tool: 'walk' });

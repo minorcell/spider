@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetSpiderDb } from '../../src/client/journal/db.js';
-import { Diary } from '../../src/client/journal/diary.js';
-import { localDate, shiftDate } from '../../src/shared/dates.js';
-import * as usageLedger from '../../src/client/journal/usage.js';
-import { summarizeDiary } from '../../src/client/journal/summarize.js';
-import { useLocalBackend } from '../../src/client/local/backend.js';
-import { buildChrome } from '../../src/client/panel/chrome.js';
-import { readCloud, resetCloudSettings } from '../../src/client/cloud/settings.js';
-import { AUTO_MEMORY_IDLE_MS, mountPanel } from '../../src/client/panel.js';
-import { pendingNow, resetWorldStore, type BootNote } from '../../src/client/worldStore.js';
+import { resetSpiderDb } from '@/src/client/journal/db';
+import { Diary } from '@/src/client/journal/diary';
+import { localDate, shiftDate } from '@/src/shared/dates';
+import * as usageLedger from '@/src/client/journal/usage';
+import { summarizeDiary } from '@/src/client/journal/summarize';
+import { useLocalBackend } from '@/src/client/local/backend';
+import { buildChrome } from '@/src/client/panel/chrome';
+import { readCloud, resetCloudSettings } from '@/src/client/cloud/settings';
+import { AUTO_MEMORY_IDLE_MS, mountPanel } from '@/src/client/panel';
+import { pendingNow, resetWorldStore, type BootNote } from '@/src/client/worldStore';
 import {
   flushSettings,
   pilotReady,
@@ -16,9 +16,9 @@ import {
   resetPilotStore,
   writePilot,
   type PilotSettings,
-} from '../../src/client/settings.js';
-import type { Stage } from '../../src/client/stage.js';
-import type { SimSession } from '../../src/shared/sim/session.js';
+} from '@/src/client/settings';
+import type { Stage } from '@/src/client/stage';
+import type { SimSession } from '@/src/shared/sim/session';
 
 const loop = vi.hoisted(() => ({ runAgent: vi.fn() }));
 const cloudUi = vi.hoisted(() => ({
@@ -34,9 +34,9 @@ const restoreHook = vi.hoisted(() => ({
   cb: null as ((note: BootNote) => void) | null,
 }));
 
-vi.mock('../../src/client/agent/loop.js', () => ({ runAgent: loop.runAgent }));
+vi.mock('@/src/client/agent/loop', () => ({ runAgent: loop.runAgent }));
 
-vi.mock('../../src/client/cloud/sync.js', () => ({
+vi.mock('@/src/client/cloud/sync', () => ({
   cloudHolds: () => cloudUi.holds,
   cloudPhase: () => cloudUi.phase,
   cloudChoice: () => null,
@@ -49,8 +49,8 @@ vi.mock('../../src/client/cloud/sync.js', () => ({
   noteCloud: (reason: string) => cloudUi.note(reason),
 }));
 
-vi.mock('../../src/client/worldStore.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/client/worldStore.js')>();
+vi.mock('@/src/client/worldStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/src/client/worldStore')>();
   return {
     ...actual,
     onRestore: (cb: (note: BootNote) => void) => {
@@ -60,9 +60,9 @@ vi.mock('../../src/client/worldStore.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../../src/client/journal/summarize.js', async () => {
-  const actual = await vi.importActual<typeof import('../../src/client/journal/summarize.js')>(
-    '../../src/client/journal/summarize.js',
+vi.mock('@/src/client/journal/summarize', async () => {
+  const actual = await vi.importActual<typeof import('@/src/client/journal/summarize')>(
+    '@/src/client/journal/summarize',
   );
   return {
     ...actual,

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { forceCloseDatabase } from 'fake-indexeddb';
 import { openDB, unwrap } from 'idb';
-import { openSpiderDb, resetSpiderDb } from '../../src/client/journal/db.js';
-import { Diary, onDiaryChange } from '../../src/client/journal/diary.js';
-import { localDate, shiftDate } from '../../src/shared/dates.js';
+import { openSpiderDb, resetSpiderDb } from '@/src/client/journal/db';
+import { Diary, onDiaryChange } from '@/src/client/journal/diary';
+import { localDate, shiftDate } from '@/src/shared/dates';
 import {
   blankSession,
   dropOldest,
@@ -15,14 +15,14 @@ import {
   toMessages,
   transcript,
   type ChatSession,
-} from '../../src/client/journal/session.js';
-import { readNote, summarizeDiary } from '../../src/client/journal/summarize.js';
-import { readUsage } from '../../src/client/journal/usage.js';
-import type { PilotSettings } from '../../src/client/settings.js';
+} from '@/src/client/journal/session';
+import { readNote, summarizeDiary } from '@/src/client/journal/summarize';
+import { readUsage } from '@/src/client/journal/usage';
+import type { PilotSettings } from '@/src/client/settings';
 
-vi.mock('../../src/client/journal/summarize.js', async () => {
-  const actual = await vi.importActual<typeof import('../../src/client/journal/summarize.js')>(
-    '../../src/client/journal/summarize.js',
+vi.mock('@/src/client/journal/summarize', async () => {
+  const actual = await vi.importActual<typeof import('@/src/client/journal/summarize')>(
+    '@/src/client/journal/summarize',
   );
   return {
     ...actual,

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { localMetadata } from '../../../src/client/local/metrics.js';
+import { localMetadata } from '@/src/client/local/metrics';
 
 it('keeps finite timings and ignores malformed or missing response metadata', async () => {
   for (const parsedBody of [null, '', {}, { local_metrics: null }]) {

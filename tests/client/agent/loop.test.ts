@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SimSession } from '../../../src/shared/sim/session.js';
+import type { SimSession } from '@/src/shared/sim/session';
 
 const aiControl = vi.hoisted(() => ({
   streamText: vi.fn(),
@@ -24,8 +24,8 @@ vi.mock('@ai-sdk/openai-compatible', () => ({
   },
 }));
 
-import { runAgent, type AgentEvent } from '../../../src/client/agent/loop.js';
-import { useLocalBackend } from '../../../src/client/local/backend.js';
+import { runAgent, type AgentEvent } from '@/src/client/agent/loop';
+import { useLocalBackend } from '@/src/client/local/backend';
 
 function stream(parts: unknown[], usage: unknown = undefined, failUsage = false): void {
   aiControl.streamText.mockReturnValue({

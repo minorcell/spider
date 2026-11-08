@@ -1,6 +1,6 @@
-import { STUCK_LIMIT } from '../src/shared/sim/goals.js';
-import type { GoalOutcome, SimSession } from '../src/shared/sim/session.js';
-import type { Controls } from '../src/shared/types.js';
+import { STUCK_LIMIT } from '@/src/shared/sim/goals';
+import type { GoalOutcome, SimSession } from '@/src/shared/sim/session';
+import type { Controls } from '@/src/shared/types';
 
 export function drive(
   session: SimSession,

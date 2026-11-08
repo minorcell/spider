@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalBytes, progressHash, sha256Hex } from '../../../src/client/cloud/bytes.js';
+import { canonicalBytes, progressHash, sha256Hex } from '@/src/client/cloud/bytes';
 
 describe('canonical bytes', () => {
   it('sorts object keys and keeps array order', () => {

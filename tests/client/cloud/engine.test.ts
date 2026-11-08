@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { bundleBytes, type CloudBundle } from '../../../src/client/cloud/bundle.js';
-import { canonicalBytes, progressHash } from '../../../src/client/cloud/bytes.js';
+import { bundleBytes, type CloudBundle } from '@/src/client/cloud/bundle';
+import { canonicalBytes, progressHash } from '@/src/client/cloud/bytes';
 import {
   blankEngine,
   chooseLocal,
@@ -14,11 +14,11 @@ import {
   type CloudCursor,
   type CloudIo,
   type Engine,
-} from '../../../src/client/cloud/engine.js';
-import type { ObjectMatch, ObjectResult } from '../../../src/client/cloud/s3.js';
-import type { CloudSettings } from '../../../src/client/cloud/settings.js';
-import { captureBody } from '../../../src/shared/sim/snapshot.js';
-import { SimSession } from '../../../src/shared/sim/session.js';
+} from '@/src/client/cloud/engine';
+import type { ObjectMatch, ObjectResult } from '@/src/client/cloud/s3';
+import type { CloudSettings } from '@/src/client/cloud/settings';
+import { captureBody } from '@/src/shared/sim/snapshot';
+import { SimSession } from '@/src/shared/sim/session';
 
 const NOW = 1_000_000;
 

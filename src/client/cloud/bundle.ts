@@ -1,7 +1,7 @@
-import type { MemoryPage } from '../journal/db.js';
-import { localDate } from '../../shared/dates.js';
-import { classify, type SimBody, type WorldRecord } from '../../shared/sim/snapshot.js';
-import { canonicalBytes } from './bytes.js';
+import type { MemoryPage } from '@/src/client/journal/db';
+import { localDate } from '@/src/shared/dates';
+import { classify, type SimBody, type WorldRecord } from '@/src/shared/sim/snapshot';
+import { canonicalBytes } from '@/src/client/cloud/bytes';
 
 export interface CloudBundle {
   format: 1;

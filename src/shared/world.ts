@@ -1,12 +1,12 @@
-import { grassOnDryGround, grassRadius } from './grass.js';
-import { groundSupport } from './contact.js';
-import { PHYSICS } from './config.js';
-import { kindOf } from './kinds.js';
-import { mulberry32 } from './noise.js';
-import { blockedAt } from './sight.js';
-import { stepPhysics } from './sim/physics.js';
-import type { Block, EntityState, Footprint, WorldState } from './state.js';
-import { Terrain, TERRAIN } from './terrain.js';
+import { grassOnDryGround, grassRadius } from '@/src/shared/grass';
+import { groundSupport } from '@/src/shared/contact';
+import { PHYSICS } from '@/src/shared/config';
+import { kindOf } from '@/src/shared/kinds';
+import { mulberry32 } from '@/src/shared/noise';
+import { blockedAt } from '@/src/shared/sight';
+import { stepPhysics } from '@/src/shared/sim/physics';
+import type { Block, EntityState, Footprint, WorldState } from '@/src/shared/state';
+import { Terrain, TERRAIN } from '@/src/shared/terrain';
 
 export const REACH = 1.2;
 

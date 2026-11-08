@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { attachJournalWorker, type WorkerScope } from '../../../src/client/worker/attach.js';
-import type { JournalRequest } from '../../../src/client/worker/protocol.js';
+import { attachJournalWorker, type WorkerScope } from '@/src/client/worker/attach';
+import type { JournalRequest } from '@/src/client/worker/protocol';
 
 function scope(): WorkerScope & { postMessage: ReturnType<typeof vi.fn> } {
   return { onmessage: null, postMessage: vi.fn() };

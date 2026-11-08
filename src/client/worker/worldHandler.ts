@@ -1,6 +1,6 @@
-import { islandBuffers } from '../../shared/island.js';
-import { bakeTerrainGrid, Terrain } from '../../shared/terrain.js';
-import type { PreparedBuffers, WorldRequest } from './worldProtocol.js';
+import { islandBuffers } from '@/src/shared/island';
+import { bakeTerrainGrid, Terrain } from '@/src/shared/terrain';
+import type { PreparedBuffers, WorldRequest } from '@/src/client/worker/worldProtocol';
 
 export type WorldHandler = (request: WorldRequest) => Promise<PreparedBuffers>;
 

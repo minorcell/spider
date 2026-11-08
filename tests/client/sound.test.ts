@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSound } from '../../src/client/sound.js';
-import { AudioContextStub } from '../stubs.js';
+import { createSound } from '@/src/client/sound';
+import { AudioContextStub } from '@/tests/stubs';
 
 let target: EventTarget;
 

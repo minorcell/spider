@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BufferAttribute, Line, LineSegments, PerspectiveCamera, Vector3 } from 'three';
-import { ObserveOverlay } from '../../src/client/observeView.js';
-import type { Spider } from '../../src/shared/sim/Spider.js';
-import type { EntityState, SpiderState, WorldState } from '../../src/shared/state.js';
-import { block, flat } from '../helpers.js';
+import { ObserveOverlay } from '@/src/client/observeView';
+import type { Spider } from '@/src/shared/sim/Spider';
+import type { EntityState, SpiderState, WorldState } from '@/src/shared/state';
+import { block, flat } from '@/tests/helpers';
 
 const view = { left: 0, top: 0, width: 800, height: 600 };
 

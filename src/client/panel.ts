@@ -1,24 +1,30 @@
-import { bindLocalPanel } from './local/panel.js';
-import { closeDialog, showDialog } from '../ui/dialog/index.js';
-import { h } from '../ui/dom/index.js';
-import { placeTail } from '../ui/dress.js';
-import type { MenuSelect } from '../ui/select/index.js';
-import { paint as style } from '../ui/style.js';
-import { enhanceSwitch, reflectSwitch } from '../ui/switch/index.js';
-import { border, color } from '../ui/token.js';
-import { openJournal, type Journal, type OpenedJournal } from './journal/api.js';
-import { flushSoon, flushWorld, onRestore, setPending, type BootNote } from './worldStore.js';
-import type { Trace } from './journal/session.js';
-import { cloudHolds } from './cloud/sync.js';
-import { bindCloud } from './panel/cloud.js';
-import { bindLeave } from './panel/leave.js';
-import { bindMemory } from './panel/memory.js';
-import { bindUsage } from './panel/usage.js';
-import { explain, isAbort, numberOrNull, thoughtOf } from './panel/helpers.js';
-import { QUICK_PROVIDERS, discoverModels, type ModelProvider } from './providers.js';
-import { pilotReady, readPilot, writePilot, type PilotSettings } from './settings.js';
-import type { Stage } from './stage.js';
-import type { SimSession } from '../shared/sim/session.js';
+import { bindLocalPanel } from '@/src/client/local/panel';
+import { closeDialog, showDialog } from '@/src/ui/dialog';
+import { h } from '@/src/ui/dom';
+import { placeTail } from '@/src/ui/dress';
+import type { MenuSelect } from '@/src/ui/select';
+import { paint as style } from '@/src/ui/style';
+import { enhanceSwitch, reflectSwitch } from '@/src/ui/switch';
+import { border, color } from '@/src/ui/token';
+import { openJournal, type Journal, type OpenedJournal } from '@/src/client/journal/api';
+import {
+  flushSoon,
+  flushWorld,
+  onRestore,
+  setPending,
+  type BootNote,
+} from '@/src/client/worldStore';
+import type { Trace } from '@/src/client/journal/session';
+import { cloudHolds } from '@/src/client/cloud/sync';
+import { bindCloud } from '@/src/client/panel/cloud';
+import { bindLeave } from '@/src/client/panel/leave';
+import { bindMemory } from '@/src/client/panel/memory';
+import { bindUsage } from '@/src/client/panel/usage';
+import { explain, isAbort, numberOrNull, thoughtOf } from '@/src/client/panel/helpers';
+import { QUICK_PROVIDERS, discoverModels, type ModelProvider } from '@/src/client/providers';
+import { pilotReady, readPilot, writePilot, type PilotSettings } from '@/src/client/settings';
+import type { Stage } from '@/src/client/stage';
+import type { SimSession } from '@/src/shared/sim/session';
 
 const BUBBLE_MS = 5000;
 export const AUTO_MEMORY_IDLE_MS = 30 * 60 * 1000;
@@ -514,7 +520,7 @@ export function mountPanel(
         release(controller);
         return;
       }
-      const { runAgent } = await import('./agent/loop.js');
+      const { runAgent } = await import('@/src/client/agent/loop');
       const reply = await runAgent({
         goal: text,
         session,

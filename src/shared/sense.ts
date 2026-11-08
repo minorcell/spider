@@ -1,6 +1,6 @@
-import { GAIT } from './config.js';
-import { blockAt, BODY_RADIUS } from './sight.js';
-import type { Block } from './state.js';
+import { GAIT } from '@/src/shared/config';
+import { blockAt, BODY_RADIUS } from '@/src/shared/sight';
+import type { Block } from '@/src/shared/state';
 
 const AHEAD = 8;
 const STEP = 0.25;

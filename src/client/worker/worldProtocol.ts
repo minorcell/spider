@@ -1,4 +1,4 @@
-import type { IslandBuffers } from '../../shared/island.js';
+import type { IslandBuffers } from '@/src/shared/island';
 
 export interface PreparedBuffers {
   seed: number;

@@ -1,4 +1,4 @@
-import { border } from './token.js';
+import { border } from '@/src/ui/token';
 
 export function paint(node: HTMLElement, style: Partial<CSSStyleDeclaration>): void {
   Object.assign(node.style, style);

@@ -1,5 +1,5 @@
-import { localBackend } from './backend.js';
-import { prepareOffline } from './offline.js';
+import { localBackend } from '@/src/client/local/backend';
+import { prepareOffline } from '@/src/client/local/offline';
 
 const LOADED_KEY = 'spider.localLoaded';
 

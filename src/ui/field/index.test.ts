@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { field } from './index.js';
+import { field } from '@/src/ui/field';
 
 describe('field', () => {
   it('builds a text input by default and a number input with bounds', () => {

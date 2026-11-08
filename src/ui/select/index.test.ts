@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { menuSelect, type MenuSelect } from './index.js';
+import { menuSelect, type MenuSelect } from '@/src/ui/select';
 
 function inputOf(root: ParentNode): MenuSelect {
   return root.querySelector('input') as MenuSelect;

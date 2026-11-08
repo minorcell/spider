@@ -1,7 +1,12 @@
-import { localBackend } from './backend.js';
-import { parseInlineCalls } from '../agent/inline.js';
-import { localText } from './text.js';
-import { LOCAL_MODEL, type LocalMessage, type LocalOptions, type LocalReply } from './types.js';
+import { localBackend } from '@/src/client/local/backend';
+import { parseInlineCalls } from '@/src/client/agent/inline';
+import { localText } from '@/src/client/local/text';
+import {
+  LOCAL_MODEL,
+  type LocalMessage,
+  type LocalOptions,
+  type LocalReply,
+} from '@/src/client/local/types';
 
 interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool';

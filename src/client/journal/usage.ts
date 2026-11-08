@@ -1,12 +1,12 @@
 import type { LanguageModelUsage } from 'ai';
-import { localDate, shiftDate } from '../../shared/dates.js';
+import { localDate, shiftDate } from '@/src/shared/dates';
 import {
   openSpiderDb,
   type UsageCall,
   type UsageDay,
   type UsageKind,
   type UsageTool,
-} from './db.js';
+} from '@/src/client/journal/db';
 
 export type { UsageCall, UsageDay, UsageKind, UsageTool };
 

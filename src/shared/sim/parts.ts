@@ -9,7 +9,7 @@ import {
   MeshLambertMaterial,
   SphereGeometry,
 } from 'three';
-import { PALETTE } from '../config.js';
+import { PALETTE } from '@/src/shared/config';
 
 export const paperMat = new MeshLambertMaterial({
   color: PALETTE.paper,

@@ -1,5 +1,5 @@
-import { grassClumps, grassSeed, type GrassClump } from './grass.js';
-import type { Block, EntityState } from './state.js';
+import { grassClumps, grassSeed, type GrassClump } from '@/src/shared/grass';
+import type { Block, EntityState } from '@/src/shared/state';
 
 export const HOME = { half: 2.15 } as const;
 

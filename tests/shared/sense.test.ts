@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { senseBody } from '../../src/shared/sense.js';
-import { block, flat } from '../helpers.js';
+import { senseBody } from '@/src/shared/sense';
+import { block, flat } from '@/tests/helpers';
 
 describe('senseBody', () => {
   it('looks straight down a clear field', () => {

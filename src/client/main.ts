@@ -1,24 +1,24 @@
-import { openJournal } from './journal/api.js';
-import { buildChrome } from './panel/chrome.js';
-import { paintDocument, paintStage } from '../ui/dress.js';
-import { mountPanel } from './panel.js';
-import { startThemeClock } from './themeClock.js';
-import { Stage } from './stage.js';
-import { syncStars } from './stars.js';
-import { restoreSettings } from './settings.js';
-import { dbSnapshotStore, type SnapshotStore } from './journal/store.js';
-import { readBuffer } from './world/storage.js';
-import { cloudHolds, keepaliveCloud, startCloud } from './cloud/sync.js';
+import { openJournal } from '@/src/client/journal/api';
+import { buildChrome } from '@/src/client/panel/chrome';
+import { paintDocument, paintStage } from '@/src/ui/dress';
+import { mountPanel } from '@/src/client/panel';
+import { startThemeClock } from '@/src/client/themeClock';
+import { Stage } from '@/src/client/stage';
+import { syncStars } from '@/src/client/stars';
+import { restoreSettings } from '@/src/client/settings';
+import { dbSnapshotStore, type SnapshotStore } from '@/src/client/journal/store';
+import { readBuffer } from '@/src/client/world/storage';
+import { cloudHolds, keepaliveCloud, startCloud } from '@/src/client/cloud/sync';
 import {
   flushWorld,
   installWorldStore,
   restoreWorld,
   setWorldTerrainSource,
-} from './worldStore.js';
-import { prepareWorld } from './worker/worldClient.js';
-import { classify } from '../shared/sim/snapshot.js';
-import { localDate } from '../shared/dates.js';
-import { SimSession } from '../shared/sim/session.js';
+} from '@/src/client/worldStore';
+import { prepareWorld } from '@/src/client/worker/worldClient';
+import { classify } from '@/src/shared/sim/snapshot';
+import { localDate } from '@/src/shared/dates';
+import { SimSession } from '@/src/shared/sim/session';
 
 const host = document.querySelector<HTMLElement>('#stage');
 if (!host) throw new Error('Missing #stage host element');

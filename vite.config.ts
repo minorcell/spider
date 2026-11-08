@@ -1,5 +1,8 @@
-import { offlinePlugin } from './build/offline.js';
+import { offlinePlugin } from './build/offline.ts';
 import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url';
+
+const root = fileURLToPath(new URL('.', import.meta.url));
 
 const inferenceProxy = {
   '/inference': {
@@ -14,6 +17,11 @@ const inferenceProxy = {
 
 export default defineConfig({
   plugins: [offlinePlugin()],
+  resolve: {
+    alias: {
+      '@': root,
+    },
+  },
   worker: { format: 'es' },
   base: './',
   build: {

@@ -9,9 +9,9 @@ import {
   insideHome,
   occluded,
   sightOutline,
-} from '../../src/shared/sight.js';
-import type { EntityState } from '../../src/shared/state.js';
-import { block } from '../helpers.js';
+} from '@/src/shared/sight';
+import type { EntityState } from '@/src/shared/state';
+import { block } from '@/tests/helpers';
 
 describe('insideHome', () => {
   it('includes the boundary', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { planRoute } from '../../src/shared/route.js';
-import { block, flat } from '../helpers.js';
+import { planRoute } from '@/src/shared/route';
+import { block, flat } from '@/tests/helpers';
 
 const LIMIT = 20;
 

@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { openSpiderDb, resetSpiderDb } from '../../../src/client/journal/db.js';
-import { Diary } from '../../../src/client/journal/diary.js';
-import { localDate } from '../../../src/shared/dates.js';
-import { createHandler } from '../../../src/client/worker/handler.js';
-import type { JournalState } from '../../../src/client/worker/protocol.js';
-import type { PilotSettings } from '../../../src/client/settings.js';
-import { captureBody, type WorldRecord } from '../../../src/shared/sim/snapshot.js';
-import { SimSession } from '../../../src/shared/sim/session.js';
+import { openSpiderDb, resetSpiderDb } from '@/src/client/journal/db';
+import { Diary } from '@/src/client/journal/diary';
+import { localDate } from '@/src/shared/dates';
+import { createHandler } from '@/src/client/worker/handler';
+import type { JournalState } from '@/src/client/worker/protocol';
+import type { PilotSettings } from '@/src/client/settings';
+import { captureBody, type WorldRecord } from '@/src/shared/sim/snapshot';
+import { SimSession } from '@/src/shared/sim/session';
 
-vi.mock('../../../src/client/journal/summarize.js', () => ({
+vi.mock('@/src/client/journal/summarize', () => ({
   summarizeDiary: vi.fn(async () => ({ line: '记下了', summary: '摘要' })),
 }));
 
@@ -250,7 +250,7 @@ describe('journal worker handler', () => {
 });
 
 it('allows model status and cancellation while a local inference is pending', async () => {
-  const { localRuntime } = await import('../../../src/client/local/runtime.js');
+  const { localRuntime } = await import('@/src/client/local/runtime');
   const load = vi.spyOn(localRuntime, 'localLoad').mockResolvedValue();
   vi.spyOn(localRuntime, 'localStatus').mockResolvedValue({ ready: true, text: 'ready' });
   let finish!: (value: { text: string; input: number; output: number }) => void;

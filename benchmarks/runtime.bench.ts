@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import { Vector3 } from 'three';
-import { EcologySky } from '../src/client/ecologyView.js';
-import { worldClock } from '../src/shared/ecology.js';
-import { blockAt } from '../src/shared/sight.js';
-import { SimSession } from '../src/shared/sim/session.js';
-import { stepPhysics } from '../src/shared/sim/physics.js';
-import { applyBody, captureBody } from '../src/shared/sim/snapshot.js';
-import { Terrain } from '../src/shared/terrain.js';
-import { SEED } from '../tests/perf/scenarios.js';
+import { EcologySky } from '@/src/client/ecologyView';
+import { worldClock } from '@/src/shared/ecology';
+import { blockAt } from '@/src/shared/sight';
+import { SimSession } from '@/src/shared/sim/session';
+import { stepPhysics } from '@/src/shared/sim/physics';
+import { applyBody, captureBody } from '@/src/shared/sim/snapshot';
+import { Terrain } from '@/src/shared/terrain';
+import { SEED } from '@/tests/perf/scenarios';
 
 const session = new SimSession(SEED);
 const body = captureBody(session, null);

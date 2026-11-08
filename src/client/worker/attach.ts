@@ -1,5 +1,5 @@
-import { createHandler, type Handler } from './handler.js';
-import type { JournalReply, JournalRequest } from './protocol.js';
+import { createHandler, type Handler } from '@/src/client/worker/handler';
+import type { JournalReply, JournalRequest } from '@/src/client/worker/protocol';
 
 export interface WorkerScope {
   onmessage: ((event: MessageEvent<JournalRequest>) => void) | null;

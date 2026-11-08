@@ -1,4 +1,4 @@
-import { themes, variableName, type ThemeName, type ThemePalette } from './token.js';
+import { themes, variableName, type ThemeName, type ThemePalette } from '@/src/ui/token';
 
 const STYLE_ID = 'ui-theme';
 const TRANSITION_MS = 1100;

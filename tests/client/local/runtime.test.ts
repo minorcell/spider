@@ -30,10 +30,10 @@ vi.mock('@mlc-ai/web-llm', () => ({
     chat = { completions: { create: mock.create } };
   },
 }));
-import { createLocalRuntime } from '../../../src/client/local/runtime.js';
-import { onLocalBusy } from '../../../src/client/local/activity.js';
-import { LOCAL_APP_CONFIG } from '../../../src/client/local/model.js';
-import { LOCAL_MODEL } from '../../../src/client/local/types.js';
+import { createLocalRuntime } from '@/src/client/local/runtime';
+import { onLocalBusy } from '@/src/client/local/activity';
+import { LOCAL_APP_CONFIG } from '@/src/client/local/model';
+import { LOCAL_MODEL } from '@/src/client/local/types';
 const reply = {
   choices: [{ message: { content: '<think>hidden</think> done' } }],
   usage: { prompt_tokens: 5, completion_tokens: 2 },

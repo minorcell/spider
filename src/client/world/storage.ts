@@ -1,4 +1,4 @@
-import type { WorldRecord } from '../../shared/sim/snapshot.js';
+import type { WorldRecord } from '@/src/shared/sim/snapshot';
 
 export const BUFFER_KEY = 'spider.world';
 export const OWNER_KEY = 'spider.world.owner';

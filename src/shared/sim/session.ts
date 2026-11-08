@@ -12,9 +12,9 @@ import {
   type SpiderState,
   type WorldInfo,
   type WorldState,
-} from '../state.js';
-import { kindOf, propertiesOf, slicesOf } from '../kinds.js';
-import { IDLE_CONTROLS } from '../types.js';
+} from '@/src/shared/state';
+import { kindOf, propertiesOf, slicesOf } from '@/src/shared/kinds';
+import { IDLE_CONTROLS } from '@/src/shared/types';
 import {
   blockedAt,
   BODY_RADIUS,
@@ -24,7 +24,7 @@ import {
   insideHome,
   occluded,
   SIGHT_TOP,
-} from '../sight.js';
+} from '@/src/shared/sight';
 import {
   createWorld,
   grow,
@@ -34,18 +34,18 @@ import {
   REACH_Y,
   restingY,
   VIEW_DISTANCE,
-} from '../world.js';
-import { insideLand, nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '../terrain.js';
-import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '../config.js';
-import { waterAt } from '../water.js';
-import { heightGoal, routeGoal, turnGoal, walkGoal, type Goal } from './goals.js';
-import { planRoute } from '../route.js';
-import { applyBody, type SimBody } from './snapshot.js';
-import { bindLegWorld } from './bindWorld.js';
-import { stepPhysics } from './physics.js';
-import { Spider } from './Spider.js';
-import { localDate } from '../dates.js';
-import { visualRange, worldClock } from '../ecology.js';
+} from '@/src/shared/world';
+import { insideLand, nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '@/src/shared/terrain';
+import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
+import { waterAt } from '@/src/shared/water';
+import { heightGoal, routeGoal, turnGoal, walkGoal, type Goal } from '@/src/shared/sim/goals';
+import { planRoute } from '@/src/shared/route';
+import { applyBody, type SimBody } from '@/src/shared/sim/snapshot';
+import { bindLegWorld } from '@/src/shared/sim/bindWorld';
+import { stepPhysics } from '@/src/shared/sim/physics';
+import { Spider } from '@/src/shared/sim/Spider';
+import { localDate } from '@/src/shared/dates';
+import { visualRange, worldClock } from '@/src/shared/ecology';
 
 function detourNote(around: readonly string[], direct: boolean, arrived: boolean): string | null {
   if (direct && around.length === 0) return null;

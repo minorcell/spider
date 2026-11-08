@@ -9,7 +9,7 @@ import {
   nestDoor,
   nestLocalHeight,
   nestSurface,
-} from '../../src/shared/nestShape.js';
+} from '@/src/shared/nestShape';
 
 describe('nest shape', () => {
   it('keeps the bowl low, the back high, and the door open', () => {

@@ -1,8 +1,8 @@
 import type { LanguageModelUsage } from 'ai';
-import { contextTokensOf, modelIdOf, pilotReady, type PilotSettings } from '../settings.js';
-import type { Journal } from './api.js';
-import { blankMemory, openSpiderDb, type MemoryPage } from './db.js';
-import { localDate, shiftDate } from '../../shared/dates.js';
+import { contextTokensOf, modelIdOf, pilotReady, type PilotSettings } from '@/src/client/settings';
+import type { Journal } from '@/src/client/journal/api';
+import { blankMemory, openSpiderDb, type MemoryPage } from '@/src/client/journal/db';
+import { localDate, shiftDate } from '@/src/shared/dates';
 import {
   blankSession,
   dropOldest,
@@ -13,7 +13,7 @@ import {
   type ChatSession,
   type CompactLimits,
   type Trace,
-} from './session.js';
+} from '@/src/client/journal/session';
 import {
   readUsage,
   recordUsage,
@@ -23,7 +23,7 @@ import {
   type UsageCallMeta,
   type UsageRange,
   type UsageSnapshot,
-} from './usage.js';
+} from '@/src/client/journal/usage';
 
 const INDEX_DAYS = 60;
 
@@ -147,7 +147,7 @@ export class Diary implements Journal {
     if (action.kind === 'summarize') {
       try {
         const page = await this.db.get('memories', this.date);
-        const { summarizeDiary } = await import('./summarize.js');
+        const { summarizeDiary } = await import('@/src/client/journal/summarize');
         const note = await summarizeDiary({
           settings,
           transcript: transcript(action.session),
@@ -209,7 +209,7 @@ export class Diary implements Journal {
 
   private async digestSession(session: ChatSession, settings: PilotSettings): Promise<void> {
     const page = (await this.db.get('memories', session.date)) ?? blankMemory(session.date);
-    const { summarizeDiary } = await import('./summarize.js');
+    const { summarizeDiary } = await import('@/src/client/journal/summarize');
     const note = await summarizeDiary({
       settings,
       transcript: transcript(session),

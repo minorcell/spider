@@ -1,8 +1,8 @@
 import { Box3, Mesh, Vector3, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
-import { BONES } from '../../../src/shared/config.js';
-import { Spider } from '../../../src/shared/sim/Spider.js';
-import { clawGeo, tubeCrest, tubeGeo } from '../../../src/shared/sim/parts.js';
+import { BONES } from '@/src/shared/config';
+import { Spider } from '@/src/shared/sim/Spider';
+import { clawGeo, tubeCrest, tubeGeo } from '@/src/shared/sim/parts';
 
 function find(root: Object3D, name: string): Object3D[] {
   const found: Object3D[] = [];

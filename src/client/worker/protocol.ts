@@ -4,14 +4,19 @@ import type {
   LocalOptions,
   LocalReply,
   LocalStatus,
-} from '../local/types.js';
+} from '@/src/client/local/types';
 import type { LanguageModelUsage } from 'ai';
-import type { WorldRecord } from '../../shared/sim/snapshot.js';
-import type { PilotSettings } from '../settings.js';
-import type { MemoryPage } from '../journal/db.js';
-import type { MemoryView, MemoryWrite } from '../journal/diary.js';
-import type { ChatSession, Trace } from '../journal/session.js';
-import type { UsageCall, UsageCallMeta, UsageRange, UsageSnapshot } from '../journal/usage.js';
+import type { WorldRecord } from '@/src/shared/sim/snapshot';
+import type { PilotSettings } from '@/src/client/settings';
+import type { MemoryPage } from '@/src/client/journal/db';
+import type { MemoryView, MemoryWrite } from '@/src/client/journal/diary';
+import type { ChatSession, Trace } from '@/src/client/journal/session';
+import type {
+  UsageCall,
+  UsageCallMeta,
+  UsageRange,
+  UsageSnapshot,
+} from '@/src/client/journal/usage';
 
 export interface JournalState {
   date: string;

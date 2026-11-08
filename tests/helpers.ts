@@ -1,4 +1,4 @@
-import type { Block } from '../src/shared/state.js';
+import type { Block } from '@/src/shared/state';
 
 export function block(
   id: string,

@@ -1,4 +1,4 @@
-import { propertiesOf } from './kinds.js';
+import { propertiesOf } from '@/src/shared/kinds';
 import {
   aheadAt,
   senseBody,
@@ -6,12 +6,19 @@ import {
   type Ahead,
   type NearbySolid,
   type Waypoint,
-} from './sense.js';
-import { EYE_HEIGHT, grassHere, groundOccluded, insideHome, occluded, SIGHT_TOP } from './sight.js';
+} from '@/src/shared/sense';
+import {
+  EYE_HEIGHT,
+  grassHere,
+  groundOccluded,
+  insideHome,
+  occluded,
+  SIGHT_TOP,
+} from '@/src/shared/sight';
 
-import { surfaceOf } from './terrain.js';
-import { floatsAt, nearestShore, readWater, waterAt } from './water.js';
-import type { LightPeriod } from './ecology.js';
+import { surfaceOf } from '@/src/shared/terrain';
+import { floatsAt, nearestShore, readWater, waterAt } from '@/src/shared/water';
+import type { LightPeriod } from '@/src/shared/ecology';
 
 export const WATER_SENSE = 8;
 

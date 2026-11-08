@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Group, LineSegments, Mesh } from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { buildIsland, groundGeometry, tickWater } from '../../src/client/groundView.js';
-import { TERRAIN } from '../../src/shared/terrain.js';
+import { buildIsland, groundGeometry, tickWater } from '@/src/client/groundView';
+import { TERRAIN } from '@/src/shared/terrain';
 
 describe('groundGeometry', () => {
   it('displaces the plane onto the height field', () => {

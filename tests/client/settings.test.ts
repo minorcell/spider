@@ -9,8 +9,8 @@ import {
   resetPilotStore,
   restoreSettings,
   writePilot,
-} from '../../src/client/settings.js';
-import { openSpiderDb, resetSpiderDb } from '../../src/client/journal/db.js';
+} from '@/src/client/settings';
+import { openSpiderDb, resetSpiderDb } from '@/src/client/journal/db';
 
 beforeEach(async () => {
   await flushSettings().catch(() => undefined);

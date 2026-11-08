@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { attachWorldWorker, type WorldScope } from '../../../src/client/worker/worldAttach.js';
+import { attachWorldWorker, type WorldScope } from '@/src/client/worker/worldAttach';
 import {
   prepareLocal,
   prepareWorld,
   WorldClient,
   type WorldPort,
-} from '../../../src/client/worker/worldClient.js';
-import { createWorldHandler } from '../../../src/client/worker/worldHandler.js';
-import type { WorldReply, WorldRequest } from '../../../src/client/worker/worldProtocol.js';
-import { Terrain } from '../../../src/shared/terrain.js';
+} from '@/src/client/worker/worldClient';
+import { createWorldHandler } from '@/src/client/worker/worldHandler';
+import type { WorldReply, WorldRequest } from '@/src/client/worker/worldProtocol';
+import { Terrain } from '@/src/shared/terrain';
 
 function scope(): WorldScope & { postMessage: ReturnType<typeof vi.fn> } {
   return { onmessage: null, postMessage: vi.fn() };
@@ -206,8 +206,7 @@ describe('world worker', () => {
 
   it('starts a worker when the browser has one and reuses it', async () => {
     vi.resetModules();
-    const { createWorldHandler: handleOf } =
-      await import('../../../src/client/worker/worldHandler.js');
+    const { createWorldHandler: handleOf } = await import('@/src/client/worker/worldHandler');
     const handle = handleOf();
     class FakeWorker {
       static count = 0;
@@ -231,7 +230,7 @@ describe('world worker', () => {
       }
     }
     vi.stubGlobal('Worker', FakeWorker);
-    const { prepareWorld: prepare } = await import('../../../src/client/worker/worldClient.js');
+    const { prepareWorld: prepare } = await import('@/src/client/worker/worldClient');
     const first = await prepare(11);
     const second = await prepare(12);
     expect(FakeWorker.count).toBe(1);
@@ -255,7 +254,7 @@ describe('world worker', () => {
       },
     );
     const { prepareLocal: local, prepareWorld: prepare } =
-      await import('../../../src/client/worker/worldClient.js');
+      await import('@/src/client/worker/worldClient');
     const baked = await prepare(13);
     const again = await prepare(14);
     expect(constructed).toBe(1);
@@ -274,7 +273,7 @@ describe('world worker', () => {
       },
     );
     const { prepareLocal: local, prepareWorld: prepare } =
-      await import('../../../src/client/worker/worldClient.js');
+      await import('@/src/client/worker/worldClient');
     const baked = await prepare(15);
     expect(baked.terrain.height(2, 2)).toBeCloseTo(local(15).terrain.height(2, 2));
   });

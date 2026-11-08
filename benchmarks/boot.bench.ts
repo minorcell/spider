@@ -1,10 +1,10 @@
 import { describe, test } from 'vitest';
-import { islandGroup } from '../src/client/groundView.js';
-import { buildProp, drapeGrass } from '../src/client/props.js';
-import { islandBuffers } from '../src/shared/island.js';
-import { bakeTerrainGrid } from '../src/shared/terrain.js';
-import { createWorld } from '../src/shared/world.js';
-import { bakeWorkerIsland, SEED } from '../tests/perf/scenarios.js';
+import { islandGroup } from '@/src/client/groundView';
+import { buildProp, drapeGrass } from '@/src/client/props';
+import { islandBuffers } from '@/src/shared/island';
+import { bakeTerrainGrid } from '@/src/shared/terrain';
+import { createWorld } from '@/src/shared/world';
+import { bakeWorkerIsland, SEED } from '@/tests/perf/scenarios';
 
 const world = createWorld(SEED);
 const height = (x: number, z: number): number => world.terrain.height(x, z);

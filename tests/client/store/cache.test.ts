@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  PersistentCache,
-  type CacheAdapter,
-  type RecoveryBuffer,
-} from '../../../src/client/store/cache.js';
+import { PersistentCache, type CacheAdapter, type RecoveryBuffer } from '@/src/client/store/cache';
 
 interface RecordValue {
   seed: number;

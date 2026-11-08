@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { groundSupport } from '../../src/shared/contact.js';
-import { KINDS } from '../../src/shared/kinds.js';
-import { blockedAt } from '../../src/shared/sight.js';
-import { Terrain, TERRAIN } from '../../src/shared/terrain.js';
+import { groundSupport } from '@/src/shared/contact';
+import { KINDS } from '@/src/shared/kinds';
+import { blockedAt } from '@/src/shared/sight';
+import { Terrain, TERRAIN } from '@/src/shared/terrain';
 import {
   APPLE_EVERY,
   createWorld,
@@ -16,12 +16,12 @@ import {
   REACH_Y,
   restingY,
   VIEW_DISTANCE,
-} from '../../src/shared/world.js';
+} from '@/src/shared/world';
 
 const control = vi.hoisted(() => ({ enabled: false, queue: [] as number[] }));
 
-vi.mock('../../src/shared/noise.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/shared/noise.js')>();
+vi.mock('@/src/shared/noise', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/src/shared/noise')>();
   return {
     ...actual,
     mulberry32(seed: number) {

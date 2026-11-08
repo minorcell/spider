@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { openSpiderDb, resetSpiderDb } from '../../src/client/journal/db.js';
+import { openSpiderDb, resetSpiderDb } from '@/src/client/journal/db';
 import {
   flushSoon,
   flushWorld,
@@ -15,19 +15,18 @@ import {
   setPending,
   setWorldTerrainSource,
   writesDone,
-} from '../../src/client/worldStore.js';
-import { localDate } from '../../src/shared/dates.js';
-import { SimSession } from '../../src/shared/sim/session.js';
-import { captureBody, type WorldRecord } from '../../src/shared/sim/snapshot.js';
-import { Terrain } from '../../src/shared/terrain.js';
-import type { SnapshotStore } from '../../src/client/journal/store.js';
+} from '@/src/client/worldStore';
+import { localDate } from '@/src/shared/dates';
+import { SimSession } from '@/src/shared/sim/session';
+import { captureBody, type WorldRecord } from '@/src/shared/sim/snapshot';
+import { Terrain } from '@/src/shared/terrain';
+import type { SnapshotStore } from '@/src/client/journal/store';
 
 const gate = vi.hoisted(() => ({ mode: 'ok' as 'ok' | 'hang' | 'reject' }));
 
-vi.mock('../../src/client/journal/db.js', async () => {
-  const actual = await vi.importActual<typeof import('../../src/client/journal/db.js')>(
-    '../../src/client/journal/db.js',
-  );
+vi.mock('@/src/client/journal/db', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/src/client/journal/db')>('@/src/client/journal/db');
   return {
     ...actual,
     openSpiderDb: () => {

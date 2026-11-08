@@ -1,4 +1,4 @@
-import type { LocalBackend } from './types.js';
+import type { LocalBackend } from '@/src/client/local/types';
 
 let backend: LocalBackend | null = null;
 export function useLocalBackend(value: LocalBackend): void {

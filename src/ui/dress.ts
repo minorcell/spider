@@ -1,6 +1,6 @@
-import { onMedia, paint } from './style.js';
-import { installTheme } from './theme.js';
-import { border, color, font, media, typeface, type ThemeName } from './token.js';
+import { onMedia, paint } from '@/src/ui/style';
+import { installTheme } from '@/src/ui/theme';
+import { border, color, font, media, typeface, type ThemeName } from '@/src/ui/token';
 
 const serif = { color: color.ink, font: font.body, letterSpacing: '0.04em' };
 

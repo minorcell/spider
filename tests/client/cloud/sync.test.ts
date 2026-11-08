@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { bundleBytes, type CloudBundle } from '../../../src/client/cloud/bundle.js';
-import { resetCloudSettings, writeCloud } from '../../../src/client/cloud/settings.js';
+import { bundleBytes, type CloudBundle } from '@/src/client/cloud/bundle';
+import { resetCloudSettings, writeCloud } from '@/src/client/cloud/settings';
 import {
   chooseCloudLocal,
   chooseCloudRemote,
@@ -13,19 +13,19 @@ import {
   resetCloud,
   startCloud,
   takeOverCloud,
-} from '../../../src/client/cloud/sync.js';
-import * as dbModule from '../../../src/client/journal/db.js';
-import { Diary } from '../../../src/client/journal/diary.js';
-import { openSpiderDb, resetSpiderDb, type MemoryPage } from '../../../src/client/journal/db.js';
+} from '@/src/client/cloud/sync';
+import * as dbModule from '@/src/client/journal/db';
+import { Diary } from '@/src/client/journal/diary';
+import { openSpiderDb, resetSpiderDb, type MemoryPage } from '@/src/client/journal/db';
 import {
   flushWorld,
   installWorldStore,
   resetWorldStore,
   restoreWorld,
   writesDone,
-} from '../../../src/client/worldStore.js';
-import { captureBody } from '../../../src/shared/sim/snapshot.js';
-import { SimSession } from '../../../src/shared/sim/session.js';
+} from '@/src/client/worldStore';
+import { captureBody } from '@/src/shared/sim/snapshot';
+import { SimSession } from '@/src/shared/sim/session';
 
 const originalSetTimeout = globalThis.setTimeout.bind(globalThis);
 const originalSetInterval = globalThis.setInterval.bind(globalThis);

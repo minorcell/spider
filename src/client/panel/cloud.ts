@@ -1,6 +1,6 @@
-import { closeDialog, showDialog } from '../../ui/dialog/index.js';
-import { probeEndpoint } from '../cloud/s3.js';
-import { cloudComplete, readCloud, writeCloud, type CloudInput } from '../cloud/settings.js';
+import { closeDialog, showDialog } from '@/src/ui/dialog';
+import { probeEndpoint } from '@/src/client/cloud/s3';
+import { cloudComplete, readCloud, writeCloud, type CloudInput } from '@/src/client/cloud/settings';
 import {
   chooseCloudLocal,
   chooseCloudRemote,
@@ -9,7 +9,7 @@ import {
   onCloudPhase,
   takeOverCloud,
   type CloudPhase,
-} from '../cloud/sync.js';
+} from '@/src/client/cloud/sync';
 
 export function bindCloud(input: {
   menu: HTMLButtonElement;

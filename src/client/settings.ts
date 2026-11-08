@@ -1,7 +1,7 @@
-import { LOCAL_MODEL } from './local/types.js';
-import { openSpiderDb, type PreferenceRecord } from './journal/db.js';
-import { providerById, providerNeedsKey } from './providers.js';
-import { PersistentCache } from './store/cache.js';
+import { LOCAL_MODEL } from '@/src/client/local/types';
+import { openSpiderDb, type PreferenceRecord } from '@/src/client/journal/db';
+import { providerById, providerNeedsKey } from '@/src/client/providers';
+import { PersistentCache } from '@/src/client/store/cache';
 
 const STORAGE_KEY = 'spider.pilot';
 const OPEN_MS = 1500;

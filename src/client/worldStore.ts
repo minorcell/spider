@@ -1,6 +1,6 @@
-import { localDate } from '../shared/dates.js';
-import type { SnapshotStore } from './journal/store.js';
-import { PersistentCache } from './store/cache.js';
+import { localDate } from '@/src/shared/dates';
+import type { SnapshotStore } from '@/src/client/journal/store';
+import { PersistentCache } from '@/src/client/store/cache';
 import {
   applyBody,
   captureBody,
@@ -11,8 +11,8 @@ import {
   type Restorable,
   type SimBody,
   type WorldRecord,
-} from '../shared/sim/snapshot.js';
-import { Terrain } from '../shared/terrain.js';
+} from '@/src/shared/sim/snapshot';
+import { Terrain } from '@/src/shared/terrain';
 import {
   bufferPut,
   forgetBuffer,
@@ -24,7 +24,7 @@ import {
   readBuffer,
   readLease,
   setLease,
-} from './world/storage.js';
+} from '@/src/client/world/storage';
 
 const SAVE_MS = 10_000;
 const LEASE_MS = 30_000;
@@ -78,7 +78,7 @@ export function setWorldTerrainSource(source: ((seed: number) => Promise<Terrain
 
 function resolveStore(): Promise<SnapshotStore> {
   if (providedStore) return Promise.resolve(providedStore);
-  storePromise ??= import('./journal/store.js').then((module) => module.dbSnapshotStore());
+  storePromise ??= import('@/src/client/journal/store').then((module) => module.dbSnapshotStore());
   return storePromise;
 }
 

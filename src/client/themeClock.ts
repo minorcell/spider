@@ -1,6 +1,6 @@
-import { worldClock, type LightPeriod } from '../shared/ecology.js';
-import { installTheme } from '../ui/theme.js';
-import type { ThemeName } from '../ui/token.js';
+import { worldClock, type LightPeriod } from '@/src/shared/ecology';
+import { installTheme } from '@/src/ui/theme';
+import type { ThemeName } from '@/src/ui/token';
 
 export const LIGHT_BOUNDARY_HOURS = [5, 7, 17, 19] as const;
 

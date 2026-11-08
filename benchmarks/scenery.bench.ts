@@ -1,15 +1,15 @@
 import { describe, expect, test } from 'vitest';
 import { Mesh, type Object3D } from 'three';
-import { buildProp, drapeGrass } from '../src/client/props.js';
-import { islandGroup } from '../src/client/groundView.js';
-import { grassClumps, grassSeed } from '../src/shared/grass.js';
-import { groundAttributes, islandBuffers } from '../src/shared/island.js';
-import { planRoute } from '../src/shared/route.js';
-import { grassHere } from '../src/shared/sight.js';
-import { SimSession } from '../src/shared/sim/session.js';
-import { applyBody, captureBody } from '../src/shared/sim/snapshot.js';
-import { surfaceOf, Terrain, TERRAIN, WORLD_RADIUS } from '../src/shared/terrain.js';
-import { SEED } from '../tests/perf/scenarios.js';
+import { buildProp, drapeGrass } from '@/src/client/props';
+import { islandGroup } from '@/src/client/groundView';
+import { grassClumps, grassSeed } from '@/src/shared/grass';
+import { groundAttributes, islandBuffers } from '@/src/shared/island';
+import { planRoute } from '@/src/shared/route';
+import { grassHere } from '@/src/shared/sight';
+import { SimSession } from '@/src/shared/sim/session';
+import { applyBody, captureBody } from '@/src/shared/sim/snapshot';
+import { surfaceOf, Terrain, TERRAIN, WORLD_RADIUS } from '@/src/shared/terrain';
+import { SEED } from '@/tests/perf/scenarios';
 
 const source = new SimSession(SEED);
 const world = source.world;

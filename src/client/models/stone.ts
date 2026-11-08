@@ -1,9 +1,9 @@
 import { BufferGeometry, Group, Mesh, MeshLambertMaterial, SphereGeometry, Vector3 } from 'three';
-import { PALETTE } from '../../shared/config.js';
-import { mulberry32 } from '../../shared/noise.js';
-import { growShell, inkMat, inkSolidMat } from '../../shared/sim/parts.js';
-import { buildGrass } from '../grassMesh.js';
-import { groupHeight, lineFrom } from './geometry.js';
+import { PALETTE } from '@/src/shared/config';
+import { mulberry32 } from '@/src/shared/noise';
+import { growShell, inkMat, inkSolidMat } from '@/src/shared/sim/parts';
+import { buildGrass } from '@/src/client/grassMesh';
+import { groupHeight, lineFrom } from '@/src/client/models/geometry';
 
 const stoneMat = new MeshLambertMaterial({
   color: PALETTE.stone,

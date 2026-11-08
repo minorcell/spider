@@ -1,6 +1,6 @@
-import { Diary } from '../journal/diary.js';
-import { dbSnapshotStore, type SnapshotStore } from '../journal/store.js';
-import type { JournalRequest, JournalState } from './protocol.js';
+import { Diary } from '@/src/client/journal/diary';
+import { dbSnapshotStore, type SnapshotStore } from '@/src/client/journal/store';
+import type { JournalRequest, JournalState } from '@/src/client/worker/protocol';
 
 export type Handler = (
   request: JournalRequest,
@@ -97,7 +97,7 @@ export function createHandler(): Handler {
 
   return (request, onDelta) => {
     if (request.method.startsWith('local'))
-      return import('../local/runtime.js').then<unknown>(({ localRuntime }) => {
+      return import('@/src/client/local/runtime').then<unknown>(({ localRuntime }) => {
         switch (request.method) {
           case 'localSession':
             return localRuntime.localSession!(...request.args);

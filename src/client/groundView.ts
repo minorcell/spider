@@ -27,10 +27,10 @@ import {
   vec3,
 } from 'three/tsl';
 import { MeshBasicNodeMaterial, type Node } from 'three/webgpu';
-import { PALETTE } from '../shared/config.js';
-import { groundAttributes, islandBuffers, type IslandBuffers } from '../shared/island.js';
-import { groundMat } from '../shared/sim/parts.js';
-import { TERRAIN } from '../shared/terrain.js';
+import { PALETTE } from '@/src/shared/config';
+import { groundAttributes, islandBuffers, type IslandBuffers } from '@/src/shared/island';
+import { groundMat } from '@/src/shared/sim/parts';
+import { TERRAIN } from '@/src/shared/terrain';
 import {
   applyWaterMotion,
   WAKE_COUNT,
@@ -41,7 +41,7 @@ import {
   waterPush,
   waterWake,
   type WaterContact,
-} from './waterMotion.js';
+} from '@/src/client/waterMotion';
 
 const waterTime = uniform(0);
 const waterShallow = uniform(new Color(PALETTE.water));

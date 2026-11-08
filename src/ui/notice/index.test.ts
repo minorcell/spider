@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { notice } from './index.js';
+import { notice } from '@/src/ui/notice';
 
 describe('notice', () => {
   it('marks the label and reads as one aside', () => {

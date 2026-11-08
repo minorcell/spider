@@ -1,6 +1,6 @@
-import { h } from '../dom/index.js';
-import { bindFocus, onMedia, paint } from '../style.js';
-import { border, color, media } from '../token.js';
+import { h } from '@/src/ui/dom';
+import { bindFocus, onMedia, paint } from '@/src/ui/style';
+import { border, color, media } from '@/src/ui/token';
 
 export type ButtonVariant = 'solid' | 'ghost' | 'quiet';
 

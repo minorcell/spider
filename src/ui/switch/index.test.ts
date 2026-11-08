@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enhanceSwitch, reflectSwitch, switchField } from './index.js';
+import { enhanceSwitch, reflectSwitch, switchField } from '@/src/ui/switch';
 
 describe('switch', () => {
   it('enhances a checkbox once and moves the thumb when it changes', () => {

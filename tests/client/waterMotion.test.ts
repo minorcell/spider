@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { tickWater } from '../../src/client/groundView.js';
+import { tickWater } from '@/src/client/groundView';
 import {
   waterContact,
   waterPush,
@@ -7,8 +7,8 @@ import {
   waterWakes,
   type WaterContact,
   type WaterWalker,
-} from '../../src/client/waterMotion.js';
-import { TERRAIN } from '../../src/shared/terrain.js';
+} from '@/src/client/waterMotion';
+import { TERRAIN } from '@/src/shared/terrain';
 
 const wet = { terrain: { height: () => TERRAIN.water - 0.4 } };
 const dry = { terrain: { height: () => 1 } };

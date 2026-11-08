@@ -12,9 +12,9 @@ import {
   Vector4,
 } from 'three';
 import { uniform, uniformArray } from 'three/tsl';
-import { PALETTE } from '../shared/config.js';
-import { TERRAIN } from '../shared/terrain.js';
-import { waterAt } from '../shared/water.js';
+import { PALETTE } from '@/src/shared/config';
+import { TERRAIN } from '@/src/shared/terrain';
+import { waterAt } from '@/src/shared/water';
 
 export const WAKE_COUNT = 6;
 

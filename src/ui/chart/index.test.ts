@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { donutChart, stackedBarChart } from './index.js';
+import { donutChart, stackedBarChart } from '@/src/ui/chart';
 
 describe('stackedBarChart', () => {
   it('draws one column per day and an empty day as a zero bar', () => {

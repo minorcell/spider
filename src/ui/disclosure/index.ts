@@ -1,6 +1,6 @@
-import { h } from '../dom/index.js';
-import { paint } from '../style.js';
-import { color } from '../token.js';
+import { h } from '@/src/ui/dom';
+import { paint } from '@/src/ui/style';
+import { color } from '@/src/ui/token';
 
 export function disclosure(
   doc: Document,

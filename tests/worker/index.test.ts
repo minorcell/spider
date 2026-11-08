@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import worker from '../../worker/src/index.js';
+import worker from '@/worker/src';
 
 const UPSTREAM = 'https://opencode.ai/inference/go';
 

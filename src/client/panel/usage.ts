@@ -1,18 +1,18 @@
-import { localDate, shiftDate } from '../../shared/dates.js';
-import { dressUsage } from '../../ui/dress.js';
-import { button } from '../../ui/button/index.js';
-import { card } from '../../ui/card/index.js';
-import { donutChart, stackedBarChart } from '../../ui/chart/index.js';
-import { disclosure } from '../../ui/disclosure/index.js';
-import { h } from '../../ui/dom/index.js';
-import { facts } from '../../ui/facts/index.js';
-import { kpi, kpiGrid } from '../../ui/kpi/index.js';
-import { notice } from '../../ui/notice/index.js';
-import { pill } from '../../ui/pill/index.js';
-import { menuSelect, type MenuSelect } from '../../ui/select/index.js';
-import { table, type TableCell } from '../../ui/table/index.js';
-import type { Journal } from '../journal/api.js';
-import { formatTokens } from '../journal/tokens.js';
+import { localDate, shiftDate } from '@/src/shared/dates';
+import { dressUsage } from '@/src/ui/dress';
+import { button } from '@/src/ui/button';
+import { card } from '@/src/ui/card';
+import { donutChart, stackedBarChart } from '@/src/ui/chart';
+import { disclosure } from '@/src/ui/disclosure';
+import { h } from '@/src/ui/dom';
+import { facts } from '@/src/ui/facts';
+import { kpi, kpiGrid } from '@/src/ui/kpi';
+import { notice } from '@/src/ui/notice';
+import { pill } from '@/src/ui/pill';
+import { menuSelect, type MenuSelect } from '@/src/ui/select';
+import { table, type TableCell } from '@/src/ui/table';
+import type { Journal } from '@/src/client/journal/api';
+import { formatTokens } from '@/src/client/journal/tokens';
 import {
   blankUsage,
   type UsageCall,
@@ -22,7 +22,7 @@ import {
   type UsageRange,
   type UsageSnapshot,
   type UsageToolRow,
-} from '../journal/usage.js';
+} from '@/src/client/journal/usage';
 
 const RANGE_LABEL: Record<UsageRange, string> = {
   '7': '最近 7 天',

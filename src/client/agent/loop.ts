@@ -1,18 +1,23 @@
-import { LOCAL_MODEL } from '../local/types.js';
-import { localMetadata } from '../local/metrics.js';
-import { localBackend } from '../local/backend.js';
+import { LOCAL_MODEL } from '@/src/client/local/types';
+import { localMetadata } from '@/src/client/local/metrics';
+import { localBackend } from '@/src/client/local/backend';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { isLoopFinished, isStepCount, streamText, type LanguageModelUsage } from 'ai';
-import type { SimSession } from '../../shared/sim/session.js';
-import type { MemoryApi } from '../journal/diary.js';
-import { toMessages, type ChatSession } from '../journal/session.js';
-import { byteSize, usageCallFromStep, type UsageCall, type UsageTool } from '../journal/usage.js';
-import { localDate } from '../../shared/dates.js';
-import { apiKeyFor } from '../providers.js';
-import { reasoningOf, type PilotSettings } from '../settings.js';
-import { withInlineCalls } from './inline.js';
-import { spiderTools } from './tools.js';
-import { systemFor } from './prompt.js';
+import type { SimSession } from '@/src/shared/sim/session';
+import type { MemoryApi } from '@/src/client/journal/diary';
+import { toMessages, type ChatSession } from '@/src/client/journal/session';
+import {
+  byteSize,
+  usageCallFromStep,
+  type UsageCall,
+  type UsageTool,
+} from '@/src/client/journal/usage';
+import { localDate } from '@/src/shared/dates';
+import { apiKeyFor } from '@/src/client/providers';
+import { reasoningOf, type PilotSettings } from '@/src/client/settings';
+import { withInlineCalls } from '@/src/client/agent/inline';
+import { spiderTools } from '@/src/client/agent/tools';
+import { systemFor } from '@/src/client/agent/prompt';
 
 export type AgentEvent =
   | { type: 'text'; text: string }
@@ -57,7 +62,7 @@ export async function runAgent({
       name: 'openai-compatible',
       baseURL: local ? 'http://local.invalid/v1' : settings.baseURL,
       ...(local
-        ? { fetch: (await import('../local/fetch.js')).createLocalFetch({ kind: 'action' }) }
+        ? { fetch: (await import('@/src/client/local/fetch')).createLocalFetch({ kind: 'action' }) }
         : {}),
       apiKey: apiKeyFor(settings),
       includeUsage: true,

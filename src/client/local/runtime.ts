@@ -1,9 +1,9 @@
 import type { MLCEngine } from '@mlc-ai/web-llm';
-import { setLocalBusy } from './activity.js';
-import { LOCAL_APP_CONFIG } from './model.js';
-import { localProgress } from './progress.js';
-import { localText } from './text.js';
-import { LOCAL_MODEL, type LocalBackend, type LocalStatus } from './types.js';
+import { setLocalBusy } from '@/src/client/local/activity';
+import { LOCAL_APP_CONFIG } from '@/src/client/local/model';
+import { localProgress } from '@/src/client/local/progress';
+import { localText } from '@/src/client/local/text';
+import { LOCAL_MODEL, type LocalBackend, type LocalStatus } from '@/src/client/local/types';
 
 /** One engine in the journal worker, shared by actions and diary summaries. */
 export function createLocalRuntime(): LocalBackend {

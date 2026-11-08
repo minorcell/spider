@@ -1,7 +1,7 @@
-import { GAIT } from '../config.js';
-import type { Spider } from './Spider.js';
-import { IDLE_CONTROLS, type Controls } from '../../shared/types.js';
-import type { PlanPoint } from '../route.js';
+import { GAIT } from '@/src/shared/config';
+import type { Spider } from '@/src/shared/sim/Spider';
+import { IDLE_CONTROLS, type Controls } from '@/src/shared/types';
+import type { PlanPoint } from '@/src/shared/route';
 
 export interface Goal {
   readonly timeout: number;

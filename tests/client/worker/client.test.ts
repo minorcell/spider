@@ -1,16 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { blankSession } from '../../../src/client/journal/session.js';
-import { onLocalBusy } from '../../../src/client/local/activity.js';
-import {
-  createWorkerJournal,
-  WorkerJournal,
-  type WorkerPort,
-} from '../../../src/client/worker/client.js';
-import type {
-  JournalReply,
-  JournalRequest,
-  JournalState,
-} from '../../../src/client/worker/protocol.js';
+import { blankSession } from '@/src/client/journal/session';
+import { onLocalBusy } from '@/src/client/local/activity';
+import { createWorkerJournal, WorkerJournal, type WorkerPort } from '@/src/client/worker/client';
+import type { JournalReply, JournalRequest, JournalState } from '@/src/client/worker/protocol';
 
 const STATE: JournalState = {
   date: '2026-11-02',

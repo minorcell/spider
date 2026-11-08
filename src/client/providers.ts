@@ -1,4 +1,4 @@
-import type { IconName } from '../ui/icon/index.js';
+import type { IconName } from '@/src/ui/icon';
 
 export type ProviderId = 'ollama' | 'deepseek' | 'custom';
 

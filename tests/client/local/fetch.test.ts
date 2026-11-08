@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { createLocalFetch, localFetch, localMessages } from '../../../src/client/local/fetch.js';
-import { localBackend, useLocalBackend } from '../../../src/client/local/backend.js';
-import type { LocalBackend } from '../../../src/client/local/types.js';
+import { createLocalFetch, localFetch, localMessages } from '@/src/client/local/fetch';
+import { localBackend, useLocalBackend } from '@/src/client/local/backend';
+import type { LocalBackend } from '@/src/client/local/types';
 const backend = {
   localLoad: vi.fn(),
   localStatus: vi.fn(),
@@ -172,7 +172,7 @@ it('cancels the matching generation and never returns an aborted result', async 
 });
 it('reports unavailable workers without importing a main-thread engine', async () => {
   vi.resetModules();
-  const bridge = await import('../../../src/client/local/backend.js');
+  const bridge = await import('@/src/client/local/backend');
   await expect(bridge.localBackend()).rejects.toThrow('需要后台线程');
 });
 

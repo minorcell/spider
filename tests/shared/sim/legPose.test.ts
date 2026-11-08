@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { BONES } from '../../../src/shared/config.js';
-import { solveLeg, supportY, type LegSphere } from '../../../src/shared/sim/legPose.js';
+import { BONES } from '@/src/shared/config';
+import { solveLeg, supportY, type LegSphere } from '@/src/shared/sim/legPose';
 
 const flat = (): number => 0;
 const none = (): number => Number.NEGATIVE_INFINITY;

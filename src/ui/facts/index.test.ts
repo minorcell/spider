@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { facts } from './index.js';
+import { facts } from '@/src/ui/facts';
 
 afterEach(() => {
   vi.unstubAllGlobals();

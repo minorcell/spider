@@ -8,8 +8,8 @@ import {
   type EntityState,
   type SpiderState,
   type WorldState,
-} from '../../src/shared/state.js';
-import { block, flat } from '../helpers.js';
+} from '@/src/shared/state';
+import { block, flat } from '@/tests/helpers';
 
 function spider(over: Partial<SpiderState> = {}): SpiderState {
   return {

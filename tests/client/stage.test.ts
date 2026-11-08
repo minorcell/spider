@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BufferGeometry, Group } from 'three';
-import { KINDS } from '../../src/shared/kinds.js';
-import { Spider as RealSpider } from '../../src/shared/sim/Spider.js';
-import type { EntityState, WorldState } from '../../src/shared/state.js';
-import { Stage } from '../../src/client/stage.js';
-import { flat } from '../helpers.js';
-import { setLocalBusy } from '../../src/client/local/activity.js';
-import { ResizeObserverStub } from '../stubs.js';
+import { KINDS } from '@/src/shared/kinds';
+import { Spider as RealSpider } from '@/src/shared/sim/Spider';
+import type { EntityState, WorldState } from '@/src/shared/state';
+import { Stage } from '@/src/client/stage';
+import { flat } from '@/tests/helpers';
+import { setLocalBusy } from '@/src/client/local/activity';
+import { ResizeObserverStub } from '@/tests/stubs';
 
 const threeControl = vi.hoisted(() => ({
   renderers: [] as FakeRenderer[],
@@ -88,7 +88,7 @@ const sound = {
   dispose: vi.fn(),
 };
 
-vi.mock('../../src/client/sound.js', () => ({ createSound: () => sound }));
+vi.mock('@/src/client/sound', () => ({ createSound: () => sound }));
 
 function makeHost(width = 800, height = 600): HTMLElement {
   const host = document.createElement('div');

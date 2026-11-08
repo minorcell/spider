@@ -1,8 +1,8 @@
-import { LOCAL_MODEL } from '../local/types.js';
+import { LOCAL_MODEL } from '@/src/client/local/types';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, type LanguageModelUsage } from 'ai';
-import { apiKeyFor } from '../providers.js';
-import { reasoningOf, type PilotSettings } from '../settings.js';
+import { apiKeyFor } from '@/src/client/providers';
+import { reasoningOf, type PilotSettings } from '@/src/client/settings';
 
 export interface DiaryNote {
   line: string;
@@ -21,7 +21,7 @@ export async function summarizeDiary(input: {
     name: 'openai-compatible',
     baseURL: local ? 'http://local.invalid/v1' : input.settings.baseURL,
     ...(local
-      ? { fetch: (await import('../local/fetch.js')).createLocalFetch({ kind: 'summary' }) }
+      ? { fetch: (await import('@/src/client/local/fetch')).createLocalFetch({ kind: 'summary' }) }
       : {}),
     apiKey: apiKeyFor(input.settings),
   });

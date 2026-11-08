@@ -1,8 +1,8 @@
 import { describe, test } from 'vitest';
-import { EYE_HEIGHT, sightOutline } from '../src/shared/sight.js';
-import { toObservation, type SpiderState } from '../src/shared/state.js';
-import { surfaceOf, Terrain } from '../src/shared/terrain.js';
-import { createWorld, REACH, REACH_Y, VIEW_DISTANCE } from '../src/shared/world.js';
+import { EYE_HEIGHT, sightOutline } from '@/src/shared/sight';
+import { toObservation, type SpiderState } from '@/src/shared/state';
+import { surfaceOf, Terrain } from '@/src/shared/terrain';
+import { createWorld, REACH, REACH_Y, VIEW_DISTANCE } from '@/src/shared/world';
 
 const seed = 12345;
 const terrain = new Terrain(seed);

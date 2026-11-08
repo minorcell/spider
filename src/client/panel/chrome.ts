@@ -1,16 +1,16 @@
-import { h } from '../../ui/dom/index.js';
-import { button } from '../../ui/button/index.js';
-import { dialog, dialogActions, dialogTitle } from '../../ui/dialog/index.js';
-import { field } from '../../ui/field/index.js';
-import { menuSelect } from '../../ui/select/index.js';
-import { icon, iconButton } from '../../ui/icon/index.js';
-import { dressChrome, paintTrace } from '../../ui/dress.js';
-import { bindFocus, paint } from '../../ui/style.js';
-import { border, color, font } from '../../ui/token.js';
-import { switchField } from '../../ui/switch/index.js';
-import { localModelPanel } from '../local/view.js';
-import { QUICK_PROVIDERS } from '../providers.js';
-import { REPO, REPO_STARS } from '../stars.js';
+import { h } from '@/src/ui/dom';
+import { button } from '@/src/ui/button';
+import { dialog, dialogActions, dialogTitle } from '@/src/ui/dialog';
+import { field } from '@/src/ui/field';
+import { menuSelect } from '@/src/ui/select';
+import { icon, iconButton } from '@/src/ui/icon';
+import { dressChrome, paintTrace } from '@/src/ui/dress';
+import { bindFocus, paint } from '@/src/ui/style';
+import { border, color, font } from '@/src/ui/token';
+import { switchField } from '@/src/ui/switch';
+import { localModelPanel } from '@/src/client/local/view';
+import { QUICK_PROVIDERS } from '@/src/client/providers';
+import { REPO, REPO_STARS } from '@/src/client/stars';
 
 function eyebrow(doc: Document, text: string): HTMLParagraphElement {
   const node = h(doc, 'p', { class: 'eyebrow' }, text);

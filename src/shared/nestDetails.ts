@@ -1,7 +1,13 @@
 import { Euler, SphereGeometry, Vector3 } from 'three';
-import { mulberry32 } from './noise.js';
-import { NEST_DOOR, NEST_RO, nestDoor, nestLocalHeight, nestRimRadius } from './nestShape.js';
-import { tubeGeometry } from './tubeGeometry.js';
+import { mulberry32 } from '@/src/shared/noise';
+import {
+  NEST_DOOR,
+  NEST_RO,
+  nestDoor,
+  nestLocalHeight,
+  nestRimRadius,
+} from '@/src/shared/nestShape';
+import { tubeGeometry } from '@/src/shared/tubeGeometry';
 
 const TAU = Math.PI * 2;
 

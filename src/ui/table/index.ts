@@ -1,6 +1,6 @@
-import { h } from '../dom/index.js';
-import { paint } from '../style.js';
-import { border, color, typeface } from '../token.js';
+import { h } from '@/src/ui/dom';
+import { paint } from '@/src/ui/style';
+import { border, color, typeface } from '@/src/ui/token';
 
 export type TableCell = Node | string;
 

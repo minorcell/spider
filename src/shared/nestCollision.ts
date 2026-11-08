@@ -5,9 +5,9 @@ import {
   NEST_ROOT_SKIN,
   nestPebbleGeometry,
   nestRootGeometry,
-} from './nestDetails.js';
-import { NEST_SCALE_XZ, NEST_SCALE_Y, nestSurface } from './nestShape.js';
-import { growShell } from './sim/parts.js';
+} from '@/src/shared/nestDetails';
+import { NEST_SCALE_XZ, NEST_SCALE_Y, nestSurface } from '@/src/shared/nestShape';
+import { growShell } from '@/src/shared/sim/parts';
 
 const HALF = 4;
 const CELL = 0.25;

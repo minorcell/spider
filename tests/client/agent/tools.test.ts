@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { spiderTools } from '../../../src/client/agent/tools.js';
-import type { GoalOutcome, SimSession } from '../../../src/shared/sim/session.js';
-import type { Observation } from '../../../src/shared/state.js';
-import { VIEW_DISTANCE } from '../../../src/shared/world.js';
-import { MARK_LIMIT } from '../../../src/shared/config.js';
+import { spiderTools } from '@/src/client/agent/tools';
+import type { GoalOutcome, SimSession } from '@/src/shared/sim/session';
+import type { Observation } from '@/src/shared/state';
+import { VIEW_DISTANCE } from '@/src/shared/world';
+import { MARK_LIMIT } from '@/src/shared/config';
 
 const observation: Observation = {
   time: 0,

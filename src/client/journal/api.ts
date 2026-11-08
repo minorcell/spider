@@ -1,10 +1,15 @@
 import type { LanguageModelUsage } from 'ai';
-import type { MemoryPage } from './db.js';
-import type { MemoryApi, MemoryView, MemoryWrite } from './diary.js';
-import type { ChatSession, Trace } from './session.js';
-import type { SnapshotStore } from './store.js';
-import type { UsageCall, UsageCallMeta, UsageRange, UsageSnapshot } from './usage.js';
-import type { PilotSettings } from '../settings.js';
+import type { MemoryPage } from '@/src/client/journal/db';
+import type { MemoryApi, MemoryView, MemoryWrite } from '@/src/client/journal/diary';
+import type { ChatSession, Trace } from '@/src/client/journal/session';
+import type { SnapshotStore } from '@/src/client/journal/store';
+import type {
+  UsageCall,
+  UsageCallMeta,
+  UsageRange,
+  UsageSnapshot,
+} from '@/src/client/journal/usage';
+import type { PilotSettings } from '@/src/client/settings';
 
 export interface Journal {
   readonly date: string;
@@ -38,14 +43,14 @@ export interface OpenedJournal {
 export async function openJournal(): Promise<OpenedJournal> {
   if (typeof Worker !== 'undefined') {
     try {
-      const { createWorkerJournal } = await import('../worker/client.js');
+      const { createWorkerJournal } = await import('@/src/client/worker/client');
       const journal = await createWorkerJournal();
       return { journal, store: journal };
     } catch {}
   }
   const [{ Diary }, { dbSnapshotStore }] = await Promise.all([
-    import('./diary.js'),
-    import('./store.js'),
+    import('@/src/client/journal/diary'),
+    import('@/src/client/journal/store'),
   ]);
   const [journal, store] = await Promise.all([Diary.open(), dbSnapshotStore()]);
   return { journal, store };

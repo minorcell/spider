@@ -17,14 +17,14 @@ import {
   type Object3D,
 } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
-import { PALETTE } from '../../shared/config.js';
-import { islandBuffers } from '../../shared/island.js';
-import { groundMat } from '../../shared/sim/parts.js';
-import { enableWorldShadows } from '../ecologyView.js';
-import { buildProp, drapeGrass } from '../props.js';
-import { buildStone } from './stone.js';
-import { buildTree } from './tree.js';
-import './models.css';
+import { PALETTE } from '@/src/shared/config';
+import { islandBuffers } from '@/src/shared/island';
+import { groundMat } from '@/src/shared/sim/parts';
+import { enableWorldShadows } from '@/src/client/ecologyView';
+import { buildProp, drapeGrass } from '@/src/client/props';
+import { buildStone } from '@/src/client/models/stone';
+import { buildTree } from '@/src/client/models/tree';
+import '@/src/client/models/models.css';
 
 const HALF = 17;
 const SEGMENTS = 96;

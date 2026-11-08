@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { disclosure } from './index.js';
+import { disclosure } from '@/src/ui/disclosure';
 
 describe('disclosure', () => {
   it('builds its body once when first opened and turns the chevron', () => {

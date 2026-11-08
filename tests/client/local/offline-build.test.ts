@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { runInNewContext } from 'node:vm';
 import { expect, it, vi } from 'vitest';
-import { offlinePlugin, offlineWorkerSource } from '../../../build/offline.js';
+import { offlinePlugin, offlineWorkerSource } from '@/build/offline';
 
 it('pre-caches built assets and serves only the application while offline', async () => {
   // Exercise the emitted service-worker source, including nested deployment scope.

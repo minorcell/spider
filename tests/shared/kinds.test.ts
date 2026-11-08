@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kindOf, KINDS, propertiesOf, slicesOf } from '../../src/shared/kinds.js';
+import { kindOf, KINDS, propertiesOf, slicesOf } from '@/src/shared/kinds';
 
 describe('kinds', () => {
   it('finds every known kind', () => {

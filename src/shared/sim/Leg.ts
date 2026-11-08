@@ -1,5 +1,5 @@
 import { Group, LineSegments, Mesh, Vector3 } from 'three';
-import { BONES, type MountSpec } from '../config.js';
+import { BONES, type MountSpec } from '@/src/shared/config';
 import {
   ballGeo,
   ballShell,
@@ -11,7 +11,7 @@ import {
   tubeCrest,
   tubeGeo,
   tubeShell,
-} from './parts.js';
+} from '@/src/shared/sim/parts';
 
 export class Leg {
   readonly plant = new Vector3();

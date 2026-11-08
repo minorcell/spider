@@ -1,6 +1,6 @@
-import { h } from '../dom/index.js';
-import { paint } from '../style.js';
-import { border, color } from '../token.js';
+import { h } from '@/src/ui/dom';
+import { paint } from '@/src/ui/style';
+import { border, color } from '@/src/ui/token';
 
 export function card(
   doc: Document,

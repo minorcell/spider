@@ -14,9 +14,9 @@ import {
   type ColorRepresentation,
   type Object3D,
 } from 'three';
-import { PALETTE } from '../shared/config.js';
-import { worldClock, type WorldClock } from '../shared/ecology.js';
-import { setGroundLight } from './groundView.js';
+import { PALETTE } from '@/src/shared/config';
+import { worldClock, type WorldClock } from '@/src/shared/ecology';
+import { setGroundLight } from '@/src/client/groundView';
 
 const daySky = new Color(PALETTE.paper);
 const nightSky = new Color(0x07090e);

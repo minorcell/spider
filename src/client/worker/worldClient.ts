@@ -1,8 +1,8 @@
 import type { Group } from 'three';
-import { islandGroup } from '../groundView.js';
-import { islandBuffers } from '../../shared/island.js';
-import { bakeTerrainGrid, Terrain } from '../../shared/terrain.js';
-import type { PreparedBuffers, WorldReply, WorldRequest } from './worldProtocol.js';
+import { islandGroup } from '@/src/client/groundView';
+import { islandBuffers } from '@/src/shared/island';
+import { bakeTerrainGrid, Terrain } from '@/src/shared/terrain';
+import type { PreparedBuffers, WorldReply, WorldRequest } from '@/src/client/worker/worldProtocol';
 
 export interface WorldPort {
   postMessage(message: WorldRequest): void;
