@@ -1,20 +1,11 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import type { GoalOutcome, SimSession } from '@/src/shared/sim/session';
-import type { ActionHint, NearEntity, Observation, Sense, WorldInfo } from '@/src/shared/state';
+import type { ActionHint, Observation, Sense } from '@/src/shared/state';
 import { CARRY_LIMIT, GAIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
 import { VIEW_DISTANCE } from '@/src/shared/world';
 import type { MemoryApi } from '@/src/client/journal/diary';
 import type { Landmark } from '@/src/shared/landmarks';
-
-export interface ToolResult extends GoalOutcome {
-  observation?: Observation;
-  self?: Sense;
-  world: WorldInfo;
-  heading?: number;
-  near: NearEntity[];
-  hint?: ActionHint;
-}
 
 const thought = z.string().describe('用第一人称说一句你在做什么，20 字以内。');
 
@@ -110,7 +101,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       case 'timeout':
         return {
           code: outcome.reason,
-          message: '行动没有完成，先根据当前 self 和 near 重新决定下一步。',
+          message: '行动没有完成，先 observe 确认当前状态再决定下一步。',
           next: 'observe',
         };
       default:
@@ -118,20 +109,30 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
     }
   };
 
-  const finish = (outcome: GoalOutcome): ToolResult => {
+  const finish = (outcome: GoalOutcome, state?: 'position' | 'heading' | 'height') => {
     const { halt: _halt, ...rest } = outcome;
     const blocked =
       rest.reason === 'blocked' || rest.reason === 'steep' || rest.reason === 'no-path';
+    if (rest.ok && !state) return rest;
     const self = session.sense(blocked);
     const hint = hintFor(rest, self);
-    const result: ToolResult = {
+    return {
       ...rest,
-      self,
-      world: session.worldInfo(),
-      near: session.near(),
+      ...(state || blocked
+        ? {
+            self: {
+              ...(state === 'position' || blocked ? { x: self.x, z: self.z } : {}),
+              ...(state === 'heading' || state === 'position' || blocked
+                ? { heading: self.heading }
+                : {}),
+              ...(state === 'height' || blocked ? { height: self.height } : {}),
+              ...(blocked ? { ways: self.ways } : {}),
+            },
+          }
+        : {}),
+      ...(rest.reason === 'no-water' ? { self: { water: self.water } } : {}),
+      ...(hint ? { hint } : {}),
     };
-    if (hint) result.hint = hint;
-    return result;
   };
 
   const tools = {
@@ -212,12 +213,14 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       ]),
       execute: async (input) => {
         if (input.mode === 'point')
-          return finish(await session.moveTo(input.x, input.z, input.fast ?? false));
+          return finish(await session.moveTo(input.x, input.z, input.fast ?? false), 'position');
         if (input.mode === 'id')
-          return finish(await session.approach(input.id, input.standoff, input.fast ?? false));
-        if (input.mode === 'heading')
-          return { ...finish(await session.turnTo(input.heading)), heading: input.heading };
-        return finish(await session.turn(input.degrees));
+          return finish(
+            await session.approach(input.id, input.standoff, input.fast ?? false),
+            'position',
+          );
+        if (input.mode === 'heading') return finish(await session.turnTo(input.heading), 'heading');
+        return finish(await session.turn(input.degrees), 'heading');
       },
     }),
     mark: tool({
@@ -230,7 +233,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       execute: async ({ command, name, note }) => {
         if (command === 'list')
           return {
-            ...finish({ ok: true }),
+            ok: true,
             marks: session.marks(),
             landmarks: agentLandmarks(session.landmarks()),
           };
@@ -282,7 +285,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       }),
       execute: async ({ on }) => {
         session.setLamp(on);
-        return finish({ ok: true, action: on ? 'lamp-on' : 'lamp-off' });
+        return { ok: true, on };
       },
     }),
     set_height: tool({
@@ -294,12 +297,13 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
           .max(GAIT.heightMax)
           .describe(`离地高度，${GAIT.heightMin} 到 ${GAIT.heightMax}。`),
       }),
-      execute: async ({ level }) => finish(await session.setHeight(level)),
+      execute: async ({ level }) => finish(await session.setHeight(level), 'height'),
     }),
     ...(memory
       ? {
           memory: tool({
-            description: '跨天日记：列目录、读某天、写某天。',
+            description:
+              '按需管理跨天记忆：list 列目录，get 读某天，write 写某天。由你决定何时使用。写之前先 get，保留已有内容；只记录有依据的经历和用户明确表达的偏好。',
             inputSchema: call({
               command: z.enum(['list', 'get', 'write']).describe('list、get 或 write。'),
               date: z.string().optional().describe('YYYY-MM-DD。get、write 要填。'),

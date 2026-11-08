@@ -78,15 +78,15 @@ describe('journal scaling', () => {
     test(`drop oldest of ${turns} turns`, async ({ bench }) => {
       const session: ChatSession = {
         ...blankSession('2026-11-08'),
-        turns: Array.from({ length: turns }, (_, i) => ({
+        messages: Array.from({ length: turns }, (_, i) => ({
           role: i % 2 === 0 ? 'user' : 'assistant',
-          text: '对话内容'.repeat(20),
+          content: '对话内容'.repeat(20),
         })),
       };
       const limits = { contextTokens: 4000 };
       const trimmed = dropOldest(session, limits);
-      expect(trimmed.turns.length).toBeLessThan(turns);
-      expect(trimmed.turns.at(-1)).toBe(session.turns.at(-1));
+      expect(trimmed.messages.length).toBeLessThan(turns);
+      expect(trimmed.messages.at(-1)).toBe(session.messages.at(-1));
       await bench(`drop oldest of ${turns} turns`, () => {
         dropOldest(session, limits);
       }).run();

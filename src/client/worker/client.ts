@@ -8,12 +8,12 @@ import type {
   LocalReply,
   LocalStatus,
 } from '@/src/client/local/types';
-import type { LanguageModelUsage } from 'ai';
+import type { LanguageModelUsage, ModelMessage } from 'ai';
 import type { WorldRecord } from '@/src/shared/sim/snapshot';
 import type { Journal } from '@/src/client/journal/api';
 import type { MemoryPage } from '@/src/client/journal/db';
 import type { MemoryApi, MemoryView, MemoryWrite } from '@/src/client/journal/diary';
-import { blankSession, type ChatSession, type Trace } from '@/src/client/journal/session';
+import { blankSession, type ChatSession } from '@/src/client/journal/session';
 import type { SnapshotStore } from '@/src/client/journal/store';
 import type {
   UsageCall,
@@ -115,10 +115,6 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
     this.#state = await this.#call<'save'>((id) => ({ id, method: 'save' }));
   }
 
-  async indexBlock(): Promise<string> {
-    return this.#call<'indexBlock'>((id) => ({ id, method: 'indexBlock' }));
-  }
-
   api(): MemoryApi {
     return {
       list: async () => {
@@ -142,16 +138,11 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
     return this.#call<'write'>((id) => ({ id, method: 'write', args: [input] }));
   }
 
-  async record(
-    user: string,
-    assistant: string,
-    tools: Trace[],
-    settings: PilotSettings,
-  ): Promise<void> {
+  async record(messages: ModelMessage[], settings: PilotSettings): Promise<void> {
     this.#state = await this.#call<'record'>((id) => ({
       id,
       method: 'record',
-      args: [user, assistant, tools, settings],
+      args: [messages, settings],
     }));
   }
 

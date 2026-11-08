@@ -1,7 +1,7 @@
-import type { LanguageModelUsage } from 'ai';
+import type { LanguageModelUsage, ModelMessage } from 'ai';
 import type { MemoryPage } from '@/src/client/journal/db';
 import type { MemoryApi, MemoryView, MemoryWrite } from '@/src/client/journal/diary';
-import type { ChatSession, Trace } from '@/src/client/journal/session';
+import type { ChatSession } from '@/src/client/journal/session';
 import type { SnapshotStore } from '@/src/client/journal/store';
 import type {
   UsageCall,
@@ -17,12 +17,11 @@ export interface Journal {
   dismissed: boolean;
   behind(): boolean;
   save(): Promise<void>;
-  indexBlock(): Promise<string>;
   api(): MemoryApi;
   pages(): Promise<MemoryPage[]>;
   read(date: string): Promise<MemoryView | null>;
   write(input: MemoryWrite): Promise<MemoryView>;
-  record(user: string, assistant: string, tools: Trace[], settings: PilotSettings): Promise<void>;
+  record(messages: ModelMessage[], settings: PilotSettings): Promise<void>;
   digest(settings: PilotSettings): Promise<void>;
   backfill(settings: PilotSettings): Promise<void>;
   recordUsage(

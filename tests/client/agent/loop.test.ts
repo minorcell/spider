@@ -29,6 +29,7 @@ import { useLocalBackend } from '@/src/client/local/backend';
 
 function stream(parts: unknown[], usage: unknown = undefined, failUsage = false): void {
   aiControl.streamText.mockReturnValue({
+    responseMessages: Promise.resolve([]),
     fullStream: (async function* generate() {
       for (const part of parts) {
         await Promise.resolve();
@@ -250,34 +251,19 @@ describe('runAgent', () => {
     expect(aiControl.streamText.mock.calls[0][0].reasoning).toBe('none');
   });
 
-  it('adds the diary and an earlier summary to the system prompt', async () => {
+  it('keeps memory content out of the system prompt', async () => {
     stream([]);
     await runAgent({
       goal: 'go',
       session: fakeSession(),
       settings,
-      chat: { date: '2026-11-02', summary: '更早的事', turns: [], updatedAt: 1, digestedAt: 0 },
-      memoryIndex: '目录',
+      chat: { date: '2026-11-02', messages: [], updatedAt: 1, digestedAt: 0 },
       memory: { list: vi.fn(), get: vi.fn(), write: vi.fn() },
     });
-    const system = String(aiControl.streamText.mock.calls[0][0].system);
-    expect(system).toContain('这一天更早的对话收成');
-    expect(system).toContain('目录');
-  });
-
-  it('omits the summary when the day has none yet', async () => {
-    stream([]);
-    await runAgent({
-      goal: 'go',
-      session: fakeSession(),
-      settings,
-      chat: { date: '2026-11-02', summary: '', turns: [], updatedAt: 1, digestedAt: 0 },
-      memoryIndex: '目录',
-      memory: { list: vi.fn(), get: vi.fn(), write: vi.fn() },
-    });
-    const system = String(aiControl.streamText.mock.calls[0][0].system);
-    expect(system).not.toContain('这一天更早的对话收成');
-    expect(system).toContain('目录');
+    const options = aiControl.streamText.mock.calls[0][0];
+    expect(options.tools.memory).toBeDefined();
+    expect(options.system).not.toContain('记忆目录');
+    expect(options.system).not.toContain('这一天更早的对话收成');
   });
 
   it('cancels the session when the signal aborts', async () => {
@@ -417,6 +403,7 @@ describe('runAgent', () => {
           fullStream: (async function* generate() {
             yield { type: 'text-delta', text: 'ok' };
           })(),
+          responseMessages: Promise.resolve([]),
           usage: Promise.resolve(undefined),
         };
       },
@@ -437,7 +424,7 @@ describe('runAgent', () => {
   });
 });
 
-it('uses local transport with bounded basic actions and a fresh instruction context', async () => {
+it('uses local transport with bounded basic actions and continuous messages', async () => {
   stream([{ type: 'text-delta', text: '好了' }]);
   await runAgent({
     goal: '前进一步',
@@ -445,8 +432,7 @@ it('uses local transport with bounded basic actions and a fresh instruction cont
     settings: { ...settings, mode: 'local' },
     chat: {
       date: '2026-11-06',
-      summary: '',
-      turns: [{ role: 'user', text: 'old instruction' }],
+      messages: [{ role: 'user', content: 'old instruction' }],
       updatedAt: 0,
       digestedAt: 0,
     },
@@ -460,5 +446,5 @@ it('uses local transport with bounded basic actions and a fresh instruction cont
   expect(Object.keys(options.tools)).toEqual(['observe', 'go', 'set_height']);
   expect(options.stopWhen).toEqual([{ until: 'finished' }, { count: 6 }]);
   expect(options.maxRetries).toBe(0);
-  expect(JSON.stringify(options.messages)).not.toContain('old instruction');
+  expect(JSON.stringify(options.messages)).toContain('old instruction');
 });

@@ -1,4 +1,4 @@
-import type { LanguageModelUsage } from 'ai';
+import type { LanguageModelUsage, ModelMessage } from 'ai';
 import { contextTokensOf, modelIdOf, pilotReady, type PilotSettings } from '@/src/client/settings';
 import type { Journal } from '@/src/client/journal/api';
 import { blankMemory, openSpiderDb, type MemoryPage } from '@/src/client/journal/db';
@@ -6,13 +6,12 @@ import { localDate, shiftDate } from '@/src/shared/dates';
 import {
   blankSession,
   dropOldest,
-  fit,
-  foldSummary,
   needsDigest,
+  restoreSession,
   transcript,
   type ChatSession,
   type CompactLimits,
-  type Trace,
+  type LegacySession,
 } from '@/src/client/journal/session';
 import {
   readUsage,
@@ -24,8 +23,6 @@ import {
   type UsageRange,
   type UsageSnapshot,
 } from '@/src/client/journal/usage';
-
-const INDEX_DAYS = 60;
 
 let onDiary: (() => void) | null = null;
 
@@ -54,7 +51,7 @@ export interface MemoryApi {
 }
 
 function limitsOf(settings: PilotSettings): CompactLimits {
-  return { contextTokens: contextTokensOf(settings.mode === 'local' ? 2 : settings.contextTokens) };
+  return { contextTokens: contextTokensOf(settings.mode === 'local' ? 4 : settings.contextTokens) };
 }
 
 function viewOf(page: MemoryPage): MemoryView {
@@ -73,7 +70,7 @@ export class Diary implements Journal {
   static async open(now = new Date()): Promise<Diary> {
     const db = await openSpiderDb();
     const date = localDate(now);
-    const stored = await db.get('sessions', date);
+    const stored = await loadSession(db, date);
     return new Diary(db, date, stored ?? blankSession(date));
   }
 
@@ -82,15 +79,8 @@ export class Diary implements Journal {
   }
 
   async save(): Promise<void> {
-    if (this.session.turns.length === 0 && !this.session.summary) return;
+    if (this.session.messages.length === 0) return;
     await this.db.put('sessions', this.session);
-  }
-
-  async indexBlock(): Promise<string> {
-    const pages = await this.pages();
-    const recent = pages.slice(-INDEX_DAYS);
-    if (recent.length === 0) return '记忆目录是空的。';
-    return recent.map((page) => `${page.date} ${page.description || '（无）'}`).join('\n');
   }
 
   api(): MemoryApi {
@@ -128,46 +118,16 @@ export class Diary implements Journal {
     return viewOf(next);
   }
 
-  async record(
-    user: string,
-    assistant: string,
-    tools: Trace[],
-    settings: PilotSettings,
-  ): Promise<void> {
-    const turn: ChatSession['turns'][number] = { role: 'assistant', text: assistant };
-    if (tools.length > 0) turn.tools = tools;
-    this.session = {
-      ...this.session,
-      turns: [...this.session.turns, { role: 'user', text: user }, turn],
-      updatedAt: Date.now(),
-    };
+  async record(messages: ModelMessage[], settings: PilotSettings): Promise<void> {
+    this.session = dropOldest(
+      {
+        ...this.session,
+        messages,
+        updatedAt: Date.now(),
+      },
+      limitsOf(settings),
+    );
     this.dismissed = false;
-    const limits = limitsOf(settings);
-    const action = fit(this.session, limits);
-    if (action.kind === 'summarize') {
-      try {
-        const page = await this.db.get('memories', this.date);
-        const { summarizeDiary } = await import('@/src/client/journal/summarize');
-        const note = await summarizeDiary({
-          settings,
-          transcript: transcript(action.session),
-          noted: page?.noted ?? '',
-          prior: action.session.summary,
-        });
-        await recordUsage(note.usage, new Date(), {
-          kind: 'summary',
-          sessionId: this.date,
-          provider: 'openai-compatible',
-          modelId: modelIdOf(settings),
-        });
-        const folded = foldSummary(action.session, note.summary || action.session.summary);
-        this.session = { ...dropOldest(folded, limits), updatedAt: Date.now() };
-      } catch {
-        this.session = { ...dropOldest(action.session, limits), updatedAt: Date.now() };
-      }
-    } else if (action.kind === 'save') {
-      this.session = { ...action.session, updatedAt: Date.now() };
-    }
     await this.save();
   }
 
@@ -201,7 +161,7 @@ export class Diary implements Journal {
   async backfill(settings: PilotSettings): Promise<void> {
     if (!pilotReady(settings)) return;
     const date = shiftDate(this.date, -1);
-    const stored = await this.db.get('sessions', date);
+    const stored = await loadSession(this.db, date);
     if (!stored || !needsDigest(stored)) return;
     await this.digestSession(stored, settings);
     await this.db.put('sessions', { ...stored, digestedAt: stored.updatedAt });
@@ -214,7 +174,7 @@ export class Diary implements Journal {
       settings,
       transcript: transcript(session),
       noted: page.noted,
-      prior: session.summary,
+      prior: page.summary,
     });
     await recordUsage(note.usage, new Date(), {
       kind: 'summary',
@@ -230,4 +190,22 @@ export class Diary implements Journal {
     });
     onDiary?.();
   }
+}
+
+async function loadSession(db: Awaited<ReturnType<typeof openSpiderDb>>, date: string) {
+  const stored = await db.get('sessions', date);
+  if (!stored || 'messages' in stored) return stored;
+  const legacy = stored as LegacySession;
+  const session = restoreSession(legacy);
+  // Keep an older compacted summary in the diary, without injecting it into the prompt.
+  if (legacy.summary) {
+    const page = (await db.get('memories', date)) ?? blankMemory(date);
+    await db.put('memories', {
+      ...page,
+      summary: [page.summary, legacy.summary].filter(Boolean).join('\n'),
+      updatedAt: Date.now(),
+    });
+  }
+  await db.put('sessions', session);
+  return session;
 }

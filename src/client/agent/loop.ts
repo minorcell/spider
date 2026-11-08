@@ -2,10 +2,16 @@ import { LOCAL_MODEL } from '@/src/client/local/types';
 import { localMetadata } from '@/src/client/local/metrics';
 import { localBackend } from '@/src/client/local/backend';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { isLoopFinished, isStepCount, streamText, type LanguageModelUsage } from 'ai';
+import {
+  isLoopFinished,
+  isStepCount,
+  streamText,
+  type LanguageModelUsage,
+  type ModelMessage,
+} from 'ai';
 import type { SimSession } from '@/src/shared/sim/session';
 import type { MemoryApi } from '@/src/client/journal/diary';
-import { toMessages, type ChatSession } from '@/src/client/journal/session';
+import { blankSession, dropOldest, type ChatSession } from '@/src/client/journal/session';
 import {
   byteSize,
   usageCallFromStep,
@@ -14,7 +20,7 @@ import {
 } from '@/src/client/journal/usage';
 import { localDate } from '@/src/shared/dates';
 import { apiKeyFor } from '@/src/client/providers';
-import { reasoningOf, type PilotSettings } from '@/src/client/settings';
+import { contextTokensOf, reasoningOf, type PilotSettings } from '@/src/client/settings';
 import { withInlineCalls } from '@/src/client/agent/inline';
 import { spiderTools } from '@/src/client/agent/tools';
 import { systemFor } from '@/src/client/agent/prompt';
@@ -44,6 +50,7 @@ export type AgentEvent =
 
 export interface AgentReply {
   text: string;
+  messages: ModelMessage[];
   usage: LanguageModelUsage | null;
   calls: UsageCall[];
 }
@@ -53,7 +60,6 @@ export interface RunAgentOptions {
   session: SimSession;
   settings: PilotSettings;
   chat?: ChatSession;
-  memoryIndex?: string;
   memory?: MemoryApi;
   signal?: AbortSignal;
   onEvent?: (event: AgentEvent) => void;
@@ -64,7 +70,6 @@ export async function runAgent({
   session,
   settings,
   chat,
-  memoryIndex,
   memory,
   signal,
   onEvent,
@@ -100,28 +105,21 @@ export async function runAgent({
           set_height: allTools.set_height,
         }
       : allTools;
+    const messages = dropOldest(
+      {
+        ...(chat ?? blankSession(today)),
+        messages: [...(chat?.messages ?? []), { role: 'user', content: goal }],
+      },
+      { contextTokens: contextTokensOf(local ? 4 : settings.contextTokens) },
+    ).messages;
     const result = streamText({
       model: withInlineCalls(
         provider(local ? LOCAL_MODEL : settings.model),
         Object.keys(tools),
         local,
       ),
-      system: systemFor(
-        today,
-        chat?.summary ?? '',
-        memoryIndex ?? '记忆目录是空的。',
-        memory != null,
-      ),
-      messages: toMessages(
-        (local ? undefined : chat) ?? {
-          date: today,
-          summary: '',
-          turns: [],
-          updatedAt: 0,
-          digestedAt: 0,
-        },
-        goal,
-      ),
+      system: systemFor(),
+      messages,
       tools,
       stopWhen: local ? [isLoopFinished(), isStepCount(6)] : isLoopFinished(),
       ...(local ? { maxRetries: 0 } : {}),
@@ -236,7 +234,13 @@ export async function runAgent({
       }
     }
     if (!signal?.aborted && !stepHasTool) flush();
-    return { text: answer, usage: await takenUsage(result.usage), calls };
+    const response = signal?.aborted ? [] : await result.responseMessages;
+    return {
+      text: answer,
+      messages: [...messages, ...response],
+      usage: await takenUsage(result.usage),
+      calls,
+    };
   } finally {
     await backend?.localSession?.(turnId, false).catch(() => undefined);
   }

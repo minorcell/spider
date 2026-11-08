@@ -4,7 +4,7 @@ import { border, color, font } from '@/src/ui/token';
 import { contextTokensOf, type PilotSettings } from '@/src/client/settings';
 import type { AgentEvent } from '@/src/client/agent/loop';
 import type { Journal } from '@/src/client/journal/api';
-import type { Trace } from '@/src/client/journal/session';
+import { toolTraces, type Trace } from '@/src/client/journal/session';
 import type { SimSession } from '@/src/shared/sim/session';
 import { byteSize } from '@/src/client/journal/usage';
 
@@ -276,8 +276,7 @@ export function bindStatus(options: {
 
   const refreshHistory = async (): Promise<void> => {
     const journal = getJournal() ?? (await journalReady);
-    const traces =
-      journal?.session.turns.flatMap((turn) => turn.tools ?? []).slice(-HISTORY_LIMIT) ?? [];
+    const traces = toolTraces(journal?.session.messages ?? []).slice(-HISTORY_LIMIT);
     saved.replaceChildren(
       ...(traces.length
         ? traces.map((trace) => traceDetail(doc, trace))

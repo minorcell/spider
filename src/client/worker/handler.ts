@@ -50,8 +50,6 @@ export function createHandler(): Handler {
         await opened.backfill(request.args[0]);
         return stateOf(opened);
       }
-      case 'indexBlock':
-        return (await open()).indexBlock();
       case 'pages':
         return (await open()).pages();
       case 'read':

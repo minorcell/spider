@@ -1,3 +1,4 @@
+import type { ModelMessage } from 'ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { forceCloseDatabase } from 'fake-indexeddb';
 import { openDB, unwrap } from 'idb';
@@ -8,11 +9,10 @@ import {
   blankSession,
   dropOldest,
   estimateTokens,
-  fit,
-  foldSummary,
   needsDigest,
   overLimit,
-  toMessages,
+  restoreSession,
+  toolTraces,
   transcript,
   type ChatSession,
 } from '@/src/client/journal/session';
@@ -42,9 +42,36 @@ const settings: PilotSettings = {
 
 const LONG = '一'.repeat(1600);
 
-function session(turns: ChatSession['turns'], summary = ''): ChatSession {
-  return { ...blankSession('2026-11-02'), turns, summary, updatedAt: 10 };
+function session(messages: ModelMessage[]): ChatSession {
+  return { ...blankSession('2026-11-02'), messages, updatedAt: 10 };
 }
+
+function dialogue(user: string, assistant: string): ModelMessage[] {
+  return [
+    { role: 'user', content: user },
+    { role: 'assistant', content: assistant },
+  ];
+}
+
+const toolMessages: ModelMessage[] = [
+  { role: 'user', content: '拿' },
+  {
+    role: 'assistant',
+    content: [{ type: 'tool-call', toolCallId: '1', toolName: 'act', input: { id: 'apple' } }],
+  },
+  {
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: '1',
+        toolName: 'act',
+        output: { type: 'json', value: { ok: true } },
+      },
+    ],
+  },
+  { role: 'assistant', content: '好。' },
+];
 
 beforeEach(async () => {
   await resetSpiderDb();
@@ -131,84 +158,100 @@ describe('dates', () => {
   });
 });
 
-describe('fit', () => {
-  it('keeps a short session when no limit is set', () => {
-    const chat = session([
-      { role: 'user', text: '你好' },
-      { role: 'assistant', text: '在。' },
-    ]);
-    expect(fit(chat, { contextTokens: null })).toEqual({ kind: 'keep' });
+describe('conversation messages', () => {
+  it('keeps messages unchanged when no limit is set', () => {
+    const chat = session(toolMessages);
+    expect(dropOldest(chat, { contextTokens: null })).toBe(chat);
     expect(needsDigest(chat)).toBe(true);
     expect(needsDigest({ ...chat, digestedAt: 10 })).toBe(false);
+    expect(needsDigest(blankSession(chat.date))).toBe(false);
   });
 
-  it('drops tool traces before it drops turns', () => {
-    const bulky = 'x'.repeat(800);
+  it('trims complete user turns without separating calls from results', () => {
+    const chat = session([...dialogue('x'.repeat(2000), 'old'), ...toolMessages]);
+    const trimmed = dropOldest(chat, { contextTokens: 300 });
+    expect(trimmed.messages).toEqual(toolMessages);
+    expect(chat.messages).toHaveLength(6);
+    expect(dropOldest(trimmed, { contextTokens: 1 }).messages).toEqual(toolMessages);
+  });
+
+  it('finds the earliest complete turn that fits', () => {
     const chat = session([
-      { role: 'user', text: '拿' },
-      { role: 'assistant', text: '好。', tools: [{ name: 'pick_up', input: {}, output: bulky }] },
-      { role: 'user', text: '再拿' },
-      { role: 'assistant', text: '好。' },
+      ...dialogue('x'.repeat(4000), 'old'),
+      ...dialogue('middle', 'yes'),
+      ...toolMessages,
     ]);
-    const action = fit(chat, { contextTokens: estimateTokens(chat) - 10 });
-    expect(action.kind).toBe('save');
-    if (action.kind !== 'save') return;
-    expect(action.session.turns).toHaveLength(4);
-    expect(action.session.turns[1]?.tools).toBeUndefined();
-  });
-
-  it('asks for a summary once the window is 80% full', () => {
-    const chat = session([
-      { role: 'user', text: '一'.repeat(80) },
-      { role: 'assistant', text: '二'.repeat(80) },
-    ]);
-    const action = fit(chat, { contextTokens: 20 });
-    expect(action.kind).toBe('summarize');
-    if (action.kind !== 'summarize') return;
-    expect(action.session.turns.at(-1)?.text.startsWith('二')).toBe(true);
-  });
-
-  it('folds a summary and keeps the recent tail', () => {
-    const turns: ChatSession['turns'] = [];
-    for (let i = 0; i < 6; i++) turns.push({ role: i % 2 ? 'assistant' : 'user', text: String(i) });
-    const folded = foldSummary(session(turns, '旧'), '新');
-    expect(folded.summary).toBe('新');
-    expect(folded.turns.map((turn) => turn.text)).toEqual(['2', '3', '4', '5']);
-    expect(dropOldest(folded, { contextTokens: 1 }).turns).toHaveLength(1);
+    expect(dropOldest(chat, { contextTokens: 400 }).messages).toEqual(chat.messages.slice(2));
+    expect(
+      dropOldest(session([{ role: 'assistant', content: 'x'.repeat(200) }]), { contextTokens: 1 })
+        .messages,
+    ).toHaveLength(1);
   });
 
   it('compresses at 80% of the context window', () => {
-    const chat = session([{ role: 'user', text: 'x'.repeat(400) }]);
+    const chat = session([{ role: 'user', content: 'x'.repeat(400) }]);
+    expect(estimateTokens(chat)).toBeGreaterThan(100);
     expect(overLimit(chat, { contextTokens: 100 })).toBe(true);
     expect(overLimit(chat, { contextTokens: null })).toBe(false);
     expect(overLimit(chat, { contextTokens: 10_000 })).toBe(false);
+    expect(dropOldest(chat, { contextTokens: 10_000 })).toBe(chat);
   });
 
-  it('keeps the same session when nothing is over the limit', () => {
-    const chat = session([{ role: 'user', text: '短' }]);
-    expect(dropOldest(chat, { contextTokens: null })).toBe(chat);
+  it('derives diagnostic traces and diary text from the same messages', () => {
+    const chat = session(toolMessages);
+    expect(toolTraces(chat.messages)).toEqual([
+      { name: 'act', input: { id: 'apple' }, output: { ok: true } },
+    ]);
+    expect(transcript(chat)).toContain('调用 act');
+    expect(transcript(chat)).toContain('结果 act');
+    expect(transcript(chat)).toContain('assistant：好。');
+    const denied: ModelMessage[] = [
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'missing',
+            toolName: 'act',
+            output: { type: 'execution-denied', reason: 'no' },
+          },
+        ],
+      },
+    ];
+    expect(toolTraces(denied)[0].output).toMatchObject({ type: 'execution-denied' });
+    expect(
+      transcript(
+        session([{ role: 'assistant', content: [{ type: 'reasoning', text: 'private' }] }]),
+      ),
+    ).not.toContain('private');
   });
 
-  it('writes the transcript and the messages sent to the model', () => {
-    const chat = session(
-      [
+  it('restores old conversations as linked tool messages once', () => {
+    const restored = restoreSession({
+      date: '2026-11-02',
+      summary: 'old',
+      updatedAt: 10,
+      digestedAt: 0,
+      turns: [
         { role: 'user', text: '拿' },
         {
           role: 'assistant',
           text: '好。',
-          tools: [{ name: 'pick_up', input: {}, output: { ok: true } }],
+          tools: [{ name: 'act', input: {}, output: { ok: true } }],
         },
         { role: 'assistant', text: '' },
       ],
-      '旧',
-    );
-    expect(transcript(chat)).toContain('更早：旧');
-    expect(transcript(chat)).toContain('行动 pick_up');
-    expect(toMessages(chat, '去巢')).toEqual([
-      { role: 'user', content: '拿' },
-      { role: 'assistant', content: '好。\npick_up {"ok":true}' },
-      { role: 'user', content: '去巢' },
+    });
+    expect(restored.messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'tool',
+      'assistant',
     ]);
+    expect(toolTraces(restored.messages)).toEqual([
+      { name: 'act', input: {}, output: { ok: true } },
+    ]);
+    expect(restoreSession(restored)).toBe(restored);
   });
 });
 
@@ -231,13 +274,13 @@ describe('readNote', () => {
 describe('Diary', () => {
   it('keeps today, writes a note, and backfills yesterday', async () => {
     const today = await Diary.open(new Date(2026, 10, 2, 12));
-    await today.record('记住不要吃红的', '记下了。', [], settings);
+    await today.record(dialogue('记住不要吃红的', '记下了。'), settings);
     await today.write({ date: today.date, line: '不要吃红的', noted: '不要吃红的' });
     expect(await today.read(today.date)).toMatchObject({ noted: '不要吃红的' });
 
     const yesterday = await Diary.open(new Date(2026, 10, 1, 12));
-    await yesterday.record(LONG, LONG, [], { ...settings, contextTokens: 1 });
-    expect(yesterday.session.summary).toBe('记下了偏好。');
+    await yesterday.record(dialogue(LONG, LONG), { ...settings, contextTokens: 1 });
+    expect(yesterday.session.messages).toEqual(dialogue(LONG, LONG));
 
     await today.backfill(settings);
     expect((await today.read('2026-11-01'))?.summary).toBe('记下了偏好。');
@@ -252,7 +295,7 @@ describe('Diary', () => {
     onDiaryChange(heard);
     const diary = await Diary.open(new Date(2026, 10, 2, 9));
     await diary.write({ date: diary.date, line: '水边' });
-    await diary.record('去水边', '到了。', [], settings);
+    await diary.record(dialogue('去水边', '到了。'), settings);
     await diary.digest(settings);
     expect(heard).toHaveBeenCalledTimes(2);
     onDiaryChange(null);
@@ -263,22 +306,22 @@ describe('Diary', () => {
   it('digests today and then stays quiet', async () => {
     const diary = await Diary.open(new Date(2026, 10, 2, 8));
     expect(await diary.digest(settings)).toBeUndefined();
-    await diary.record('去巢里', '到了。', [], settings);
+    await diary.record(dialogue('去巢里', '到了。'), settings);
     expect(diary.behind()).toBe(true);
     await diary.digest(settings);
     expect(diary.behind()).toBe(false);
     expect((await diary.read(diary.date))?.line).toBe('主人说不要吃红的');
     diary.dismissed = true;
-    await diary.record('再走', '好。', [], settings);
+    await diary.record(dialogue('再走', '好。'), settings);
     expect(diary.dismissed).toBe(false);
   });
 
   it('skips digest without a model', async () => {
     const diary = await Diary.open(new Date(2026, 10, 3, 8));
-    await diary.record('你好', '在。', [], settings);
+    await diary.record(dialogue('你好', '在。'), settings);
     await diary.digest({ ...settings, apiKey: '' });
     expect(diary.behind()).toBe(true);
-    expect(await diary.indexBlock()).toBe('记忆目录是空的。');
+    expect(await diary.api().list()).toEqual([]);
   });
 
   it('leaves an empty session unsaved and reads missing pages as null', async () => {
@@ -290,57 +333,39 @@ describe('Diary', () => {
     expect(await diary.read(diary.date)).toMatchObject({ line: '目录一句', summary: '摘要' });
   });
 
-  it('lists directory lines and marks empty ones', async () => {
-    const diary = await Diary.open(new Date(2026, 10, 5, 8));
-    await diary.write({ date: shiftDate(diary.date, -1), line: '昨天说不要吃红的' });
-    await diary.write({ date: diary.date, summary: '今天什么都没有' });
-    const block = await diary.indexBlock();
-    expect(block).toContain('昨天说不要吃红的');
-    expect(block).toContain('（无）');
+  it('saves and reloads the exact SDK messages, including tool ids and order', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 6, 8));
+    await diary.record(toolMessages, settings);
+    const reopened = await Diary.open(new Date(2026, 10, 6, 9));
+    expect(reopened.session.messages).toEqual(toolMessages);
+    const next = [...reopened.session.messages, ...dialogue('再走', '好了')];
+    await reopened.record(next, settings);
+    expect((await Diary.open(new Date(2026, 10, 6, 10))).session.messages).toEqual(next);
   });
 
-  it('drops tool traces without a summary when that fits the window', async () => {
-    const diary = await Diary.open(new Date(2026, 10, 6, 8));
-    await diary.record('拿', '好。', [{ name: 'pick_up', input: {}, output: 'x'.repeat(8000) }], {
+  it('bounds the conversation without generating or injecting diary content', async () => {
+    const diary = await Diary.open(new Date(2026, 10, 7, 8));
+    const summarize = vi.mocked(summarizeDiary);
+    const before = summarize.mock.calls.length;
+    await diary.record([...dialogue(LONG, LONG), ...toolMessages], {
       ...settings,
       contextTokens: 1,
     });
-    expect(diary.session.summary).toBe('');
-    expect(diary.session.turns[1]?.tools).toBeUndefined();
-    expect(diary.session.turns).toHaveLength(2);
-  });
-
-  it('keeps tool traces, then summarizes once the window is 80% full', async () => {
-    const diary = await Diary.open(new Date(2026, 10, 6, 8));
-    await diary.record(
-      '拿',
-      '好。',
-      [{ name: 'pick_up', input: {}, output: { ok: true } }],
-      settings,
-    );
-    expect(diary.session.turns[1]?.tools).toHaveLength(1);
-    await diary.record(LONG, '好。', [], { ...settings, contextTokens: 1 });
-    expect(diary.session.summary).toBe('记下了偏好。');
-  });
-
-  it('drops the oldest turns when summarizing fails', async () => {
-    const diary = await Diary.open(new Date(2026, 10, 7, 8));
-    vi.mocked(summarizeDiary).mockRejectedValueOnce(new Error('no model'));
-    await diary.record(LONG, LONG, [], { ...settings, contextTokens: 1 });
-    expect(diary.session.summary).toBe('');
+    expect(diary.session.messages).toEqual(toolMessages);
+    expect(summarize.mock.calls.length).toBe(before);
   });
 
   it('skips backfill without a model', async () => {
     const diary = await Diary.open(new Date(2026, 10, 8, 8));
     await diary.backfill({ ...settings, apiKey: '' });
-    expect(await diary.indexBlock()).toBe('记忆目录是空的。');
+    expect(await diary.api().list()).toEqual([]);
   });
 
   it('keeps existing directory lines when the note is empty', async () => {
     const diary = await Diary.open(new Date(2026, 10, 9, 8));
     await diary.write({ date: diary.date, line: '已有的目录句', summary: '已有的摘要' });
     vi.mocked(summarizeDiary).mockResolvedValueOnce({ line: '', summary: '' });
-    await diary.record('走', '好。', [], settings);
+    await diary.record(dialogue('走', '好。'), settings);
     await diary.digest(settings);
     expect(await diary.read(diary.date)).toMatchObject({
       line: '已有的目录句',
@@ -359,44 +384,27 @@ describe('Diary', () => {
     });
   });
 
-  it('keeps an earlier summary when the note has none', async () => {
-    const diary = await Diary.open(new Date(2026, 10, 11, 8));
-    diary.session = {
-      ...diary.session,
+  it('migrates old saves and archives their summary only in memory', async () => {
+    const date = '2026-11-11';
+    const db = await openSpiderDb();
+    await db.put('sessions', {
+      date,
       summary: '更早的摘要',
-      turns: [{ role: 'user', text: '一'.repeat(200) }],
-    };
-    vi.mocked(summarizeDiary).mockResolvedValueOnce({ line: '新目录句', summary: '' });
-    await diary.record(LONG, LONG, [], { ...settings, contextTokens: 1 });
-    expect(diary.session.summary).toBe('更早的摘要');
-  });
-
-  it('records tokens spent summarizing a day', async () => {
-    const diary = await Diary.open(new Date(2026, 10, 12, 8));
-    vi.mocked(summarizeDiary).mockResolvedValueOnce({
-      line: '目录',
-      summary: '摘要',
-      usage: {
-        inputTokens: 8,
-        outputTokens: 2,
-        totalTokens: 10,
-        inputTokenDetails: { noCacheTokens: 7, cacheReadTokens: 1, cacheWriteTokens: undefined },
-        outputTokenDetails: { textTokens: 2, reasoningTokens: 0 },
-      },
-    });
-    await diary.record(LONG, LONG, [], { ...settings, contextTokens: 1 });
-    expect((await readUsage(localDate(new Date()))).today).toMatchObject({
-      input: 8,
-      output: 2,
-      total: 10,
-      calls: 1,
-      cacheRead: 1,
-    });
+      turns: [{ role: 'user', text: '你好' }],
+      updatedAt: 1,
+      digestedAt: 0,
+    } as never);
+    const diary = await Diary.open(new Date(2026, 10, 11, 8));
+    expect(diary.session.messages).toEqual([{ role: 'user', content: '你好' }]);
+    expect(await diary.read(date)).toMatchObject({ summary: '更早的摘要' });
+    expect(await db.get('sessions', date)).toEqual(diary.session);
+    await Diary.open(new Date(2026, 10, 11, 9));
+    expect(await diary.read(date)).toMatchObject({ summary: '更早的摘要' });
   });
 
   it('records tokens spent writing the diary', async () => {
     const diary = await Diary.open(new Date(2026, 10, 13, 8));
-    await diary.record('走', '好。', [], settings);
+    await diary.record(dialogue('走', '好。'), settings);
     vi.mocked(summarizeDiary).mockResolvedValueOnce({
       line: '目录',
       summary: '摘要',
@@ -433,7 +441,8 @@ describe('Diary', () => {
         outputTokenDetails: { textTokens: 1, reasoningTokens: 0 },
       },
     });
-    await diary.record(LONG, LONG, [], { ...settings, contextTokens: 1 });
-    expect(diary.session.summary).toBe('摘要');
+    await diary.record(dialogue(LONG, LONG), settings);
+    await diary.digest(settings);
+    expect(await diary.read(diary.date)).toMatchObject({ summary: '摘要' });
   });
 });

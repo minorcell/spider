@@ -5,7 +5,6 @@ import {
   blankSession,
   dropOldest,
   estimateTokens,
-  fit,
   transcript,
   type ChatSession,
   type CompactLimits,
@@ -47,11 +46,9 @@ function bestOf(runs: number, work: () => void, reset?: () => void): number {
 function longDay(turns: number): ChatSession {
   return {
     ...blankSession('2026-11-02'),
-    summary: '更早的摘要。'.repeat(20),
-    turns: Array.from({ length: turns }, (_, index) => ({
+    messages: Array.from({ length: turns }, (_, index) => ({
       role: index % 2 === 0 ? ('user' as const) : ('assistant' as const),
-      text: `这是第 ${index} 轮对话，${'内容'.repeat(20)}`,
-      ...(index % 4 === 0 ? { tools: [{ name: 'look', input: {}, output: { ok: true } }] } : {}),
+      content: `这是第 ${index} 轮对话，${'内容'.repeat(20)}`,
     })),
     updatedAt: Date.now(),
   };
@@ -227,10 +224,6 @@ describe('persistence budgets', () => {
 describe('journal budgets', () => {
   it('estimates 400 turns in under 25 ms', () => {
     expect(bestOf(5, () => void estimateTokens(day))).toBeLessThan(25);
-  });
-
-  it('fits 400 turns in under 25 ms', () => {
-    expect(bestOf(5, () => void fit(day, limits))).toBeLessThan(25);
   });
 
   it('drops the oldest of 400 turns in under 25 ms', () => {
