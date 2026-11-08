@@ -43,19 +43,21 @@ export function nestDoor(angle: number): number {
 }
 
 export function nestLocalHeight(radius: number, angle: number): number {
-  const rim = nestRimRadius(angle);
-  const crest = rimHeight(angle);
   let y: number;
   if (radius <= NEST_RI) {
     y = NEST_FLOOR + 0.03 * (radius / NEST_RI) ** 2;
-  } else if (radius <= rim) {
-    const t = (radius - NEST_RI) / (rim - NEST_RI);
-    y = NEST_FLOOR + (crest - NEST_FLOOR) * Math.pow(t, 1.3);
   } else {
-    const t = (radius - rim) / (NEST_RO - rim);
-    y = crest * Math.pow(1 - t, 1.2);
+    const rim = nestRimRadius(angle);
+    const crest = rimHeight(angle);
+    if (radius <= rim) {
+      const t = (radius - NEST_RI) / (rim - NEST_RI);
+      y = NEST_FLOOR + (crest - NEST_FLOOR) * Math.pow(t, 1.3);
+    } else {
+      const t = (radius - rim) / (NEST_RO - rim);
+      y = crest * Math.pow(1 - t, 1.2);
+    }
   }
-  const open = nestDoor(angle) * smoothstep(1.02, 1.5, radius);
+  const open = radius <= 1.02 ? 0 : nestDoor(angle) * smoothstep(1.02, 1.5, radius);
   return y * (1 - open) + (0.055 + 0.012 * (radius / NEST_RO)) * open;
 }
 

@@ -72,8 +72,10 @@ const record = recordOf();
 const wire = JSON.stringify(record);
 
 describe('local model message budgets', () => {
-  it('rejects 25 incomplete 4 KiB replies without a quadratic brace scan', () => {
-    const malformed = '{'.repeat(4096);
+  it.each([
+    ['braces', '{'.repeat(4096)],
+    ['named calls', 'go {'.repeat(1024)],
+  ])('rejects 25 incomplete 4 KiB replies of %s without repeated scans', (_name, malformed) => {
     expect(
       bestOf(5, () => {
         for (let i = 0; i < 25; i++) parseInlineCalls(malformed, ['observe', 'go', 'set_height']);
