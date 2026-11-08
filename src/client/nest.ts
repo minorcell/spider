@@ -1,21 +1,12 @@
+import { BufferGeometry, Float32BufferAttribute, Group, Mesh, Vector3 } from 'three';
 import {
-  BufferGeometry,
-  Float32BufferAttribute,
-  Group,
-  Mesh,
-  SphereGeometry,
-  Vector3,
-} from 'three';
-import { mulberry32 } from '../shared/noise.js';
-import {
-  NEST_DOOR,
-  NEST_RO,
-  NEST_SCALE_XZ,
-  NEST_SCALE_Y,
-  nestDoor,
-  nestLocalHeight,
-  nestRimRadius,
-} from '../shared/nestShape.js';
+  NEST_DETAILS,
+  NEST_PEBBLE_SKIN,
+  NEST_ROOT_SKIN,
+  nestPebbleGeometry,
+  nestRootGeometry,
+} from '../shared/nestDetails.js';
+import { NEST_RO, NEST_SCALE_XZ, NEST_SCALE_Y, nestLocalHeight } from '../shared/nestShape.js';
 import {
   growShell,
   inkSolidMat,
@@ -25,14 +16,13 @@ import {
   stoneMat,
 } from '../shared/sim/parts.js';
 import { buildGrass } from './grassMesh.js';
-import { lineFrom, pushLine, tubeGeometry } from './models/geometry.js';
+import { lineFrom, pushLine } from './models/geometry.js';
 
 const TAU = Math.PI * 2;
 
 export function buildNest(): Group {
   const group = new Group();
   group.name = 'nest';
-  const rand = mulberry32(71);
   const silk: number[] = [];
   const positions: number[] = [];
   const indices: number[] = [];
@@ -67,43 +57,22 @@ export function buildNest(): Group {
   floor.name = 'chamber-floor';
   group.add(floor);
 
-  for (let k = 0; k < 15; k++) {
-    const angle = NEST_DOOR + 0.68 + (k / 14) * (TAU - 1.36);
-    const radius = nestRimRadius(angle);
-    const geometry = new SphereGeometry(1, 10, 7);
+  for (const pebble of NEST_DETAILS.pebbles) {
+    const geometry = nestPebbleGeometry();
     const stone = new Mesh(geometry, stoneMat);
     stone.name = 'pebble';
-    stone.scale.set(0.4 + rand() * 0.18, 0.26 + rand() * 0.2, 0.32 + rand() * 0.18);
-    stone.position.set(
-      Math.cos(angle) * radius,
-      nestLocalHeight(radius, angle) + 0.04,
-      Math.sin(angle) * radius,
-    );
-    stone.rotation.set(rand() * 0.25, angle + rand() * 0.5, rand() * 0.2);
-    stone.add(new Mesh(growShell(geometry, 0.025), inkSolidMat));
+    stone.scale.copy(pebble.scale);
+    stone.position.copy(pebble.position);
+    stone.rotation.copy(pebble.rotation);
+    stone.add(new Mesh(growShell(geometry, NEST_PEBBLE_SKIN), inkSolidMat));
     group.add(stone);
   }
 
-  for (let k = 0; k < 9; k++) {
-    const angle = (k / 9) * TAU + 0.3;
-    if (nestDoor(angle) > 0.2) continue;
-    const spine: Vector3[] = [];
-    for (let i = 0; i <= 12; i++) {
-      const t = i / 12;
-      const r = 1.4 + t * 1.8;
-      const a = angle + Math.sin(t * 4 + k) * 0.08;
-      spine.push(
-        new Vector3(
-          Math.cos(a) * r,
-          nestLocalHeight(Math.min(r, NEST_RO), a) + 0.04,
-          Math.sin(a) * r,
-        ),
-      );
-    }
-    const geometry = tubeGeometry(spine, (t) => 0.065 * (1 - t * 0.85), 7);
+  for (const spine of NEST_DETAILS.roots) {
+    const geometry = nestRootGeometry(spine);
     const root = new Mesh(geometry, stemMat);
     root.name = 'bank-root';
-    root.add(new Mesh(growShell(geometry, 0.006), inkSolidMat));
+    root.add(new Mesh(growShell(geometry, NEST_ROOT_SKIN), inkSolidMat));
     group.add(root);
   }
 
@@ -134,12 +103,9 @@ export function buildNest(): Group {
   }
 
   const styles = ['thin', 'seed', 'broad'] as const;
-  for (let k = 0; k < 12; k++) {
-    const angle = 0.1 + (k / 12) * TAU;
-    if (nestDoor(angle) > 0.2) continue;
+  for (const { index: k, x, z } of NEST_DETAILS.tufts) {
     const tuft = buildGrass(0.55, 200 + k, styles[k % 3]);
-    const r = 2.95 + rand() * 0.35;
-    tuft.position.set(Math.cos(angle) * r, 0.01, Math.sin(angle) * r);
+    tuft.position.set(x, 0.01, z);
     group.add(tuft);
   }
   group.add(lineFrom(silk, silkMat));

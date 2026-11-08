@@ -4,6 +4,7 @@ import {
   NEST_FLOOR,
   NEST_RI,
   NEST_RO,
+  NEST_SCALE_XZ,
   NEST_SCALE_Y,
   nestDoor,
   nestLocalHeight,
@@ -39,5 +40,13 @@ describe('nest shape', () => {
     const center = nestSurface(origin, origin.x, origin.z);
     expect(center).toBeCloseTo(origin.y + NEST_FLOOR * NEST_SCALE_Y);
     expect(nestSurface(origin, origin.x + 20, origin.z)).toBe(Number.NEGATIVE_INFINITY);
+  });
+
+  it('keeps the outer rim finite within the mesh rounding tolerance', () => {
+    const origin = { x: 1, y: 0.02, z: -2 };
+    for (const radius of [NEST_RO, NEST_RO + 0.00005]) {
+      const height = nestSurface(origin, origin.x + radius * NEST_SCALE_XZ, origin.z);
+      expect(height).toBeCloseTo(origin.y);
+    }
   });
 });

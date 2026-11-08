@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Matrix4, Vector3 } from 'three';
 import { BONES, CONTACT, GAIT } from '../../../src/shared/config.js';
-import { nestSurface } from '../../../src/shared/nestShape.js';
+import { NEST_SCALE_XZ, NEST_SCALE_Y, nestSurface } from '../../../src/shared/nestShape.js';
+import { nestSolidSurface } from '../../../src/shared/nestCollision.js';
+import { NEST_DETAILS } from '../../../src/shared/nestDetails.js';
 import { bindLegWorld } from '../../../src/shared/sim/bindWorld.js';
 import { Spider } from '../../../src/shared/sim/Spider.js';
 import { createWorld } from '../../../src/shared/world.js';
@@ -485,6 +487,63 @@ describe('Spider', () => {
     spider.update(1 / 30);
     expect(spider.legs[0].foot.y).toBeGreaterThan(CONTACT);
     expect(spider.legs[0].foot.y).toBeLessThan(0.08);
+  });
+
+  it.each(['pebble', 'root'] as const)(
+    'plants a foot on a nest %s without stretching a bone',
+    (kind) => {
+      const world = createWorld(1);
+      const nest = world.entities.find((entity) => entity.kind === 'nest')!;
+      world.entities = [nest];
+      const at = kind === 'pebble' ? NEST_DETAILS.pebbles[0].position : NEST_DETAILS.roots[0][4];
+      const x = nest.x + at.x * NEST_SCALE_XZ;
+      const z = nest.z + at.z * NEST_SCALE_XZ;
+      const spider = new Spider();
+      const spec = spider.legs[0].spec;
+      spider.root.position.set(
+        x - spec.side * spec.lateral,
+        nest.y + at.y * NEST_SCALE_Y,
+        z + spec.fore,
+      );
+      bindLegWorld(spider, world);
+      spider.bindGround(FLAT);
+      for (let i = 0; i < 60; i++) spider.update(1 / 60);
+      const leg = spider.legs[0];
+      expect(leg.foot.x).toBeCloseTo(x);
+      expect(leg.foot.z).toBeCloseTo(z);
+      const solid = nestSolidSurface(nest, x, z);
+      expect(solid).toBeGreaterThan(nestSurface(nest, x, z) + 0.01);
+      expect(leg.foot.y).toBeGreaterThanOrEqual(solid + CONTACT - 1e-3);
+      for (let bone = 0; bone < BONES.length; bone++) {
+        expect(leg.bones[bone].scale.z).toBeLessThanOrEqual(BONES[bone].len + 1e-3);
+      }
+    },
+  );
+
+  it('clears the body over nest solids and invalidates support when the nest binding changes', () => {
+    const spider = new Spider();
+    spider.bindGround(FLAT);
+    const pebble = NEST_DETAILS.pebbles[0].position;
+    const origin = { x: 0, y: 0.02, z: 0 };
+    spider.root.position.set(pebble.x * NEST_SCALE_XZ, 0, pebble.z * NEST_SCALE_XZ);
+    spider.bindLegs(
+      (into) => {
+        into.length = 0;
+      },
+      (x, z) => nestSolidSurface(origin, x, z),
+    );
+    for (let i = 0; i < 120; i++) spider.update(1 / 60);
+    expect(shellClearance(spider, (x, z) => nestSolidSurface(origin, x, z))).toBeGreaterThan(-0.03);
+    const raised = spider.root.position.y;
+    expect(raised).toBeGreaterThan(0.1);
+    spider.bindLegs(
+      (into) => {
+        into.length = 0;
+      },
+      () => Number.NEGATIVE_INFINITY,
+    );
+    for (let i = 0; i < 120; i++) spider.update(1 / 60);
+    expect(spider.root.position.y).toBeLessThan(raised - 0.1);
   });
 
   it('re-solves a planted leg when a loose body moves', () => {

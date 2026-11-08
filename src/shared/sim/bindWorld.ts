@@ -1,5 +1,5 @@
 import { kindOf } from '../kinds.js';
-import { nestSurface } from '../nestShape.js';
+import { nestSolidSurface } from '../nestCollision.js';
 import type { WorldState } from '../state.js';
 import type { LegSphere } from './legPose.js';
 import type { Spider } from './Spider.js';
@@ -26,6 +26,6 @@ export function bindLegWorld(spider: Spider, world: WorldState): void {
       into.length = count;
       for (let i = 0; i < count; i++) into[i] = pool[i];
     },
-    (x, z) => (nest ? nestSurface(nest, x, z) : Number.NEGATIVE_INFINITY),
+    (x, z) => (nest ? nestSolidSurface(nest, x, z) : Number.NEGATIVE_INFINITY),
   );
 }

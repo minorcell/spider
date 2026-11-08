@@ -70,5 +70,5 @@ export function nestSurface(
   const lz = (z - origin.z) / NEST_SCALE_XZ;
   const radius = Math.hypot(lx, lz);
   if (radius > NEST_RO + 1e-4) return Number.NEGATIVE_INFINITY;
-  return origin.y + nestLocalHeight(radius, Math.atan2(lz, lx)) * NEST_SCALE_Y;
+  return origin.y + nestLocalHeight(Math.min(radius, NEST_RO), Math.atan2(lz, lx)) * NEST_SCALE_Y;
 }

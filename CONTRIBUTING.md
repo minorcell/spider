@@ -47,8 +47,14 @@ Issue 获批后，可以围绕该 Issue 提交 PR。提交前请：
    ```
 
 2. 解决可能出现的冲突，并按项目要求检查改动。
-3. 在 PR 描述中关联对应 Issue，并说明改动内容。
+3. 在 PR 描述中关联对应 Issue，并说明改动内容。commit message、PR 标题和正文请尽量使用英文。
 4. 附上 benchmark 报告，便于审查改动对性能的影响。
-5. 如果改动涉及页面外观或交互，请附上修改前后截图，或至少提供修改后的截图。
+5. 如果改动涉及页面外观或交互，请提供修改前后截图，或至少提供修改后的截图。优先将截图直接粘贴或拖拽到 PR 正文，作为 GitHub 附件上传。仅用于评审的截图不要提交到 Git 仓库。使用支持媒体上传的 GitHub CLI 时，也可执行：
+
+   ```bash
+   gh pr edit <PR-number> --attach ./screenshot.png
+   ```
+
+   `--attach` 会上传图片并把附件链接加入 PR 正文，也可配合 `--body-file` 在正文中指定图片位置。
 
 请保持提交聚焦于关联 Issue。PR 经过审查和批准后，由维护者使用 **Squash and merge** 合并。仓库不接受直接 Merge commit；请勿使用普通的 **Create a merge commit** 合并方式。
