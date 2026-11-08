@@ -127,6 +127,13 @@ async function flush(): Promise<void> {
   }
 }
 
+async function openUsage(): Promise<void> {
+  clickButton('#menu-usage');
+  // The journal opens through dynamic imports and IndexedDB, which can outlast flush on slow CI.
+  await vi.waitFor(() => expect(document.querySelector('#usage .kpis')).not.toBeNull());
+  await flush();
+}
+
 async function waitForStatus(text: string): Promise<void> {
   for (let i = 0; i < 40; i++) {
     if (document.querySelector('#cloud-status')?.textContent === text) return;
@@ -1349,8 +1356,7 @@ describe('usage dialog', () => {
   it('opens an empty ledger', async () => {
     ready();
     mount();
-    clickButton('#menu-usage');
-    await flush();
+    await openUsage();
     expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(true);
     expect(document.querySelector<HTMLElement>('#usage')!.hidden).toBe(false);
     expect(document.querySelector('#menu-usage')!.getAttribute('aria-current')).toBe('page');
@@ -1366,8 +1372,7 @@ describe('usage dialog', () => {
     vi.spyOn(Diary, 'open').mockRejectedValueOnce(new Error('no db'));
     mount();
     await flush();
-    clickButton('#menu-usage');
-    await flush();
+    await openUsage();
     expect(document.querySelector<HTMLDialogElement>('#settings')!.open).toBe(true);
     expect(document.querySelector<HTMLElement>('#usage')!.hidden).toBe(false);
     expect(document.querySelector('#usage-empty')!.textContent).toBe('还没有用量。');
@@ -1387,8 +1392,7 @@ describe('usage dialog', () => {
       { kind: 'summary', modelId: 'deepseek-reasoner' },
     );
     mount();
-    clickButton('#menu-usage');
-    await flush();
+    await openUsage();
     const page = document.querySelector('#usage')!.textContent ?? '';
     expect(page).toContain('1.5k');
     expect(page).toContain('2.5m');
@@ -1408,8 +1412,7 @@ describe('usage dialog', () => {
     ready();
     loop.runAgent.mockResolvedValue({ text: '好', messages: [], usage: reported });
     mount();
-    clickButton('#menu-usage');
-    await flush();
+    await openUsage();
     expect(document.querySelector('#usage-empty')!.textContent).toBe('还没有用量。');
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
@@ -1505,8 +1508,7 @@ describe('usage dialog', () => {
     document.querySelector<HTMLInputElement>('#goal')!.value = 'go';
     submit();
     await flush();
-    clickButton('#menu-usage');
-    await flush();
+    await openUsage();
     const values = [...document.querySelectorAll('.kpi-value')].map((node) => node.textContent);
     expect(values[0]).toBe('3');
     expect(document.querySelectorAll('.request')).toHaveLength(3);
@@ -1534,24 +1536,21 @@ describe('usage dialog', () => {
     await flush();
     clickButton('#pilot-send', 1);
     await flush();
-    clickButton('#menu-usage');
-    await flush();
+    await openUsage();
     expect(document.querySelector('#usage')!.textContent).toContain('1.5k');
   });
 
   it('shows an empty ledger when the read fails', async () => {
     vi.spyOn(Diary.prototype, 'readUsage').mockRejectedValueOnce(new Error('down'));
     mount();
-    clickButton('#menu-usage');
-    await flush();
+    await openUsage();
     expect(document.querySelector('#usage-empty')!.textContent).toBe('还没有用量。');
   });
 
   it('changes the range, closes the menu, and exports', async () => {
     await usageLedger.recordUsage(reported, new Date(), { modelId: 'deepseek-chat' });
     mount();
-    clickButton('#menu-usage');
-    await flush();
+    await openUsage();
     const rangeButton = document.querySelector<HTMLButtonElement>('.range')!;
     rangeButton.click();
     expect(rangeButton.getAttribute('aria-expanded')).toBe('true');
@@ -1619,8 +1618,7 @@ describe('usage dialog', () => {
       })),
     );
     mount();
-    clickButton('#menu-usage');
-    await flush();
+    await openUsage();
     expect(document.querySelector('#usage')!.textContent).toContain('仅显示最近 200 次，共 201 次');
   });
 
@@ -1676,8 +1674,7 @@ describe('usage dialog', () => {
       ),
     );
     mount();
-    clickButton('#menu-usage');
-    await flush();
+    await openUsage();
     for (const details of document.querySelectorAll<HTMLDetailsElement>('.request')) {
       details.open = true;
       details.dispatchEvent(new Event('toggle'));
