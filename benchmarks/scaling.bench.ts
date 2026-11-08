@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { parseInlineCalls, withInlineCalls } from '@/src/client/agent/inline';
-import { blankSession, dropOldest, type ChatSession } from '@/src/client/journal/session';
+import { blankSession, planCompaction, type ChatSession } from '@/src/client/journal/session';
 
 const names = ['observe', 'go', 'set_height'];
 
@@ -75,7 +75,7 @@ describe('message scaling', () => {
 
 describe('journal scaling', () => {
   for (const turns of [100, 400, 1600, 6400]) {
-    test(`drop oldest of ${turns} turns`, async ({ bench }) => {
+    test(`plan compaction of ${turns} turns`, async ({ bench }) => {
       const session: ChatSession = {
         ...blankSession('2026-11-08'),
         messages: Array.from({ length: turns }, (_, i) => ({
@@ -84,11 +84,12 @@ describe('journal scaling', () => {
         })),
       };
       const limits = { contextTokens: 4000 };
-      const trimmed = dropOldest(session, limits);
-      expect(trimmed.messages.length).toBeLessThan(turns);
-      expect(trimmed.messages.at(-1)).toBe(session.messages.at(-1));
-      await bench(`drop oldest of ${turns} turns`, () => {
-        dropOldest(session, limits);
+      const plan = planCompaction(session, limits)!;
+      expect(plan.recent.length).toBeLessThan(turns);
+      expect([...plan.earlier, ...plan.recent]).toEqual(session.messages);
+      expect(plan.recent.at(-1)).toBe(session.messages.at(-1));
+      await bench(`plan compaction of ${turns} turns`, () => {
+        planCompaction(session, limits);
       }).run();
     });
   }

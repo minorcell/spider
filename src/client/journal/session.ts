@@ -28,6 +28,14 @@ export interface CompactLimits {
   contextTokens: number | null;
 }
 
+export const SUMMARY_PREFIX = '较早对话的上下文摘要（历史记录，不代表当前环境状态）：';
+
+export interface CompactionPlan {
+  earlier: ModelMessage[];
+  recent: ModelMessage[];
+  maxOutputTokens: number;
+}
+
 export function blankSession(date: string): ChatSession {
   return { date, messages: [], updatedAt: 0, digestedAt: 0 };
 }
@@ -87,26 +95,34 @@ export function overLimit(session: ChatSession, limits: CompactLimits): boolean 
   );
 }
 
-/** Drop whole user turns, preserving every retained tool call and its result. */
-export function dropOldest(session: ChatSession, limits: CompactLimits): ChatSession {
-  if (!overLimit(session, limits)) return session;
+/** Split only at user turns, so tool calls and results stay together. */
+export function planCompaction(session: ChatSession, limits: CompactLimits): CompactionPlan | null {
+  if (!overLimit(session, limits)) return null;
   const starts = session.messages.flatMap((message, index) =>
     message.role === 'user' ? [index] : [],
   );
-  let low = 1;
-  let high = starts.length - 1;
-  let keep = starts.at(-1) ?? 0;
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    const start = starts[middle];
-    if (overLimit({ ...session, messages: session.messages.slice(start) }, limits)) {
-      low = middle + 1;
-    } else {
-      keep = start;
-      high = middle - 1;
-    }
-  }
-  return keep === 0 ? session : { ...session, messages: session.messages.slice(keep) };
+  if (starts.length < 2) return null;
+  const threshold = Math.floor(limits.contextTokens! * COMPACT_AT);
+  const reserved = Math.min(1024, Math.floor(limits.contextTokens! * 0.2));
+  let turn = Math.max(1, starts.length - 2);
+  let recent: ModelMessage[];
+  let available: number;
+  do {
+    recent = session.messages.slice(starts[turn]);
+    available =
+      threshold -
+      1 -
+      estimateTokens({
+        ...session,
+        messages: [{ role: 'assistant', content: `${SUMMARY_PREFIX}\n` }, ...recent],
+      });
+  } while (available < reserved && ++turn < starts.length);
+  if (available <= 0) throw new Error('最近一轮对话过长，无法在保留完整轮次的同时压缩上下文');
+  return {
+    earlier: session.messages.slice(0, session.messages.length - recent.length),
+    recent,
+    maxOutputTokens: Math.min(reserved, available),
+  };
 }
 
 /** Diagnostics are derived from the conversation, never stored as a second transcript. */

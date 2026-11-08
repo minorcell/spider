@@ -7,7 +7,7 @@ import { Diary, onDiaryChange } from '@/src/client/journal/diary';
 import { localDate, shiftDate } from '@/src/shared/dates';
 import {
   blankSession,
-  dropOldest,
+  planCompaction,
   estimateTokens,
   needsDigest,
   overLimit,
@@ -161,40 +161,61 @@ describe('dates', () => {
 describe('conversation messages', () => {
   it('keeps messages unchanged when no limit is set', () => {
     const chat = session(toolMessages);
-    expect(dropOldest(chat, { contextTokens: null })).toBe(chat);
+    expect(planCompaction(chat, { contextTokens: null })).toBeNull();
     expect(needsDigest(chat)).toBe(true);
     expect(needsDigest({ ...chat, digestedAt: 10 })).toBe(false);
     expect(needsDigest(blankSession(chat.date))).toBe(false);
   });
 
-  it('trims complete user turns without separating calls from results', () => {
-    const chat = session([...dialogue('x'.repeat(2000), 'old'), ...toolMessages]);
-    const trimmed = dropOldest(chat, { contextTokens: 300 });
-    expect(trimmed.messages).toEqual(toolMessages);
+  it('plans a summary of older turns while retaining recent tool calls and results', () => {
+    const chat = session([...dialogue('x'.repeat(4000), 'old'), ...toolMessages]);
+    const plan = planCompaction(chat, { contextTokens: 400 })!;
+    expect(plan.earlier).toEqual(chat.messages.slice(0, 2));
+    expect(plan.recent).toEqual(toolMessages);
+    expect(plan.maxOutputTokens).toBeGreaterThan(0);
     expect(chat.messages).toHaveLength(6);
-    expect(dropOldest(trimmed, { contextTokens: 1 }).messages).toEqual(toolMessages);
   });
 
-  it('finds the earliest complete turn that fits', () => {
+  it('keeps the two newest turns when they leave room for a summary', () => {
     const chat = session([
-      ...dialogue('x'.repeat(4000), 'old'),
+      ...dialogue('x'.repeat(8000), 'old'),
       ...dialogue('middle', 'yes'),
       ...toolMessages,
     ]);
-    expect(dropOldest(chat, { contextTokens: 400 }).messages).toEqual(chat.messages.slice(2));
-    expect(
-      dropOldest(session([{ role: 'assistant', content: 'x'.repeat(200) }]), { contextTokens: 1 })
-        .messages,
-    ).toHaveLength(1);
+    expect(planCompaction(chat, { contextTokens: 1000 })!.recent).toEqual(chat.messages.slice(2));
   });
 
-  it('keeps the newest complete turn even when it alone exceeds the budget', () => {
+  it('summarizes another whole turn when two recent turns do not leave enough room', () => {
     const chat = session([
       ...dialogue('x'.repeat(4000), 'old'),
-      ...dialogue('y'.repeat(4000), 'middle'),
+      ...dialogue('y'.repeat(1000), 'middle'),
       ...toolMessages,
     ]);
-    expect(dropOldest(chat, { contextTokens: 1 }).messages).toEqual(toolMessages);
+    const plan = planCompaction(chat, { contextTokens: 400 })!;
+    expect(plan.earlier).toEqual(chat.messages.slice(0, 4));
+    expect(plan.recent).toEqual(toolMessages);
+  });
+
+  it('uses the remaining space when the newest turn leaves less than the summary reserve', () => {
+    const chat = session([
+      ...dialogue('x'.repeat(4000), 'old'),
+      ...dialogue('y'.repeat(400), 'new'),
+    ]);
+    const plan = planCompaction(chat, { contextTokens: 200 })!;
+    expect(plan.recent).toEqual(chat.messages.slice(2));
+    expect(plan.maxOutputTokens).toBeLessThan(40);
+  });
+
+  it('leaves a single complete turn intact and rejects an oversized retained turn', () => {
+    expect(planCompaction(session(toolMessages), { contextTokens: 1 })).toBeNull();
+    expect(
+      planCompaction(session([{ role: 'assistant', content: 'x'.repeat(200) }]), {
+        contextTokens: 1,
+      }),
+    ).toBeNull();
+    const chat = session([...dialogue('old', 'yes'), ...toolMessages]);
+    expect(() => planCompaction(chat, { contextTokens: 1 })).toThrow('最近一轮对话过长');
+    expect(chat.messages).toHaveLength(6);
   });
 
   it('compresses at 80% of the context window', () => {
@@ -203,7 +224,7 @@ describe('conversation messages', () => {
     expect(overLimit(chat, { contextTokens: 100 })).toBe(true);
     expect(overLimit(chat, { contextTokens: null })).toBe(false);
     expect(overLimit(chat, { contextTokens: 10_000 })).toBe(false);
-    expect(dropOldest(chat, { contextTokens: 10_000 })).toBe(chat);
+    expect(planCompaction(chat, { contextTokens: 10_000 })).toBeNull();
   });
 
   it('derives diagnostic traces and diary text from the same messages', () => {
@@ -361,7 +382,7 @@ describe('Diary', () => {
     expect((await Diary.open(new Date(2026, 10, 6, 10))).session.messages).toEqual(next);
   });
 
-  it('bounds the conversation without generating or injecting diary content', async () => {
+  it('preserves over-limit history until request-time compaction without injecting diary content', async () => {
     const diary = await Diary.open(new Date(2026, 10, 7, 8));
     const summarize = vi.mocked(summarizeDiary);
     const before = summarize.mock.calls.length;
@@ -369,7 +390,9 @@ describe('Diary', () => {
       ...settings,
       contextTokens: 1,
     });
-    expect(diary.session.messages).toEqual(toolMessages);
+    const messages = [...dialogue(LONG, LONG), ...toolMessages];
+    expect(diary.session.messages).toEqual(messages);
+    expect((await Diary.open(new Date(2026, 10, 7, 9))).session.messages).toEqual(messages);
     expect(summarize.mock.calls.length).toBe(before);
   });
 

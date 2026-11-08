@@ -11,7 +11,8 @@ import {
 } from 'ai';
 import type { SimSession } from '@/src/shared/sim/session';
 import type { MemoryApi } from '@/src/client/journal/diary';
-import { blankSession, dropOldest, type ChatSession } from '@/src/client/journal/session';
+import { blankSession, type ChatSession } from '@/src/client/journal/session';
+import { compactSession } from '@/src/client/agent/compact';
 import {
   byteSize,
   usageCallFromStep,
@@ -105,15 +106,29 @@ export async function runAgent({
           set_height: allTools.set_height,
         }
       : allTools;
-    const messages = dropOldest(
-      {
+    const model = provider(local ? LOCAL_MODEL : settings.model);
+    const { messages } = await compactSession({
+      session: {
         ...(chat ?? blankSession(today)),
         messages: [...(chat?.messages ?? []), { role: 'user', content: goal }],
       },
-      { contextTokens: contextTokensOf(local ? 4 : settings.contextTokens) },
-    ).messages;
+      limits: { contextTokens: contextTokensOf(local ? 4 : settings.contextTokens) },
+      model,
+      signal,
+      onStepEnd(step) {
+        calls.push(
+          usageCallFromStep(step, {
+            kind: 'summary',
+            sessionId: today,
+            turnId,
+            date: today,
+            ts: Date.now(),
+          }),
+        );
+      },
+    });
     const result = streamText({
-      model: withInlineCalls(provider(local ? LOCAL_MODEL : settings.model), Object.keys(tools)),
+      model: withInlineCalls(model, Object.keys(tools)),
       system: systemFor(),
       messages,
       tools,

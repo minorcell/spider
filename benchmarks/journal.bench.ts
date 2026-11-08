@@ -1,7 +1,7 @@
 import { describe, test } from 'vitest';
 import {
   blankSession,
-  dropOldest,
+  planCompaction,
   estimateTokens,
   transcript,
   type ChatSession,
@@ -29,9 +29,9 @@ describe('journal', () => {
     }).run();
   });
 
-  test('drop oldest of 400 turns', async ({ bench }) => {
-    await bench('drop oldest of 400 turns', () => {
-      dropOldest(session, limits);
+  test('plan compaction of 400 turns', async ({ bench }) => {
+    await bench('plan compaction of 400 turns', () => {
+      planCompaction(session, limits);
     }).run();
   });
 
