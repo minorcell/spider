@@ -14,9 +14,9 @@ import {
   startCloud,
   takeOverCloud,
 } from '@/src/client/cloud/sync';
-import * as dbModule from '@/src/client/journal/db';
+import * as dbModule from '@/src/client/storage/db';
 import { Diary } from '@/src/client/journal/diary';
-import { openSpiderDb, resetSpiderDb, type MemoryPage } from '@/src/client/journal/db';
+import { openSpiderDb, resetSpiderDb, type MemoryPage } from '@/src/client/storage/db';
 import {
   flushWorld,
   installWorldStore,

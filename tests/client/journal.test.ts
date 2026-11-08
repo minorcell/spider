@@ -2,7 +2,7 @@ import type { ModelMessage } from 'ai';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { forceCloseDatabase } from 'fake-indexeddb';
 import { openDB, unwrap } from 'idb';
-import { openSpiderDb, resetSpiderDb } from '@/src/client/journal/db';
+import { openSpiderDb, resetSpiderDb } from '@/src/client/storage/db';
 import { Diary, onDiaryChange } from '@/src/client/journal/diary';
 import { localDate, shiftDate } from '@/src/shared/dates';
 import {

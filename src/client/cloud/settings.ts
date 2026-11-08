@@ -1,5 +1,5 @@
-import type { PreferenceRecord } from '@/src/client/journal/db';
-import { openSpiderDb } from '@/src/client/journal/db';
+import type { PreferenceRecord } from '@/src/client/storage/db';
+import { openSpiderDb } from '@/src/client/storage/db';
 import { PersistentCache } from '@/src/client/store/cache';
 
 const STORAGE_KEY = 'spider.cloud';

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { cleanInlineText, parseInlineCalls, withInlineCalls } from '@/src/client/agent/inline';
 
 const names = ['move_to', 'observe', 'pick_up'];
@@ -261,6 +261,204 @@ describe('withInlineCalls', () => {
     expect(chunks.filter((chunk) => chunk.type === 'tool-call')).toHaveLength(1);
   });
 
+  it('emits multiple unmarked prose deltas while the upstream is still open', async () => {
+    const live = await gatedStream();
+    await live.send({ type: 'text-start', id: 'prose' }, { type: 'text-delta', delta: '我看到' });
+    expect(live.chunks).toMatchObject([
+      { type: 'text-start', id: 'prose' },
+      { type: 'text-delta', id: 'prose', delta: '我看到' },
+    ]);
+    await live.send({ type: 'text-delta', delta: '一棵树。' });
+    expect(live.chunks.filter((chunk) => chunk.type === 'text-delta')).toHaveLength(2);
+    expect(body(live.chunks)).toBe('我看到一棵树。');
+    await live.send({ type: 'finish', finishReason: { unified: 'stop' } });
+    expect(live.chunks.some((chunk) => chunk.type === 'finish')).toBe(false);
+    live.close();
+    await live.done;
+    expect(live.chunks.at(-1)).toMatchObject({ type: 'finish' });
+  });
+
+  it.each([
+    'move_to {"x":1,"nested":{"a":[1,{"b":"a\\\"}b"}]}}',
+    'move_to: ( {"x":1} )',
+    'move_to ```json\n {"x":1}\n```',
+    '```json\n{"name":"observe","arguments":{"distance":8}}\n```',
+    '[{"tool":"observe"},{"function":{"name":"move_to","arguments":"{\\\"x\\\":1}"}}]',
+    '<|tool_call|> move_to {"x":1}',
+    '<｜tool_call｜> observe {}',
+  ])('withholds split candidate syntax until a clean final completion: %s', async (syntax) => {
+    const live = await gatedStream();
+    await live.send({ type: 'text-delta', delta: '先看看 ' });
+    for (const delta of syntax) await live.send({ type: 'text-delta', delta });
+    expect(body(live.chunks)).toBe('先看看');
+    expect(live.chunks.some((chunk) => chunk.type === 'tool-call')).toBe(false);
+    await live.send({ type: 'finish-step' });
+    expect(live.chunks.some((chunk) => chunk.type === 'tool-call')).toBe(false);
+    await live.send({ type: 'finish', finishReason: 'tool-calls' });
+    expect(live.chunks.some((chunk) => chunk.type === 'tool-call')).toBe(false);
+    live.close();
+    await live.done;
+    expect(live.chunks.filter((chunk) => chunk.type === 'tool-call')).toHaveLength(
+      parseInlineCalls(syntax, names).length,
+    );
+    expect(live.chunks.some((chunk) => chunk.type === 'tool-call')).toBe(true);
+    expect(body(live.chunks)).toBe('先看看');
+  });
+
+  it.each([
+    'observe the view; observer is a word; move_to is a name.',
+    'observation and xobserve and pick_upwards.',
+    'observe: nope; move_to:: nope; pick_up(apple)',
+    'one `tick`, two ``ticks`` and ```ts\nconst x = { a: [1] };\n```',
+    '<div>hello</div> <|not a marker> <|marker|> plain text',
+    '<|marker|> observe the view',
+    '<|marker|> \n',
+    '<',
+    '<|incomplete',
+    'move_to',
+    'mov',
+    '`',
+    '```json\n{"name":"observe","arguments":',
+    '{"name":"unknown","arguments":{"x":[1,2]}}',
+    '{oops} ordinary text',
+    'plain trailing whitespace \n\t',
+    'plain before [apples and pears] after',
+  ])('preserves non-tool and incomplete formats across character boundaries: %s', async (text) => {
+    const { stream } = await withInlineCalls(
+      fakeModel([
+        ...Array.from(text, (delta) => ({ type: 'text-delta', delta })),
+        { type: 'finish' },
+      ]),
+      names,
+    ).doStream();
+    const chunks = await read(stream);
+    expect(body(chunks)).toBe(text);
+    expect(chunks.some((chunk) => chunk.type === 'tool-call')).toBe(false);
+  });
+
+  it('recovers tools at every split point and streams prose following a call', async () => {
+    const syntax = 'move_to:({"x":1,"note":"brace } and \\\"quote\\\""})';
+    for (let split = 0; split <= syntax.length; split += 1) {
+      const live = await gatedStream();
+      await live.send(
+        { type: 'text-delta', delta: 'before ' + syntax.slice(0, split) },
+        { type: 'text-delta', delta: syntax.slice(split) + ' after' },
+      );
+      expect(body(live.chunks).replace(/ +/g, ' ')).toBe('before after');
+      expect(live.chunks.some((chunk) => chunk.type === 'tool-call')).toBe(false);
+      await live.send({ type: 'finish' });
+      live.close();
+      await live.done;
+      expect(live.chunks.filter((chunk) => chunk.type === 'tool-call')).toMatchObject([
+        { toolName: 'move_to', input: JSON.stringify({ x: 1, note: 'brace } and "quote"' }) },
+      ]);
+    }
+  });
+
+  it('keeps trailing prose when a recognized call omits its closing parenthesis', async () => {
+    const { stream } = await withInlineCalls(
+      fakeModel([
+        { type: 'text-delta', delta: 'move_to({"x":1} then continue' },
+        { type: 'finish' },
+      ]),
+      names,
+    ).doStream();
+    const chunks = await read(stream);
+    expect(body(chunks)).toBe(' then continue');
+    expect(chunks.filter((chunk) => chunk.type === 'tool-call')).toHaveLength(1);
+  });
+
+  it.each([
+    [],
+    [{ type: 'finish-step' }],
+    [{ type: 'finish', finishReason: 'length' }],
+    [{ type: 'finish', finishReason: { unified: 'length', raw: 'max_tokens' } }],
+    [{ type: 'finish', finishReason: 'content-filter' }],
+    [{ type: 'finish', finishReason: { raw: 'length' } }],
+    [{ type: 'finish', finishReason: null }],
+    [{ type: 'finish', finishReason: 'error' }],
+    [
+      { type: 'finish', finishReason: 'length' },
+      { type: 'finish', finishReason: 'stop' },
+    ],
+    [{ type: 'abort' }],
+    [{ type: 'error', error: 'boom' }, { type: 'finish' }],
+    [{ type: 'finish' }, { type: 'error', error: 'boom' }],
+    [{ type: 'finish' }, { type: 'abort' }],
+  ])('never executes a candidate without successful completion: %j', async (...terminal) => {
+    const { stream } = await withInlineCalls(
+      fakeModel([{ type: 'text-delta', delta: '走 move_to {"x":1}' }, ...terminal]),
+      names,
+    ).doStream();
+    const chunks = await read(stream);
+    expect(body(chunks)).toBe('走');
+    expect(chunks.some((chunk) => chunk.type === 'tool-call')).toBe(false);
+  });
+
+  it('propagates upstream rejection after a finish without releasing calls', async () => {
+    const live = await gatedStream();
+    await live.send({ type: 'text-delta', delta: '走 move_to {"x":1}' }, { type: 'finish' });
+    const error = new Error('disconnected');
+    live.fail(error);
+    expect(await live.done).toBe(error);
+    expect(body(live.chunks)).toBe('走');
+    expect(live.chunks.some((chunk) => chunk.type === 'tool-call')).toBe(false);
+  });
+
+  it('propagates reader cancellation before completion without releasing calls', async () => {
+    const live = await gatedStream();
+    await live.send({ type: 'text-delta', delta: '走 move_to {"x":1}' }, { type: 'finish' });
+    await live.cancel('user stopped');
+    await live.done;
+    await expect.poll(() => live.cancelSource.mock.calls).toEqual([['user stopped']]);
+    expect(live.chunks.some((chunk) => chunk.type === 'tool-call')).toBe(false);
+  });
+
+  it('preserves native chunks exactly and suppresses duplicate recovery and syntax', async () => {
+    const native = [
+      { type: 'tool-input-start', id: 'native', toolName: 'move_to' },
+      { type: 'tool-input-delta', id: 'native', delta: '{"x":1}' },
+      { type: 'tool-input-end', id: 'native' },
+      { type: 'tool-call', toolCallId: 'native', toolName: 'move_to', input: '{"x":1}' },
+    ];
+    const live = await gatedStream();
+    await live.send({ type: 'text-delta', delta: '走 move_to {"x":1}' }, ...native);
+    expect(live.chunks.filter((chunk) => chunk.type.startsWith('tool-'))).toEqual(native);
+    await live.send({ type: 'finish' });
+    live.close();
+    await live.done;
+    expect(body(live.chunks)).toBe('走');
+    expect(live.chunks.filter((chunk) => chunk.type === 'tool-call')).toHaveLength(1);
+  });
+
+  it('scans long malformed candidates once, including a complete nested call', async () => {
+    const malformed = 'move_to {'.repeat(8192) + 'observe {"distance":8}';
+    const parse = vi.spyOn(JSON, 'parse');
+    const { stream } = await withInlineCalls(
+      fakeModel([
+        ...Array.from(malformed, (delta) => ({ type: 'text-delta', delta })),
+        { type: 'finish' },
+      ]),
+      names,
+    ).doStream();
+    const chunks = await read(stream);
+    expect(chunks.filter((chunk) => chunk.type === 'tool-call')).toMatchObject([
+      { toolName: 'observe', input: '{"distance":8}' },
+    ]);
+    // Only the complete object is parsed; unclosed ancestors are scanned,
+    // independent of the 73,000+ upstream deltas and 8,192 candidate tool names.
+    expect(parse).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles long whitespace and plain malformed JSON without argument-spread limits', async () => {
+    const text = ' '.repeat(150_000) + '{'.repeat(20_000);
+    const { stream } = await withInlineCalls(
+      fakeModel([{ type: 'text-delta', delta: text }, { type: 'finish' }]),
+      names,
+    ).doStream();
+    expect(body(await read(stream))).toBe(text);
+  });
+
   it('keeps the model when there is nothing to recover', () => {
     const model = fakeModel([]);
     expect(withInlineCalls(model, [])).toBe(model);
@@ -290,10 +488,7 @@ describe('withInlineCalls', () => {
     ).doStream({} as never);
     const chunks = await read(stream);
     expect(chunks).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: 'text-delta', delta: '走 move_to {"x":1}' }),
-        error,
-      ]),
+      expect.arrayContaining([expect.objectContaining({ type: 'text-delta', delta: '走' }), error]),
     );
     expect(chunks.some((chunk) => chunk.type === 'tool-call')).toBe(false);
   });
@@ -387,4 +582,57 @@ async function read(stream: ReadableStream<unknown>): Promise<Record<string, unk
     if (done) return chunks;
     chunks.push(value as Record<string, unknown>);
   }
+}
+
+function body(chunks: Record<string, unknown>[]): string {
+  return chunks
+    .filter((chunk) => chunk.type === 'text-delta')
+    .map((chunk) => chunk.delta)
+    .join('');
+}
+
+async function gatedStream() {
+  let source!: ReadableStreamDefaultController<unknown>;
+  const cancelSource = vi.fn();
+  const { stream } = await withInlineCalls(
+    {
+      doStream: async () => ({
+        stream: new ReadableStream({
+          start(controller) {
+            source = controller;
+          },
+          cancel: cancelSource,
+        }),
+      }),
+    },
+    names,
+  ).doStream();
+  const reader = stream.getReader();
+  const chunks: Record<string, unknown>[] = [];
+  const done = (async () => {
+    try {
+      for (;;) {
+        const { done: ended, value } = await reader.read();
+        if (ended) return;
+        const chunk = value as Record<string, unknown>;
+        if (chunk.type === 'test-gate') (chunk.resolve as () => void)();
+        else chunks.push(chunk);
+      }
+    } catch (error) {
+      return error;
+    }
+  })();
+  return {
+    chunks,
+    done,
+    cancelSource,
+    close: () => source.close(),
+    fail: (error: unknown) => source.error(error),
+    cancel: (reason: string) => reader.cancel(reason),
+    send: (...parts: unknown[]) =>
+      new Promise<void>((resolve) => {
+        for (const part of parts) source.enqueue(part);
+        source.enqueue({ type: 'test-gate', resolve });
+      }),
+  };
 }

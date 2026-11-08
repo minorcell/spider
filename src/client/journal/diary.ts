@@ -1,20 +1,16 @@
 import type { LanguageModelUsage, ModelMessage } from 'ai';
 import { modelIdOf, pilotReady, type PilotSettings } from '@/src/client/settings';
 import type { Journal } from '@/src/client/journal/api';
-import { blankMemory, openSpiderDb, type MemoryPage } from '@/src/client/journal/db';
+import type { MemoryPage } from '@/src/client/storage/db';
+import type { PersistenceRepository } from '@/src/client/storage/repository';
 import { localDate, shiftDate } from '@/src/shared/dates';
 import {
   blankSession,
   needsDigest,
-  restoreSession,
   transcript,
   type ChatSession,
 } from '@/src/client/journal/session';
 import {
-  readUsage,
-  recordUsage,
-  recordUsageCall,
-  recordUsageCalls,
   type UsageCall,
   type UsageCallMeta,
   type UsageRange,
@@ -48,23 +44,28 @@ export interface MemoryApi {
 }
 
 function viewOf(page: MemoryPage): MemoryView {
-  return { date: page.date, line: page.description, noted: page.noted, summary: page.summary };
+  return {
+    date: page.date,
+    line: page.description,
+    noted: page.noted,
+    summary: page.summary,
+  };
 }
 
 export class Diary implements Journal {
   dismissed = false;
 
   private constructor(
-    private readonly db: Awaited<ReturnType<typeof openSpiderDb>>,
+    private readonly repository: PersistenceRepository,
     readonly date: string,
     public session: ChatSession,
   ) {}
 
-  static async open(now = new Date()): Promise<Diary> {
-    const db = await openSpiderDb();
+  static async open(now = new Date(), repository?: PersistenceRepository): Promise<Diary> {
+    repository ??= (await import('@/src/client/storage/direct')).createDbRepository();
     const date = localDate(now);
-    const stored = await loadSession(db, date);
-    return new Diary(db, date, stored ?? blankSession(date));
+    const stored = await repository.loadSession(date);
+    return new Diary(repository, date, stored ?? blankSession(date));
   }
 
   behind(): boolean {
@@ -73,7 +74,7 @@ export class Diary implements Journal {
 
   async save(): Promise<void> {
     if (this.session.messages.length === 0) return;
-    await this.db.put('sessions', this.session);
+    await this.repository.saveSession(this.session);
   }
 
   api(): MemoryApi {
@@ -88,25 +89,21 @@ export class Diary implements Journal {
   }
 
   async pages(): Promise<MemoryPage[]> {
-    const all = await this.db.getAll('memories');
-    return all.toSorted((a, b) => a.date.localeCompare(b.date));
+    return this.repository.listMemories();
   }
 
   async read(date: string): Promise<MemoryView | null> {
-    const page = await this.db.get('memories', date);
+    const page = await this.repository.getMemory(date);
     return page ? viewOf(page) : null;
   }
 
   async write(input: MemoryWrite): Promise<MemoryView> {
-    const current = (await this.db.get('memories', input.date)) ?? blankMemory(input.date);
-    const next: MemoryPage = {
+    const next = await this.repository.patchMemory({
       date: input.date,
-      description: input.line ?? current.description,
-      noted: input.noted ?? current.noted,
-      summary: input.summary ?? current.summary,
-      updatedAt: Date.now(),
-    };
-    await this.db.put('memories', next);
+      description: input.line,
+      noted: input.noted,
+      summary: input.summary,
+    });
     onDiary?.();
     return viewOf(next);
   }
@@ -122,19 +119,19 @@ export class Diary implements Journal {
     now = new Date(),
     meta?: UsageCallMeta,
   ): Promise<void> {
-    return recordUsage(usage, now, meta);
+    return this.repository.recordUsage(usage, now, meta);
   }
 
   recordUsageCall(call: UsageCall): Promise<void> {
-    return recordUsageCall(call);
+    return this.repository.recordUsageCall(call);
   }
 
   recordUsageCalls(calls: UsageCall[]): Promise<void> {
-    return recordUsageCalls(calls);
+    return this.repository.recordUsageCalls(calls);
   }
 
   readUsage(today: string, range?: UsageRange): Promise<UsageSnapshot> {
-    return readUsage(today, range);
+    return this.repository.readUsage(today, range);
   }
 
   async digest(settings: PilotSettings): Promise<void> {
@@ -147,55 +144,32 @@ export class Diary implements Journal {
   async backfill(settings: PilotSettings): Promise<void> {
     if (!pilotReady(settings)) return;
     const date = shiftDate(this.date, -1);
-    const stored = await loadSession(this.db, date);
+    const stored = await this.repository.loadSession(date);
     if (!stored || !needsDigest(stored)) return;
     await this.digestSession(stored, settings);
-    await this.db.put('sessions', { ...stored, digestedAt: stored.updatedAt });
+    await this.repository.saveSession({ ...stored, digestedAt: stored.updatedAt });
   }
 
   private async digestSession(session: ChatSession, settings: PilotSettings): Promise<void> {
-    const page = (await this.db.get('memories', session.date)) ?? blankMemory(session.date);
+    const page = await this.repository.getMemory(session.date);
     const { summarizeDiary } = await import('@/src/client/journal/summarize');
     const note = await summarizeDiary({
       settings,
       transcript: transcript(session),
-      noted: page.noted,
-      prior: page.summary,
+      noted: page?.noted ?? '',
+      prior: page?.summary ?? '',
     });
-    await recordUsage(note.usage, new Date(), {
+    await this.repository.recordUsage(note.usage, new Date(), {
       kind: 'summary',
       sessionId: session.date,
       provider: 'openai-compatible',
       modelId: modelIdOf(settings),
     });
-    await this.db.put('memories', {
-      ...page,
-      description: note.line || page.description,
-      summary: note.summary || page.summary,
-      updatedAt: Date.now(),
+    await this.repository.patchMemory({
+      date: session.date,
+      description: note.line || undefined,
+      summary: note.summary || undefined,
     });
     onDiary?.();
   }
-}
-
-async function loadSession(db: Awaited<ReturnType<typeof openSpiderDb>>, date: string) {
-  const tx = db.transaction(['sessions', 'memories'], 'readwrite');
-  const stored = await tx.objectStore('sessions').get(date);
-  if (!stored || 'messages' in stored) {
-    await tx.done;
-    return stored;
-  }
-  const session = restoreSession(stored);
-  // Archive older summaries with the diary, atomically with the session migration.
-  if (stored.summary) {
-    const page = (await tx.objectStore('memories').get(date)) ?? blankMemory(date);
-    await tx.objectStore('memories').put({
-      ...page,
-      summary: [page.summary, stored.summary].filter(Boolean).join('\n'),
-      updatedAt: Date.now(),
-    });
-  }
-  await tx.objectStore('sessions').put(session);
-  await tx.done;
-  return session;
 }

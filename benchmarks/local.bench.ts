@@ -78,4 +78,31 @@ describe('local inference application overhead (no GPU)', () => {
       }
     }).run();
   });
+
+  for (const [label, text] of [
+    ['prose', '我看到岛上的树、石头和苹果，先在这里休息一会儿。'.repeat(16)],
+    ['incomplete 4 KiB JSON', malformed],
+  ]) {
+    test(`stream ${label} in 8-character chunks`, async ({ bench }) => {
+      const model = {
+        doStream: async () => ({
+          stream: new ReadableStream({
+            start(controller) {
+              for (let i = 0; i < text.length; i += 8)
+                controller.enqueue({ type: 'text-delta', delta: text.slice(i, i + 8) });
+              controller.enqueue({ type: 'finish' });
+              controller.close();
+            },
+          }),
+        }),
+      };
+      await bench(`stream ${label}, 8-character chunks`, async () => {
+        const { stream } = await withInlineCalls(model, names).doStream();
+        const reader = stream.getReader();
+        while (!(await reader.read()).done) {
+          /* drain */
+        }
+      }).run();
+    });
+  }
 });

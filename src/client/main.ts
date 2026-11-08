@@ -6,7 +6,7 @@ import { startThemeClock } from '@/src/client/themeClock';
 import { Stage } from '@/src/client/stage';
 import { syncStars } from '@/src/client/stars';
 import { restoreSettings } from '@/src/client/settings';
-import { dbSnapshotStore, type SnapshotStore } from '@/src/client/journal/store';
+import { dbSnapshotStore, type SnapshotStore } from '@/src/client/storage/snapshot';
 import { readBuffer } from '@/src/client/world/storage';
 import { cloudHolds, keepaliveCloud, startCloud } from '@/src/client/cloud/sync';
 import {

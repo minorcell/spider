@@ -1,5 +1,5 @@
 import { LOCAL_MODEL } from '@/src/client/local/types';
-import { openSpiderDb, type PreferenceRecord } from '@/src/client/journal/db';
+import { openSpiderDb, type PreferenceRecord } from '@/src/client/storage/db';
 import { providerById, providerNeedsKey } from '@/src/client/providers';
 import { PersistentCache } from '@/src/client/store/cache';
 

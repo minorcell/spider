@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { openSpiderDb, resetSpiderDb } from '@/src/client/journal/db';
+import { openSpiderDb, resetSpiderDb } from '@/src/client/storage/db';
 import {
   flushSoon,
   flushWorld,
@@ -20,13 +20,13 @@ import { localDate } from '@/src/shared/dates';
 import { SimSession } from '@/src/shared/sim/session';
 import { captureBody, type WorldRecord } from '@/src/shared/sim/snapshot';
 import { Terrain } from '@/src/shared/terrain';
-import type { SnapshotStore } from '@/src/client/journal/store';
+import type { SnapshotStore } from '@/src/client/storage/snapshot';
 
 const gate = vi.hoisted(() => ({ mode: 'ok' as 'ok' | 'hang' | 'reject' }));
 
-vi.mock('@/src/client/journal/db', async () => {
+vi.mock('@/src/client/storage/db', async () => {
   const actual =
-    await vi.importActual<typeof import('@/src/client/journal/db')>('@/src/client/journal/db');
+    await vi.importActual<typeof import('@/src/client/storage/db')>('@/src/client/storage/db');
   return {
     ...actual,
     openSpiderDb: () => {

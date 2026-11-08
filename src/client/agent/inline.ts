@@ -1,3 +1,5 @@
+import { InlineStream } from '@/src/client/agent/inlineStream';
+
 export interface InlineCall {
   name: string;
   input: Record<string, unknown>;
@@ -90,29 +92,24 @@ function recover(
   source: ReadableStream<unknown>,
   names: readonly string[],
 ): ReadableStream<unknown> {
-  let text = '';
   let textId = inlineId('text');
+  let open = false;
   let hasToolCall = false;
-  let flushed = false;
-  const flush = (controller: TransformStreamDefaultController<unknown>, parse: boolean): void => {
-    if (!flushed) {
-      flushed = true;
-      const calls = parse && !hasToolCall ? parseInlineCalls(text, names) : [];
-      const body = calls.length > 0 ? cleanInlineText(text, calls) : text;
-      if (body) {
-        controller.enqueue({ type: 'text-start', id: textId });
-        controller.enqueue({ type: 'text-delta', id: textId, delta: body });
-        controller.enqueue({ type: 'text-end', id: textId });
-      }
-      for (const call of calls) {
-        controller.enqueue({
-          type: 'tool-call',
-          toolCallId: inlineId('call'),
-          toolName: call.name,
-          input: JSON.stringify(call.input),
-        });
-      }
+  let failed = false;
+  let finish: StreamChunk | undefined;
+  const scanner = new InlineStream(names, (text) => parseInlineCalls(text, names));
+  const emit = (controller: TransformStreamDefaultController<unknown>, delta: string): void => {
+    if (!delta) return;
+    if (!open) {
+      open = true;
+      controller.enqueue({ type: 'text-start', id: textId });
     }
+    controller.enqueue({ type: 'text-delta', id: textId, delta });
+  };
+  const end = (controller: TransformStreamDefaultController<unknown>): void => {
+    if (!open) return;
+    open = false;
+    controller.enqueue({ type: 'text-end', id: textId });
   };
 
   return source.pipeThrough(
@@ -124,12 +121,11 @@ function recover(
         }
         switch (chunk.type) {
           case 'text-start':
-            if (typeof chunk.id === 'string') textId = chunk.id;
+            if (!open && typeof chunk.id === 'string') textId = chunk.id;
             return;
           case 'text-delta': {
-            if (typeof chunk.id === 'string') textId = chunk.id;
-            const delta = chunk.delta ?? chunk.text ?? '';
-            text += delta;
+            if (!open && typeof chunk.id === 'string') textId = chunk.id;
+            emit(controller, scanner.push(chunk.delta ?? chunk.text ?? ''));
             return;
           }
           case 'text-end':
@@ -141,12 +137,20 @@ function recover(
             controller.enqueue(chunk);
             return;
           case 'finish':
+            // Wait for a clean EOF as well: an error/cancellation after a finish must
+            // never release executable calls. Bare EOF and finish-step aren't success.
+            if (!successfulFinish(chunk)) failed = true;
+            finish = chunk;
+            return;
           case 'finish-step':
-            flush(controller, true);
+            end(controller);
             controller.enqueue(chunk);
             return;
           case 'error':
-            flush(controller, false);
+          case 'abort':
+            failed = true;
+            emit(controller, scanner.finish());
+            end(controller);
             controller.enqueue(chunk);
             return;
           default:
@@ -154,10 +158,27 @@ function recover(
         }
       },
       flush(controller) {
-        flush(controller, true);
+        emit(controller, scanner.finish());
+        end(controller);
+        if (finish && !failed && !hasToolCall) {
+          for (const call of scanner.calls) {
+            controller.enqueue({
+              type: 'tool-call',
+              toolCallId: inlineId('call'),
+              toolName: call.name,
+              input: JSON.stringify(call.input),
+            });
+          }
+        }
+        if (finish) controller.enqueue(finish);
       },
     }),
   );
+}
+
+function successfulFinish(chunk: StreamChunk): boolean {
+  const reason = isRecord(chunk.finishReason) ? chunk.finishReason.unified : chunk.finishReason;
+  return chunk.finishReason === undefined || reason === 'stop' || reason === 'tool-calls';
 }
 
 function isChunk(value: unknown): value is StreamChunk {

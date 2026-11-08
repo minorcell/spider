@@ -1,10 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetSpiderDb } from '@/src/client/journal/db';
+import { resetSpiderDb } from '@/src/client/storage/db';
 import { Diary } from '@/src/client/journal/diary';
 import { openJournal } from '@/src/client/journal/api';
 import { WorkerJournal } from '@/src/client/worker/client';
 import type { JournalReply, JournalRequest } from '@/src/client/worker/protocol';
 import { blankSession } from '@/src/client/journal/session';
+
+vi.mock('@/src/client/local/backend', () => ({ connectLocalJournal: () => () => {} }));
+vi.mock('@/src/client/storage/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/src/client/storage/client')>();
+  const { createDbRepository } = await import('@/src/client/storage/direct');
+  return {
+    ...actual,
+    createStorageWorker: () => ({
+      repository: createDbRepository(),
+      connect: () => ({}) as MessagePort,
+      close() {},
+      onFailure: () => () => {},
+    }),
+  };
+});
 
 const STATE = {
   date: '2026-11-02',
@@ -19,6 +34,7 @@ class FakeWorker {
 
   postMessage(request: JournalRequest): void {
     queueMicrotask(() => {
+      if (!('method' in request)) return;
       this.onmessage?.({
         data: { id: request.id, ok: true, value: STATE },
       } as MessageEvent<JournalReply>);

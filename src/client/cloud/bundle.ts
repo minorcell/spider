@@ -1,4 +1,4 @@
-import type { MemoryPage } from '@/src/client/journal/db';
+import type { MemoryPage } from '@/src/client/storage/db';
 import { localDate } from '@/src/shared/dates';
 import { classify, type SimBody, type WorldRecord } from '@/src/shared/sim/snapshot';
 import { canonicalBytes } from '@/src/client/cloud/bytes';

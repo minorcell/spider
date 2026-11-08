@@ -1,12 +1,6 @@
 import type { LanguageModelUsage } from 'ai';
 import { localDate, shiftDate } from '@/src/shared/dates';
-import {
-  openSpiderDb,
-  type UsageCall,
-  type UsageDay,
-  type UsageKind,
-  type UsageTool,
-} from '@/src/client/journal/db';
+import type { UsageCall, UsageDay, UsageKind, UsageTool } from '@/src/client/storage/db';
 
 export type { UsageCall, UsageDay, UsageKind, UsageTool };
 
@@ -97,30 +91,10 @@ export async function recordUsage(
   await recordUsageCall(call);
 }
 
-type SpiderDb = Awaited<ReturnType<typeof openSpiderDb>>;
-
+// Compatibility entry points for direct callers. Worker clients use the repository instead.
 export async function recordUsageCalls(calls: UsageCall[]): Promise<void> {
-  if (calls.length === 0) return;
-  const next = calls.map(normalizeCall);
-  try {
-    const db = await openSpiderDb();
-    const tx = db.transaction(['usageCalls', 'usage'], 'readwrite');
-    const callStore = tx.objectStore('usageCalls');
-    const dayStore = tx.objectStore('usage');
-    for (const [date, batch] of groupCalls(next)) {
-      const stored = new Map<string, UsageCall>();
-      for (const row of await callStore.index('date').getAll(date)) {
-        const call = normalizeCall(row);
-        stored.set(call.id, call);
-      }
-      for (const call of batch) {
-        stored.set(call.id, call);
-        await callStore.put(call);
-      }
-      await dayStore.put(aggregateDay(date, [...stored.values()]));
-    }
-    await tx.done;
-  } catch {}
+  const { writeUsageCalls } = await import('@/src/client/storage/usage');
+  await writeUsageCalls(calls);
 }
 
 export async function recordUsageCall(call: UsageCall): Promise<void> {
@@ -128,14 +102,18 @@ export async function recordUsageCall(call: UsageCall): Promise<void> {
 }
 
 export async function readUsage(today: string, range: UsageRange = 'all'): Promise<UsageSnapshot> {
-  const db = await openSpiderDb();
+  const { loadUsage } = await import('@/src/client/storage/usage');
+  return loadUsage(today, range);
+}
+
+export function usageSnapshot(
+  today: string,
+  range: UsageRange,
+  storedRows: UsageDay[],
+  callRows: UsageCall[],
+): UsageSnapshot {
   const span = range === '7' ? 7 : range === '30' ? 30 : 0;
   const currentFrom = span === 0 ? null : shiftDate(today, 1 - span);
-  const loadFrom = span === 0 ? null : shiftDate(today, 1 - span * 2);
-  const [storedRows, callRows] = await Promise.all([
-    readDays(db, loadFrom, today),
-    readCalls(db, loadFrom, today),
-  ]);
   const stored = storedRows
     .map((day) => normalize(day, day.date))
     .filter((day) => day.date <= today)
@@ -170,16 +148,6 @@ export async function readUsage(today: string, range: UsageRange = 'all'): Promi
     requests: currentCalls.slice(0, REQUEST_LIMIT),
     requestTotal: currentCalls.length,
   };
-}
-
-function readDays(db: SpiderDb, from: string | null, today: string): Promise<UsageDay[]> {
-  return from == null ? db.getAll('usage') : db.getAll('usage', IDBKeyRange.bound(from, today));
-}
-
-function readCalls(db: SpiderDb, from: string | null, today: string): Promise<UsageCall[]> {
-  return from == null
-    ? db.getAll('usageCalls')
-    : db.getAllFromIndex('usageCalls', 'date', IDBKeyRange.bound(from, today));
 }
 
 export function blankUsage(date: string): UsageDay {
@@ -325,7 +293,7 @@ function toolsFromStep(step: StepUsageSource): UsageTool[] {
   });
 }
 
-function aggregateDay(date: string, calls: UsageCall[]): UsageDay {
+export function aggregateDay(date: string, calls: UsageCall[]): UsageDay {
   return calls.reduce((day, call) => add(day, deltaOfCall(call)), blankUsage(date));
 }
 
@@ -374,7 +342,7 @@ function normalize(value: Partial<UsageDay> | undefined, date: string): UsageDay
   };
 }
 
-function normalizeCall(value: UsageCall): UsageCall {
+export function normalizeCall(value: UsageCall): UsageCall {
   const input = value.input ?? { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 };
   const output = value.output ?? { total: 0, text: 0, reasoning: 0 };
   const timing = value.timing ?? {};
@@ -467,7 +435,7 @@ function enumerate(from: string, to: string): string[] {
   return days;
 }
 
-function groupCalls(calls: UsageCall[]): Map<string, UsageCall[]> {
+export function groupCalls(calls: UsageCall[]): Map<string, UsageCall[]> {
   const grouped = new Map<string, UsageCall[]>();
   for (const call of calls) {
     const list = grouped.get(call.date);

@@ -1,20 +1,13 @@
-import { useLocalBackend } from '@/src/client/local/backend';
-import { setLocalBusy } from '@/src/client/local/activity';
-import type {
-  LocalBackend,
-  LocalLoadOptions,
-  LocalMessage,
-  LocalOptions,
-  LocalReply,
-  LocalStatus,
-} from '@/src/client/local/types';
+import { createStorageWorker } from '@/src/client/storage/client';
+import type { PersistenceRepository } from '@/src/client/storage/repository';
+import { connectLocalJournal } from '@/src/client/local/backend';
 import type { LanguageModelUsage, ModelMessage } from 'ai';
 import type { WorldRecord } from '@/src/shared/sim/snapshot';
 import type { Journal } from '@/src/client/journal/api';
-import type { MemoryPage } from '@/src/client/journal/db';
+import type { MemoryPage } from '@/src/client/storage/db';
 import type { MemoryApi, MemoryView, MemoryWrite } from '@/src/client/journal/diary';
 import { blankSession, type ChatSession } from '@/src/client/journal/session';
-import type { SnapshotStore } from '@/src/client/journal/store';
+import type { SnapshotStore } from '@/src/client/storage/snapshot';
 import type {
   UsageCall,
   UsageCallMeta,
@@ -22,67 +15,41 @@ import type {
   UsageSnapshot,
 } from '@/src/client/journal/usage';
 import type { PilotSettings } from '@/src/client/settings';
-import type { JournalReply, JournalRequest, JournalResultMap } from '@/src/client/worker/protocol';
+import type {
+  JournalControl,
+  JournalReply,
+  JournalRequest,
+  JournalResultMap,
+} from '@/src/client/worker/protocol';
 
 export interface WorkerPort {
-  postMessage(message: JournalRequest): void;
+  postMessage(message: JournalRequest | JournalControl, transfer?: Transferable[]): void;
   onmessage: ((event: MessageEvent<JournalReply>) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
+  onmessageerror?: ((event: MessageEvent) => void) | null;
 }
 
 interface Waiter {
   resolve(value: unknown): void;
   reject(error: Error): void;
-  onDelta?: (text: string) => void;
 }
 
-export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
+export class WorkerJournal implements Journal, SnapshotStore {
   readonly #port: WorkerPort;
   readonly #pending = new Map<number, Waiter>();
   #seq = 0;
   #state: JournalResultMap['open'] | null = null;
   #failure: Error | null = null;
 
-  constructor(port: WorkerPort) {
+  constructor(
+    port: WorkerPort,
+    readonly repository: PersistenceRepository,
+    readonly onFailure: () => void = () => {},
+  ) {
     this.#port = port;
     port.onmessage = (event) => this.#receive(event.data);
     port.onerror = (event) => this.#fail(new Error(event.message));
-  }
-
-  localLoad(options?: LocalLoadOptions): Promise<void> {
-    return this.#call<'localLoad'>((id) => ({ id, method: 'localLoad', args: [options] }));
-  }
-  localSession(id: string, active: boolean): Promise<void> {
-    return this.#call<'localSession'>((seq) => ({
-      id: seq,
-      method: 'localSession',
-      args: [id, active],
-    }));
-  }
-  localStatus(): Promise<LocalStatus> {
-    return this.#call<'localStatus'>((id) => ({ id, method: 'localStatus' }));
-  }
-  localUnload(): Promise<void> {
-    return this.#call<'localUnload'>((id) => ({ id, method: 'localUnload' }));
-  }
-  localComplete(
-    id: string,
-    messages: LocalMessage[],
-    options?: LocalOptions,
-    onDelta?: (text: string) => void,
-  ): Promise<LocalReply> {
-    return this.#call<'localComplete'>(
-      (seq) => ({
-        id: seq,
-        method: 'localComplete',
-        args: options ? [id, messages, options] : [id, messages],
-        stream: onDelta != null,
-      }),
-      onDelta,
-    );
-  }
-  localCancel(id: string): Promise<void> {
-    return this.#call<'localCancel'>((seq) => ({ id: seq, method: 'localCancel', args: [id] }));
+    port.onmessageerror = () => this.#fail(new Error('日记线程消息无法读取'));
   }
 
   async open(): Promise<void> {
@@ -102,9 +69,12 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
   }
 
   set dismissed(value: boolean) {
-    void this.#call<'dismiss'>((id) => ({ id, method: 'dismiss', args: [value] })).then((state) => {
-      this.#state = state;
-    });
+    void this.#call<'dismiss'>((id) => ({ id, method: 'dismiss', args: [value] })).then(
+      (state) => {
+        this.#state = state;
+      },
+      () => undefined,
+    );
   }
 
   behind(): boolean {
@@ -163,59 +133,38 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
     now = new Date(),
     meta?: UsageCallMeta,
   ): Promise<void> {
-    await this.#call<'recordUsage'>((id) => ({
-      id,
-      method: 'recordUsage',
-      args: meta == null ? [usage, now.getTime()] : [usage, now.getTime(), meta],
-    }));
+    await this.repository.recordUsage(usage, now, meta);
   }
 
   async recordUsageCall(call: UsageCall): Promise<void> {
-    await this.#call<'recordUsageCall'>((id) => ({
-      id,
-      method: 'recordUsageCall',
-      args: [call],
-    }));
+    await this.repository.recordUsageCall(call);
   }
 
   async recordUsageCalls(calls: UsageCall[]): Promise<void> {
-    await this.#call<'recordUsageCalls'>((id) => ({
-      id,
-      method: 'recordUsageCalls',
-      args: [calls],
-    }));
+    await this.repository.recordUsageCalls(calls);
   }
 
   async readUsage(today: string, range?: UsageRange): Promise<UsageSnapshot> {
-    return this.#call<'readUsage'>((id) => ({ id, method: 'readUsage', args: [today, range] }));
+    return this.repository.readUsage(today, range);
   }
 
   async readSnapshot(): Promise<unknown> {
-    return this.#call<'snapshotRead'>((id) => ({ id, method: 'snapshotRead' }));
+    return this.repository.readSnapshot();
   }
 
   async putSnapshot(record: WorldRecord): Promise<void> {
-    await this.#call<'snapshotPut'>((id) => ({ id, method: 'snapshotPut', args: [record] }));
+    await this.repository.putSnapshot(record);
   }
 
   async removeSnapshot(): Promise<void> {
-    await this.#call<'snapshotRemove'>((id) => ({ id, method: 'snapshotRemove' }));
+    await this.repository.removeSnapshot();
   }
 
   async sweepSnapshots(today: string): Promise<void> {
-    await this.#call<'snapshotSweep'>((id) => ({
-      id,
-      method: 'snapshotSweep',
-      args: [today],
-    }));
+    await this.repository.sweepSnapshots(today);
   }
 
   #receive(reply: JournalReply): void {
-    if ('event' in reply) {
-      if (reply.event === 'localActivity') setLocalBusy(reply.busy);
-      else this.#pending.get(reply.id)?.onDelta?.(reply.text);
-      return;
-    }
     const waiter = this.#pending.get(reply.id);
     if (!waiter) return;
     this.#pending.delete(reply.id);
@@ -224,7 +173,7 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
   }
 
   #fail(error: Error): void {
-    setLocalBusy(false);
+    if (!this.#failure) this.onFailure();
     this.#failure ??= error;
     for (const waiter of this.#pending.values()) waiter.reject(error);
     this.#pending.clear();
@@ -232,7 +181,6 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
 
   #call<K extends keyof JournalResultMap>(
     make: (id: number) => JournalRequest,
-    onDelta?: (text: string) => void,
   ): Promise<JournalResultMap[K]> {
     const id = ++this.#seq;
     return new Promise<JournalResultMap[K]>((resolve, reject) => {
@@ -240,13 +188,13 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
         reject(this.#failure);
         return;
       }
-      this.#pending.set(id, { resolve: resolve as (value: unknown) => void, reject, onDelta });
+      this.#pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
       try {
         this.#port.postMessage(make(id));
       } catch (error) {
         this.#pending.delete(id);
         const failure = error instanceof Error ? error : new Error(String(error));
-        this.#failure ??= failure;
+        this.#fail(failure);
         reject(failure);
       }
     });
@@ -254,9 +202,36 @@ export class WorkerJournal implements Journal, SnapshotStore, LocalBackend {
 }
 
 export async function createWorkerJournal(): Promise<WorkerJournal> {
-  const worker = new Worker(new URL('./journal.worker.ts', import.meta.url), { type: 'module' });
-  const journal = new WorkerJournal(worker as unknown as WorkerPort);
-  await journal.open();
-  useLocalBackend(journal);
-  return journal;
+  const storage = createStorageWorker();
+  let worker: Worker | null = null;
+  let disconnect = () => {};
+  let stopStorageFailure = () => {};
+  try {
+    // Verify storage before opening the diary, so startup can fall back cleanly.
+    await storage.repository.readSnapshot();
+    worker = new Worker(new URL('./journal.worker.ts', import.meta.url), { type: 'module' });
+    const diaryWorker = worker;
+    const journal = new WorkerJournal(worker as unknown as WorkerPort, storage.repository, () => {
+      disconnect();
+      stopStorageFailure();
+      storage.close();
+      diaryWorker.terminate();
+    });
+    const port = storage.connect();
+    worker.postMessage({ event: 'storagePort', port }, [port]);
+    stopStorageFailure = storage.onFailure((error) => {
+      try {
+        diaryWorker.postMessage({ event: 'storageFailure', error: error.message });
+      } catch {}
+    });
+    disconnect = connectLocalJournal(worker);
+    await journal.open();
+    return journal;
+  } catch (error) {
+    disconnect();
+    stopStorageFailure();
+    storage.close();
+    worker?.terminate();
+    throw error;
+  }
 }

@@ -10,7 +10,7 @@ import {
   restoreSettings,
   writePilot,
 } from '@/src/client/settings';
-import { openSpiderDb, resetSpiderDb } from '@/src/client/journal/db';
+import { openSpiderDb, resetSpiderDb } from '@/src/client/storage/db';
 
 beforeEach(async () => {
   await flushSettings().catch(() => undefined);

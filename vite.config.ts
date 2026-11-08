@@ -63,6 +63,8 @@ export default defineConfig({
         'src/client/models/page.ts',
         'src/client/worker/journal.worker.ts',
         'src/client/worker/world.worker.ts',
+        'src/client/local/inference.worker.ts',
+        'src/client/storage/storage.worker.ts',
         'src/client/worker/protocol.ts',
         'src/client/worker/worldProtocol.ts',
         'src/ui/**/*.test.ts',
