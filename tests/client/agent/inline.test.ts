@@ -104,6 +104,26 @@ describe('parseInlineCalls', () => {
     expect(parseInlineCalls('move_to {"x":1', names)).toEqual([]);
   });
 
+  it('recovers a complete nested call after repeated unclosed arguments', () => {
+    const prefix = 'move_to {'.repeat(256);
+    expect(parseInlineCalls(`${prefix}observe {"distance":8}`, names)).toMatchObject([
+      { name: 'observe', input: { distance: 8 } },
+    ]);
+    expect(parseInlineCalls(`${prefix}"observe {\\"distance\\":8}`, names)).toEqual([]);
+  });
+
+  it('does not lose a later tool when an earlier call consumes a cached name occurrence', () => {
+    expect(
+      parseInlineCalls(
+        'move_to {"description":"observe later","x":1} observe {"distance":4}',
+        names,
+      ),
+    ).toMatchObject([
+      { name: 'move_to', input: { description: 'observe later', x: 1 } },
+      { name: 'observe', input: { distance: 4 } },
+    ]);
+  });
+
   it('ignores an empty tool name and a name at the end of the text', () => {
     expect(parseInlineCalls('move_to {"x":1}', [''])).toEqual([]);
     expect(parseInlineCalls('move_to', names)).toEqual([]);
@@ -200,6 +220,49 @@ describe('withInlineCalls', () => {
     while (!(await reader.read()).done) {
       /* drain */
     }
+  });
+
+  it.each([
+    ['答', '：', ' \t', '你好', '，朋友', '。', ''],
+    [' \n答:', ' ', '你好，朋友。'],
+    ['答：', '小步走'],
+  ])(
+    'preserves an answer when its prefix and body cross chunk boundaries: %j',
+    async (...parts) => {
+      const { stream } = await withInlineCalls(
+        fakeModel([...parts.map((delta) => ({ type: 'text-delta', delta })), { type: 'finish' }]),
+        names,
+        true,
+      ).doStream();
+      const chunks = await read(stream);
+      expect(
+        chunks
+          .filter((chunk) => chunk.type === 'text-delta')
+          .map((chunk) => chunk.delta)
+          .join(''),
+      ).toBe(parts.join('').replace(/^\s*答[：:]\s*/, ''));
+    },
+  );
+
+  it.each([
+    ['答：我到', '{', '了', '}'],
+    ['答：', '<func', 'tion', '后续内容'],
+    ['答：', '工具执行结果', ' '.repeat(128), ':', '后续内容'],
+    ['答：', '"observ', 'ation"', ' '.repeat(128), ':', '后续内容'],
+  ])('stops streaming machine text split across chunks: %j', async (...parts) => {
+    const { stream } = await withInlineCalls(
+      fakeModel([...parts.map((delta) => ({ type: 'text-delta', delta })), { type: 'finish' }]),
+      names,
+      true,
+    ).doStream();
+    const chunks = await read(stream);
+    const text = chunks
+      .filter((chunk) => chunk.type === 'text-delta')
+      .map((chunk) => chunk.delta)
+      .join('');
+    expect(text).not.toContain('后续内容');
+    expect(text).not.toContain('{');
+    expect(chunks.some((chunk) => chunk.type === 'error')).toBe(true);
   });
   it('turns inline text into tool-call chunks before finish', async () => {
     const model = fakeModel([

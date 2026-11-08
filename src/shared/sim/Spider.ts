@@ -1,4 +1,14 @@
-import { BufferGeometry, Euler, Group, MathUtils, Matrix4, Mesh, Object3D, Vector3 } from 'three';
+import {
+  BufferGeometry,
+  Euler,
+  Group,
+  MathUtils,
+  Matrix4,
+  Mesh,
+  Object3D,
+  Quaternion,
+  Vector3,
+} from 'three';
 import { BONES, CONTACT, GAIT, MOUNTS } from '../config.js';
 import { WORLD_RADIUS } from '../terrain.js';
 import type { SpiderState } from '../state.js';
@@ -41,7 +51,20 @@ const SHELLS: readonly {
 ];
 const SHELL_PHI = [-1.35, -0.9, -0.45, 0, 0.45, 0.9, 1.35];
 const SHELL_THETA = 12;
+const SHELL_POINTS = SHELLS.flatMap((shell) =>
+  SHELL_PHI.flatMap((phi) =>
+    Array.from({ length: SHELL_THETA }, (_, i) => {
+      const theta = (i / SHELL_THETA) * Math.PI * 2;
+      return new Vector3(
+        shell.c[0] + shell.r[0] * Math.cos(phi) * Math.cos(theta),
+        shell.c[1] + shell.r[1] * Math.sin(phi),
+        shell.c[2] + shell.r[2] * Math.cos(phi) * Math.sin(theta),
+      );
+    }),
+  ),
+);
 const shellEuler = new Euler(0, 0, 0, 'XYZ');
+const shellRotation = new Quaternion();
 const shellPoint = new Vector3();
 const partWorld = new Matrix4();
 
@@ -412,24 +435,13 @@ export class Spider {
     );
     const cos = Math.cos(this.yaw);
     const sin = Math.sin(this.yaw);
+    shellRotation.setFromEuler(shellEuler);
     let lift = 0;
-    for (const shell of SHELLS) {
-      for (const phi of SHELL_PHI) {
-        const cp = Math.cos(phi);
-        const sy = Math.sin(phi);
-        for (let i = 0; i < SHELL_THETA; i++) {
-          const theta = (i / SHELL_THETA) * Math.PI * 2;
-          shellPoint.set(
-            shell.c[0] + shell.r[0] * cp * Math.cos(theta),
-            shell.c[1] + shell.r[1] * sy,
-            shell.c[2] + shell.r[2] * cp * Math.sin(theta),
-          );
-          shellPoint.applyEuler(shellEuler);
-          const wx = x + shellPoint.x * cos + shellPoint.z * sin;
-          const wz = z - shellPoint.x * sin + shellPoint.z * cos;
-          lift = Math.max(lift, this.#ground(wx, wz) - center - shellPoint.y);
-        }
-      }
+    for (const point of SHELL_POINTS) {
+      shellPoint.copy(point).applyQuaternion(shellRotation);
+      const wx = x + shellPoint.x * cos + shellPoint.z * sin;
+      const wz = z - shellPoint.x * sin + shellPoint.z * cos;
+      lift = Math.max(lift, this.#ground(wx, wz) - center - shellPoint.y);
     }
     this.#shellX = x;
     this.#shellZ = z;

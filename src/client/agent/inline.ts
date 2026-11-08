@@ -1,4 +1,4 @@
-import { speechText } from './speech.js';
+import { hasMachineText, speechText } from './speech.js';
 
 export interface InlineCall {
   name: string;
@@ -19,12 +19,14 @@ const SPACE = /\s/;
 export function parseInlineCalls(text: string, names: readonly string[]): InlineCall[] {
   if (text === '' || names.length === 0) return [];
   const found: InlineCall[] = [];
+  const positions = new Map<string, number>();
+  const incomplete = new Set<number>();
 
   let cursor = 0;
   while (cursor < text.length) {
-    const hit = nextName(text, names, cursor);
+    const hit = nextName(text, names, cursor, positions);
     if (!hit) break;
-    const object = jsonAfter(text, hit.index + hit.name.length);
+    const object = jsonAfter(text, hit.index + hit.name.length, incomplete);
     if (object) {
       found.push({ name: hit.name, input: object.value, start: hit.index, end: object.end });
       cursor = object.end;
@@ -33,7 +35,7 @@ export function parseInlineCalls(text: string, names: readonly string[]): Inline
     }
   }
 
-  for (const object of jsonObjects(text)) {
+  for (const object of jsonObjects(text, incomplete)) {
     const calls = wrappedCalls(object.value, names);
     if (!found.some((other) => overlaps(other, object))) {
       for (const call of calls) found.push({ ...call, start: object.start, end: object.end });
@@ -99,16 +101,52 @@ function recover(
   let textId = inlineId('text');
   let hasToolCall = false;
   let flushed = false;
-  let emitted = '';
+  let emitted = 0;
   let opened = false;
-  const emit = (controller: TransformStreamDefaultController<unknown>, body: string): void => {
-    if (body.length <= emitted.length) return;
+  const emit = (controller: TransformStreamDefaultController<unknown>, delta: string): void => {
+    if (!delta) return;
     if (!opened) {
       opened = true;
       controller.enqueue({ type: 'text-start', id: textId });
     }
-    controller.enqueue({ type: 'text-delta', id: textId, delta: body.slice(emitted.length) });
-    emitted = body;
+    controller.enqueue({ type: 'text-delta', id: textId, delta });
+    emitted += delta.length;
+  };
+
+  let answer: boolean | null = null;
+  let prefix = '';
+  let speechTail = '';
+  let speechLength = 0;
+  let pendingSpeech = '';
+  let blockedSpeech = false;
+  const speak = (controller: TransformStreamDefaultController<unknown>, delta: string): void => {
+    if (answer === false || blockedSpeech) return;
+    if (answer === null) {
+      prefix = (prefix + delta).trimStart();
+      const marker = /^答[：:]/.exec(prefix);
+      if (!marker) {
+        if (!/^答?$/.test(prefix)) answer = false;
+        return;
+      }
+      answer = true;
+      delta = prefix.slice(marker[0].length);
+      prefix = '';
+    }
+    if (speechLength === 0) delta = delta.trimStart();
+    const probe = (speechTail + delta).replace(/\s+/g, ' ');
+    speechTail = probe.slice(-24);
+    if (hasMachineText(probe)) {
+      blockedSpeech = true;
+      return;
+    }
+    speechLength += delta.length;
+    if (speechLength < 6) {
+      pendingSpeech += delta;
+      return;
+    }
+    const next = pendingSpeech + delta;
+    pendingSpeech = '';
+    emit(controller, next);
   };
 
   const flush = (controller: TransformStreamDefaultController<unknown>, parse: boolean): void => {
@@ -123,7 +161,7 @@ function recover(
           ? cleanInlineText(text, calls)
           : text;
       if (body !== '') {
-        emit(controller, body);
+        emit(controller, body.slice(emitted));
       }
       if (opened) controller.enqueue({ type: 'text-end', id: textId });
       if (local && parse && text.trim() && !body && !calls.length && !hasToolCall) {
@@ -154,15 +192,13 @@ function recover(
           case 'text-start':
             if (typeof chunk.id === 'string') textId = chunk.id;
             return;
-          case 'text-delta':
+          case 'text-delta': {
             if (typeof chunk.id === 'string') textId = chunk.id;
-            text += chunk.delta ?? chunk.text ?? '';
-            // Only explicitly marked answers may stream. Unmarked prose and action
-            // envelopes stay buffered until the whole reply has been classified.
-            if (local && !hasToolCall && /^\s*答[：:]/.test(text) && speechText(text).length >= 6) {
-              emit(controller, speechText(text));
-            }
+            const delta = chunk.delta ?? chunk.text ?? '';
+            text += delta;
+            if (local && !hasToolCall) speak(controller, delta);
             return;
+          }
           case 'text-end':
             return;
           case 'tool-input-start':
@@ -203,13 +239,18 @@ function nextName(
   text: string,
   names: readonly string[],
   from: number,
+  positions: Map<string, number>,
 ): { name: string; index: number } | null {
   let best: { name: string; index: number } | null = null;
   for (const name of names) {
     if (name === '') continue;
-    let index = text.indexOf(name, from);
-    while (index >= 0 && !wholeWord(text, index, name.length))
-      index = text.indexOf(name, index + 1);
+    let index = positions.get(name);
+    if (index === undefined || (index >= 0 && index < from)) {
+      index = text.indexOf(name, from);
+      while (index >= 0 && !wholeWord(text, index, name.length))
+        index = text.indexOf(name, index + 1);
+      positions.set(name, index);
+    }
     if (index < 0) continue;
     if (
       best == null ||
@@ -228,7 +269,7 @@ function wholeWord(text: string, index: number, length: number): boolean {
   return !IDENT.test(before) && !IDENT.test(after);
 }
 
-function jsonAfter(text: string, from: number): JsonObject | null {
+function jsonAfter(text: string, from: number, incomplete: Set<number>): JsonObject | null {
   let index = from;
   while (index < text.length && SPACE.test(text[index])) index += 1;
   if (text[index] === ':') {
@@ -246,25 +287,32 @@ function jsonAfter(text: string, from: number): JsonObject | null {
     while (index < text.length && SPACE.test(text[index])) index += 1;
   }
   if (text[index] !== '{') return null;
-  return readObject(text, index);
+  return readObject(text, index, incomplete);
 }
 
-function* jsonObjects(text: string): Generator<JsonObject> {
+function* jsonObjects(text: string, incomplete: Set<number>): Generator<JsonObject> {
   let index = 0;
   while (index < text.length) {
     const start = text.indexOf('{', index);
     if (start < 0) return;
     // A malformed outer object must not repeatedly rescan its nested braces.
     index = text.length;
-    const object = readObject(text, start, (end) => {
+    const object = readObject(text, start, incomplete, (end) => {
       index = end;
     });
     if (object) yield object;
   }
 }
 
-function readObject(text: string, start: number, onEnd?: (end: number) => void): JsonObject | null {
+function readObject(
+  text: string,
+  start: number,
+  incomplete: Set<number>,
+  onEnd?: (end: number) => void,
+): JsonObject | null {
+  if (incomplete.has(start)) return null;
   let depth = 0;
+  const opens: number[] | undefined = onEnd ? undefined : [];
   let string = false;
   let escaped = false;
   for (let index = start; index < text.length; index += 1) {
@@ -281,10 +329,12 @@ function readObject(text: string, start: number, onEnd?: (end: number) => void):
     }
     if (char === '{') {
       depth += 1;
+      opens?.push(index);
       continue;
     }
     if (char !== '}') continue;
     depth -= 1;
+    opens?.pop();
     if (depth !== 0) continue;
     onEnd?.(index + 1);
     try {
@@ -294,6 +344,7 @@ function readObject(text: string, start: number, onEnd?: (end: number) => void):
       return null;
     }
   }
+  if (opens) for (const index of opens) incomplete.add(index);
   return null;
 }
 
