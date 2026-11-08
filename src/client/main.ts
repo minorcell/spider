@@ -27,7 +27,7 @@ paintDocument(document);
 const stopThemeClock = startThemeClock(document);
 paintStage(parent, host);
 parent.append(buildChrome(document));
-syncStars(document);
+const stopStarSync = syncStars(document);
 
 const opening = openJournal().catch(() => null);
 const backend = opening.then((opened) => opened?.store ?? dbSnapshotStore());
@@ -55,6 +55,7 @@ let stage: Stage | undefined;
 
 window.addEventListener('pagehide', () => {
   stopThemeClock();
+  stopStarSync();
   flushWorld('hide');
   keepaliveCloud();
   session.cancel();
