@@ -10,6 +10,9 @@ const observation: Observation = {
   view: VIEW_DISTANCE,
   beyond: 0,
   hidden: 0,
+  hiddenByWall: 0,
+  hiddenByGround: 0,
+  terrain: [],
   self: {
     x: 0,
     y: 0,
@@ -57,6 +60,7 @@ function execute(tool: { execute?: unknown }, input: unknown): Promise<unknown> 
 
 beforeEach(() => {
   session = {
+    landmarks: vi.fn(() => [{ name: '巢穴', x: 0, z: 0, ground: 0, note: '家' }]),
     observe: vi.fn(() => observation),
     worldInfo: vi.fn(() => world),
     sense: vi.fn((withWays = false) => {
@@ -129,6 +133,72 @@ describe('spiderTools', () => {
     expect(session.observe).toHaveBeenCalledWith(3);
     expect(result).toMatchObject({ ok: true, world, observation });
     expect(result).not.toHaveProperty('ahead');
+  });
+
+  it('compacts only the new observation while preserving target and terrain facts', async () => {
+    const full: Observation = {
+      ...observation,
+      terrain: [
+        { bearing: 0, distance: 8, rise: 1.2, by: 'clear' },
+        { bearing: 45, distance: 2, rise: 0.3, by: 'slope' },
+      ],
+      entities: [
+        {
+          id: 'stone-1',
+          kind: 'stone',
+          x: 3,
+          y: 2,
+          z: 4,
+          rise: 1,
+          stage: 0,
+          properties: [],
+          distance: 5,
+          bearing: 30,
+          inReach: false,
+        },
+        {
+          id: 'apple-1',
+          kind: 'apple',
+          x: 1,
+          y: 1,
+          z: 0,
+          rise: 0,
+          stage: 1,
+          properties: ['edible', 'carryable'],
+          distance: 1,
+          bearing: 90,
+          inReach: true,
+        },
+      ],
+    };
+    session.observe.mockReturnValueOnce(full);
+    const result = (await execute(
+      spiderTools(session as unknown as SimSession).observe,
+      {},
+    )) as any;
+    expect(result.observation.terrain).toEqual([
+      { bearing: 0, distance: 8, rise: 1.2 },
+      { bearing: 45, distance: 2, rise: 0.3, by: 'slope' },
+    ]);
+    expect(result.observation.entities[0]).toEqual({
+      id: 'stone-1',
+      kind: 'stone',
+      x: 3,
+      z: 4,
+      rise: 1,
+      distance: 5,
+      bearing: 30,
+      inReach: false,
+    });
+    expect(result.observation.entities[1]).toMatchObject({
+      stage: 1,
+      properties: ['edible', 'carryable'],
+      rise: 0,
+      inReach: true,
+    });
+    expect(result.landmarks).toEqual([{ name: '巢穴', x: 0, z: 0, ground: 0 }]);
+    expect(full.entities[0]).toMatchObject({ y: 2, stage: 0, properties: [] });
+    expect(full.terrain[0].by).toBe('clear');
   });
 
   it('observes the full view when no distance is given', async () => {

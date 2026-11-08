@@ -9,6 +9,7 @@ import { Terrain } from '@/src/shared/terrain';
 import type { EntityState } from '@/src/shared/state';
 import type { Controls } from '@/src/shared/types';
 import { block } from '@/tests/helpers';
+import { VIEW_DISTANCE } from '@/src/shared/world';
 import { drive } from '@/tests/simHelpers';
 
 const routeControl = vi.hoisted(() => ({
@@ -58,6 +59,7 @@ async function settle<T>(
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   routeControl.plan = null;
   delete KINDS.candy;
   delete KINDS['candy-no-meal'];
@@ -131,9 +133,9 @@ describe('SimSession basics', () => {
   it('observes at the asked distance, clamped', () => {
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 0, 1, 12) });
     const session = new SimSession(3);
-    expect(session.observe().view).toBe(16);
+    expect(session.observe().view).toBe(VIEW_DISTANCE);
     expect(session.observe(-1).view).toBe(0);
-    expect(session.observe(1000).view).toBe(16);
+    expect(session.observe(1000).view).toBe(VIEW_DISTANCE);
   });
 
   it('shortens the view inside grass, until the body is raised over it', () => {
@@ -154,13 +156,13 @@ describe('SimSession basics', () => {
       session.world.entities = session.world.entities.filter((entity) => entity.kind === 'nest');
       const apple = session.addEntity('apple', 0, -0.7);
       const dark = worldClock(new Date(2026, 0, 1, 23));
-      expect(session.observe(16).view).toBeCloseTo(16 * visualRange(dark), 3);
+      expect(session.observe().view).toBeCloseTo(VIEW_DISTANCE * visualRange(dark), 3);
       expect(session.near().map((item) => item.id)).toEqual([apple.id]);
       session.setLamp(true);
-      const lit = session.observe(16).view;
-      expect(lit).toBeCloseTo(16 * visualRange(dark, true), 3);
-      expect(lit).toBeLessThan(16);
-      expect(lit).toBeGreaterThan(16 * visualRange(dark));
+      const lit = session.observe().view;
+      expect(lit).toBeCloseTo(VIEW_DISTANCE * visualRange(dark, true), 3);
+      expect(lit).toBeLessThan(VIEW_DISTANCE);
+      expect(lit).toBeGreaterThan(VIEW_DISTANCE * visualRange(dark));
     } finally {
       vi.useRealTimers();
     }
@@ -181,6 +183,15 @@ describe('SimSession basics', () => {
 });
 
 describe('marks', () => {
+  it('carries an apple to the rear mountain landmark and drops it', async () => {
+    const session = new SimSession(3);
+    const apple = session.addEntity('apple', 0, -0.7);
+    expect(await settle(session.pickUp(apple.id), session)).toMatchObject({ ok: true });
+    const rear = session.landmarks().find((landmark) => landmark.name === '后山')!;
+    expect(await settle(session.moveTo(rear.x, rear.z, true), session)).toMatchObject({ ok: true });
+    expect(session.drop(apple.id)).toMatchObject({ ok: true, target: apple.id });
+    expect(session.world.carrying).toHaveLength(0);
+  });
   it('marks the place under the body and lists it from the current pose', () => {
     const session = new SimSession(5);
     session.spider.root.position.set(3.12345, 0, -2.12345);

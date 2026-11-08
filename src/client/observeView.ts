@@ -15,11 +15,12 @@ import {
 import { PALETTE } from '@/src/shared/config';
 import { paintObserve, paintPin } from '@/src/ui/dress';
 import { aheadAt } from '@/src/shared/sense';
-import { EYE_HEIGHT, grassHere, sightOutline } from '@/src/shared/sight';
+import { EYE_HEIGHT, sightOutline } from '@/src/shared/sight';
 import { surfaceOf } from '@/src/shared/terrain';
 import { toHeading, toObservation, type Observation, type WorldState } from '@/src/shared/state';
+import { viewDistance } from '@/src/shared/vision';
 
-import { GRASS_VIEW, REACH, REACH_Y, VIEW_DISTANCE } from '@/src/shared/world';
+import { REACH, REACH_Y } from '@/src/shared/world';
 import type { Spider } from '@/src/shared/sim/Spider';
 
 const RING = 72;
@@ -133,10 +134,7 @@ export class ObserveOverlay {
     let observation = this.#observation;
     let fresh = false;
     if (!observation || now - this.#observedAt >= OBSERVE_REFRESH_MS) {
-      const eye = walk(x, z) + EYE_HEIGHT + spider.heightSet;
-      const distance = grassHere(x, z, world.entities, eye)
-        ? Math.min(VIEW_DISTANCE, GRASS_VIEW)
-        : VIEW_DISTANCE;
+      const distance = viewDistance(world, x, z, spider.heightSet, spider.lamp);
       observation = toObservation(spider.capture(), world, REACH, distance, REACH_Y);
       this.#observation = observation;
       this.#observedAt = now;
@@ -241,7 +239,7 @@ export class ObserveOverlay {
               ? '挡住'
               : '视线外';
       const name = NAME[entity.kind] ?? entity.kind;
-      const rise = entity.y - observation.self.y;
+      const rise = entity.y - observation.self.ground;
       const climb =
         Math.abs(rise) < 0.05 ? '' : rise > 0 ? `　高 ${meters(rise)}` : `　低 ${meters(-rise)}`;
       let pin = this.#nodes.get(entity.id);

@@ -93,7 +93,7 @@ afterEach(() => {
 describe('constants', () => {
   it('exposes the sensing ranges', () => {
     expect(REACH).toBe(1.2);
-    expect(VIEW_DISTANCE).toBe(16);
+    expect(VIEW_DISTANCE).toBe(24);
     expect(GRASS_VIEW).toBe(4.5);
     expect(REACH_Y).toBe(1.6);
   });
