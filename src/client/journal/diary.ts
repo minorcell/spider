@@ -1,16 +1,14 @@
 import type { LanguageModelUsage, ModelMessage } from 'ai';
-import { contextTokensOf, modelIdOf, pilotReady, type PilotSettings } from '@/src/client/settings';
+import { modelIdOf, pilotReady, type PilotSettings } from '@/src/client/settings';
 import type { Journal } from '@/src/client/journal/api';
 import { blankMemory, openSpiderDb, type MemoryPage } from '@/src/client/journal/db';
 import { localDate, shiftDate } from '@/src/shared/dates';
 import {
   blankSession,
-  dropOldest,
   needsDigest,
   restoreSession,
   transcript,
   type ChatSession,
-  type CompactLimits,
 } from '@/src/client/journal/session';
 import {
   readUsage,
@@ -47,10 +45,6 @@ export interface MemoryApi {
   list(): Promise<Array<{ date: string; line: string }>>;
   get(date: string): Promise<MemoryView | null>;
   write(input: MemoryWrite): Promise<MemoryView>;
-}
-
-function limitsOf(settings: PilotSettings): CompactLimits {
-  return { contextTokens: contextTokensOf(settings.mode === 'local' ? 4 : settings.contextTokens) };
 }
 
 function viewOf(page: MemoryPage): MemoryView {
@@ -117,15 +111,8 @@ export class Diary implements Journal {
     return viewOf(next);
   }
 
-  async record(messages: ModelMessage[], settings: PilotSettings): Promise<void> {
-    this.session = dropOldest(
-      {
-        ...this.session,
-        messages,
-        updatedAt: Date.now(),
-      },
-      limitsOf(settings),
-    );
+  async record(messages: ModelMessage[], _settings: PilotSettings): Promise<void> {
+    this.session = { ...this.session, messages, updatedAt: Date.now() };
     this.dismissed = false;
     await this.save();
   }

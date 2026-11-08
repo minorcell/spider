@@ -3,7 +3,7 @@ import { parseInlineCalls } from '@/src/client/agent/inline';
 import { islandGroup } from '@/src/client/groundView';
 import {
   blankSession,
-  dropOldest,
+  planCompaction,
   estimateTokens,
   transcript,
   type ChatSession,
@@ -226,8 +226,8 @@ describe('journal budgets', () => {
     expect(bestOf(5, () => void estimateTokens(day))).toBeLessThan(25);
   });
 
-  it('drops the oldest of 400 turns in under 25 ms', () => {
-    expect(bestOf(5, () => void dropOldest(day, limits))).toBeLessThan(25);
+  it('plans compaction of 400 turns in under 25 ms', () => {
+    expect(bestOf(5, () => void planCompaction(day, limits))).toBeLessThan(25);
   });
 
   it('prints 400 turns in under 25 ms', () => {
