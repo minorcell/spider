@@ -190,6 +190,7 @@ export function buildChrome(doc: Document): DocumentFragment {
   nav.append(
     menuModel,
     button(doc, '记忆', { variant: 'quiet', id: 'menu-memory' }),
+    button(doc, '状态', { variant: 'quiet', id: 'menu-status' }),
     button(doc, '用量', { variant: 'quiet', id: 'menu-usage' }),
     button(doc, '云端', { variant: 'quiet', id: 'menu-cloud' }),
   );
@@ -346,7 +347,13 @@ export function buildChrome(doc: Document): DocumentFragment {
   paint(cloud, { padding: '30px clamp(22px, 4vw, 48px) 36px' });
   cloud.append(cloudForm);
 
-  body.append(model, memory, h(doc, 'section', { id: 'usage', hidden: true }), cloud);
+  body.append(
+    model,
+    memory,
+    h(doc, 'section', { id: 'status', hidden: true }),
+    h(doc, 'section', { id: 'usage', hidden: true }),
+    cloud,
+  );
   shell.append(rail, body);
   settings.append(shell);
 

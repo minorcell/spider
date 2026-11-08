@@ -18,7 +18,7 @@ import {
   type PilotSettings,
 } from '@/src/client/settings';
 import type { Stage } from '@/src/client/stage';
-import type { SimSession } from '@/src/shared/sim/session';
+import { SimSession } from '@/src/shared/sim/session';
 
 const loop = vi.hoisted(() => ({ runAgent: vi.fn() }));
 const cloudUi = vi.hoisted(() => ({
@@ -182,6 +182,16 @@ beforeEach(async () => {
 });
 
 describe('mountPanel chrome', () => {
+  it('opens the live status page from settings', async () => {
+    installChrome();
+    mountPanel(document, new SimSession(3), fakeStage());
+    clickButton('#settings-open');
+    clickButton('#menu-status');
+    expect(document.querySelector<HTMLElement>('#status')!.hidden).toBe(false);
+    expect(document.querySelector('#menu-status')!.getAttribute('aria-current')).toBe('page');
+    expect(document.querySelector('#status-world')!.textContent).toContain('世界种子3');
+    await flush();
+  });
   it('throws when the chrome is missing', () => {
     document.body.innerHTML = '';
     expect(() => mountPanel(document, fakeSession(), fakeStage())).toThrow('Missing pilot chrome');
