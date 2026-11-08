@@ -1,5 +1,5 @@
 import { GAIT } from '@/src/shared/config';
-import { blockAt, BODY_RADIUS } from '@/src/shared/sight';
+import { blockAt, BODY_RADIUS, groundOccluded, occluded } from '@/src/shared/sight';
 import type { Block } from '@/src/shared/state';
 
 const AHEAD = 8;
@@ -89,6 +89,58 @@ export interface Waypoint {
   x: number;
   z: number;
   open: number;
+}
+
+export interface TerrainDirection {
+  bearing: number;
+  distance: number;
+  rise: number;
+  by: Ahead['by'];
+}
+
+/** Visible nearby ground, in eight directions relative to the body. */
+export function terrainAround(
+  x: number,
+  z: number,
+  heading: number,
+  eye: number,
+  view: number,
+  height: (x: number, z: number) => number,
+  blocks: readonly Block[],
+  inside?: (x: number, z: number, margin?: number) => boolean,
+): TerrainDirection[] {
+  const origin = height(x, z);
+  return Array.from({ length: 8 }, (_, index) => {
+    const bearing = wrap(index * 45);
+    const direction = headingStep(heading + bearing);
+    const ahead = probe(x, z, heading + bearing, height, blocks, inside);
+    const limit = Math.min(
+      AHEAD,
+      view,
+      ahead.by === 'wall' || ahead.by === 'edge' ? Math.max(0, ahead.open - STEP) : AHEAD,
+    );
+    let distance = 0;
+    let rise = 0;
+    for (let step = STEP; step <= limit + 1e-6; step += STEP) {
+      const px = x + direction.x * step;
+      const pz = z + direction.z * step;
+      const ground = height(px, pz);
+      if (
+        occluded(x, z, px, pz, blocks, '', eye) ||
+        groundOccluded(x, z, eye, px, ground, pz, height)
+      )
+        break;
+      distance = step;
+      rise = ground - origin;
+    }
+    return {
+      bearing,
+      distance: round(distance),
+      rise: round(rise),
+      by:
+        ahead.by !== 'clear' && ahead.open <= Math.min(view, distance + STEP) ? ahead.by : 'clear',
+    };
+  });
 }
 
 interface WaySample {

@@ -19,7 +19,6 @@ import {
   blockedAt,
   BODY_RADIUS,
   EYE_HEIGHT,
-  grassHere,
   groundOccluded,
   insideHome,
   occluded,
@@ -28,7 +27,6 @@ import {
 import {
   createWorld,
   grow,
-  GRASS_VIEW,
   nextPropId,
   REACH,
   REACH_Y,
@@ -46,6 +44,8 @@ import { stepPhysics } from '@/src/shared/sim/physics';
 import { Spider } from '@/src/shared/sim/Spider';
 import { localDate } from '@/src/shared/dates';
 import { visualRange, worldClock } from '@/src/shared/ecology';
+import { viewDistance } from '@/src/shared/vision';
+import { homeLandmarks, type Landmark } from '@/src/shared/landmarks';
 
 function detourNote(around: readonly string[], direct: boolean, arrived: boolean): string | null {
   if (direct && around.length === 0) return null;
@@ -94,6 +94,25 @@ export class SimSession {
   }
 
   #active: ActiveGoal | null = null;
+  #landmarkCache: {
+    terrain: WorldState['terrain'];
+    blocks: WorldState['blocks'];
+    landmarks: Landmark[];
+  } | null = null;
+
+  landmarks(): Landmark[] {
+    if (
+      this.#landmarkCache?.terrain !== this.world.terrain ||
+      this.#landmarkCache.blocks !== this.world.blocks
+    ) {
+      this.#landmarkCache = {
+        terrain: this.world.terrain,
+        blocks: this.world.blocks,
+        landmarks: homeLandmarks(this.world),
+      };
+    }
+    return this.#landmarkCache.landmarks;
+  }
 
   cancel(): void {
     const active = this.#active;
@@ -133,15 +152,8 @@ export class SimSession {
   }
 
   observe(distance = VIEW_DISTANCE): Observation {
-    const asked = Math.min(VIEW_DISTANCE, Math.max(0, distance));
-    const light = worldClock();
-    const lightLimit = VIEW_DISTANCE * visualRange(light, this.spider.lamp);
     const { x, z } = this.spider.root.position;
-    const ground = surfaceOf(this.world.terrain, x, z);
-    const eye = ground + EYE_HEIGHT + this.spider.heightSet;
-    const view = grassHere(x, z, this.world.entities, eye)
-      ? Math.min(asked, GRASS_VIEW, lightLimit)
-      : Math.min(asked, lightLimit);
+    const view = viewDistance(this.world, x, z, this.spider.heightSet, this.spider.lamp, distance);
     return toObservation(this.spider.capture(), this.world, REACH, view, REACH_Y);
   }
 

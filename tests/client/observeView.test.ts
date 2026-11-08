@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BufferAttribute, Line, LineSegments, PerspectiveCamera, Vector3 } from 'three';
 import { ObserveOverlay } from '@/src/client/observeView';
 import type { Spider } from '@/src/shared/sim/Spider';
@@ -46,9 +46,12 @@ function world(over: Partial<WorldState> = {}): WorldState {
 let parent: HTMLElement;
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 0, 1, 12) });
   parent = document.createElement('div');
   document.body.append(parent);
 });
+
+afterEach(() => vi.useRealTimers());
 
 function camera(): PerspectiveCamera {
   const cam = new PerspectiveCamera(60, 800 / 600, 0.1, 1000);
@@ -59,6 +62,15 @@ function camera(): PerspectiveCamera {
 }
 
 describe('ObserveOverlay', () => {
+  it('uses the same night-time visibility limit as the agent', () => {
+    vi.setSystemTime(new Date(2026, 0, 1, 0));
+    const overlay = new ObserveOverlay(parent);
+    overlay.sync(true, camera(), fakeSpider(0, 0), world(), view);
+    const ring = (overlay.object.children[0] as Line).geometry.getAttribute(
+      'position',
+    ) as BufferAttribute;
+    expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeCloseTo(2.4, 1);
+  });
   it('grows tick buffers for the whole world and retains them when entities leave', () => {
     const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
     const overlay = new ObserveOverlay(parent);
@@ -325,7 +337,7 @@ describe('ObserveOverlay', () => {
       'position',
     ) as BufferAttribute;
     expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeLessThan(5);
-    expect(Math.hypot(ring.getX(36), ring.getZ(36))).toBeCloseTo(16);
+    expect(Math.hypot(ring.getX(36), ring.getZ(36))).toBeCloseTo(24);
   });
 
   it('widens the sight area when the body rears up', () => {

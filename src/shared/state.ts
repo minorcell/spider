@@ -3,9 +3,11 @@ import {
   aheadAt,
   senseBody,
   waysAt,
+  terrainAround,
   type Ahead,
   type NearbySolid,
   type Waypoint,
+  type TerrainDirection,
 } from '@/src/shared/sense';
 import {
   EYE_HEIGHT,
@@ -141,6 +143,7 @@ export interface SeenEntity {
   properties: readonly string[];
   distance: number;
   bearing: number;
+  rise: number;
   inReach: boolean;
 }
 
@@ -167,6 +170,7 @@ export interface Observation {
   hidden: number;
   hiddenByWall: number;
   hiddenByGround: number;
+  terrain: TerrainDirection[];
   self: {
     x: number;
     y: number;
@@ -344,6 +348,7 @@ export function toObservation(
       properties: propertiesOf(entity.kind),
       distance: round3(distance),
       bearing: bearingFrom(dx, dz, heading),
+      rise: round3(entity.y - ground),
       inReach: distance <= reach && vertical <= reachY,
     });
   }
@@ -364,6 +369,16 @@ export function toObservation(
     hidden,
     hiddenByWall,
     hiddenByGround,
+    terrain: terrainAround(
+      px,
+      pz,
+      heading,
+      eye,
+      view,
+      (x, z) => surfaceOf(world.terrain, x, z),
+      world.blocks,
+      inside,
+    ),
     self: {
       x: round3(px),
       y: round3(state.position.y),

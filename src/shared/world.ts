@@ -10,7 +10,7 @@ import { Terrain, TERRAIN } from '@/src/shared/terrain';
 
 export const REACH = 1.2;
 
-export const VIEW_DISTANCE = 16;
+export const VIEW_DISTANCE = 24;
 
 export const GRASS_VIEW = 4.5;
 

@@ -1,8 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { senseBody } from '@/src/shared/sense';
+import { senseBody, terrainAround } from '@/src/shared/sense';
 import { block, flat } from '@/tests/helpers';
 
 describe('senseBody', () => {
+  it('summarizes visible elevation in eight relative directions without seeing through walls', () => {
+    const slope = (x: number, z: number) => x * 0.1 - z * 0.2;
+    const wall = block('wall', -1, 1, -3, -2);
+    const directions = terrainAround(0, 0, 0, 0.85, 8, slope, [wall]);
+    expect(directions).toHaveLength(8);
+    expect(directions[0].distance).toBeLessThan(2);
+    expect(directions[0].by).toBe('wall');
+    expect(directions[2].bearing).toBe(90);
+    expect(directions[2].rise).toBeGreaterThan(0);
+    expect(directions[4].rise).toBeLessThan(0);
+    expect(terrainAround(0, 0, 0, 0.85, 1, flat, []).every((item) => item.distance <= 1)).toBe(
+      true,
+    );
+  });
   it('looks straight down a clear field', () => {
     const felt = senseBody(0, 0, 0, 0, flat, []);
     expect(felt.ahead).toEqual({ open: 8, by: 'clear', id: null, kind: null });

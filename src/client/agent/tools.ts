@@ -5,6 +5,7 @@ import type { ActionHint, NearEntity, Observation, Sense, WorldInfo } from '@/sr
 import { CARRY_LIMIT, GAIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
 import { VIEW_DISTANCE } from '@/src/shared/world';
 import type { MemoryApi } from '@/src/client/journal/diary';
+import type { Landmark } from '@/src/shared/landmarks';
 
 export interface ToolResult extends GoalOutcome {
   observation?: Observation;
@@ -19,6 +20,30 @@ const thought = z.string().describe('用第一人称说一句你在做什么，2
 
 function call<T extends z.ZodRawShape>(shape: T) {
   return z.object({ description: thought, ...shape });
+}
+
+/** Compact new observations without modifying any previously sent messages. */
+function agentObservation(observation: Observation) {
+  return {
+    ...observation,
+    terrain: observation.terrain.map(({ by, ...direction }) =>
+      by === 'clear' ? direction : { ...direction, by },
+    ),
+    entities: observation.entities.map(({ y: _y, stage, properties, ...entity }) => ({
+      ...entity,
+      ...(stage === 0 ? {} : { stage }),
+      ...(properties.length === 0 ? {} : { properties }),
+    })),
+  };
+}
+
+function agentLandmarks(landmarks: readonly Landmark[]) {
+  return landmarks.map(({ name, x, z, ground }) => ({
+    name,
+    x,
+    z,
+    ground: Math.round(ground * 100) / 100,
+  }));
 }
 
 export function spiderTools(session: SimSession, memory?: MemoryApi) {
@@ -111,7 +136,8 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
 
   const tools = {
     observe: tool({
-      description: '观察周围。草丛会缩短视野，抬高身体能看得更远；inReach 表示够得着。',
+      description:
+        '观察周围地形和物体，并查看家园地标。草丛会缩短视野，抬高身体能看得更远；inReach 表示够得着。',
       inputSchema: call({
         distance: z
           .number()
@@ -153,8 +179,9 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
           ok: true,
           world,
           near: session.near(),
+          landmarks: agentLandmarks(session.landmarks()),
           ...(hint ? { hint } : {}),
-          observation,
+          observation: agentObservation(observation),
         };
       },
     }),
@@ -194,14 +221,19 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       },
     }),
     mark: tool({
-      description: `记录、查看或删除有名字的地点，最多 ${MARK_LIMIT} 个。`,
+      description: `记录、查看或删除有名字的地点，最多 ${MARK_LIMIT} 个。列表还包含家园内置地标。`,
       inputSchema: call({
         command: z.enum(['add', 'list', 'remove']).describe('add、list 或 remove。'),
         name: z.string().optional().describe(`地点名，${MARK_NAME_MAX} 字以内。add、remove 要填。`),
         note: z.string().optional().describe(`备注，${MARK_NOTE_MAX} 字以内。`),
       }),
       execute: async ({ command, name, note }) => {
-        if (command === 'list') return { ...finish({ ok: true }), marks: session.marks() };
+        if (command === 'list')
+          return {
+            ...finish({ ok: true }),
+            marks: session.marks(),
+            landmarks: agentLandmarks(session.landmarks()),
+          };
         if (!name) return finish({ ok: false, reason: 'need-name' });
         if (command === 'add') return finish(session.mark(name, note));
         return finish(session.forgetMark(name));
