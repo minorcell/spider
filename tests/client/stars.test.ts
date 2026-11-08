@@ -129,6 +129,7 @@ describe('syncStars', () => {
     expect(slot.hidden).toBe(true);
     expect(slot.textContent).toBe('');
     visible = false;
+    document.dispatchEvent(new Event('visibilitychange'));
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
     expect(fetcher).toHaveBeenCalledTimes(2);
     visible = true;
