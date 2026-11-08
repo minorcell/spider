@@ -20,6 +20,7 @@ import { bindCloud } from '@/src/client/panel/cloud';
 import { bindLeave } from '@/src/client/panel/leave';
 import { bindMemory } from '@/src/client/panel/memory';
 import { bindUsage } from '@/src/client/panel/usage';
+import { bindStatus } from '@/src/client/panel/status';
 import { explain, isAbort, numberOrNull, thoughtOf } from '@/src/client/panel/helpers';
 import { QUICK_PROVIDERS, discoverModels, type ModelProvider } from '@/src/client/providers';
 import { pilotReady, readPilot, writePilot, type PilotSettings } from '@/src/client/settings';
@@ -45,6 +46,7 @@ export function mountPanel(
   const open = doc.querySelector<HTMLButtonElement>('#settings-open');
   const menuModel = doc.querySelector<HTMLButtonElement>('#menu-model');
   const menuMemory = doc.querySelector<HTMLButtonElement>('#menu-memory');
+  const menuStatus = doc.querySelector<HTMLButtonElement>('#menu-status');
   const menuUsage = doc.querySelector<HTMLButtonElement>('#menu-usage');
   const menuCloud = doc.querySelector<HTMLButtonElement>('#menu-cloud');
   const map = doc.querySelector<HTMLButtonElement>('#observe-open');
@@ -60,6 +62,7 @@ export function mountPanel(
   const leaveClose = doc.querySelector<HTMLButtonElement>('#leave-close');
   const leaveSummarize = doc.querySelector<HTMLButtonElement>('#leave-summarize');
   const usagePanel = doc.querySelector<HTMLElement>('#usage');
+  const statusPanel = doc.querySelector<HTMLElement>('#status');
   const cloudPanel = doc.querySelector<HTMLElement>('#panel-cloud');
   const cloudForm = doc.querySelector<HTMLFormElement>('#cloud-form');
   const cloudStatus = doc.querySelector<HTMLElement>('#cloud-status');
@@ -77,6 +80,7 @@ export function mountPanel(
     !open ||
     !menuModel ||
     !menuMemory ||
+    !menuStatus ||
     !menuUsage ||
     !map ||
     !dialog ||
@@ -90,6 +94,7 @@ export function mountPanel(
     !leaveClose ||
     !leaveSummarize ||
     !usagePanel ||
+    !statusPanel ||
     !menuCloud ||
     !cloudPanel ||
     !cloudForm ||
@@ -329,12 +334,14 @@ export function mountPanel(
   const pages = {
     model: panelModel,
     memory: memoryPanel,
+    status: statusPanel,
     usage: usagePanel,
     cloud: cloudPanel,
   } as const;
   const nav = {
     model: menuModel,
     memory: menuMemory,
+    status: menuStatus,
     usage: menuUsage,
     cloud: menuCloud,
   } as const;
@@ -467,6 +474,17 @@ export function mountPanel(
     journalReady,
   });
 
+  const status = bindStatus({
+    doc,
+    menu: menuStatus,
+    panel: statusPanel,
+    dialog,
+    session,
+    showPage: () => showPage('status'),
+    getJournal,
+    journalReady,
+  });
+
   const usage = bindUsage({
     doc,
     menuUsage,
@@ -508,6 +526,8 @@ export function mountPanel(
     settings: PilotSettings,
   ): Promise<void> => {
     let sawText = false;
+    let finalStatus = '已完成';
+    status.start(settings);
     const traces: Trace[] = [];
     let pending: { name: string; input: unknown } | null = null;
     lastActivity = Date.now();
@@ -516,6 +536,7 @@ export function mountPanel(
     try {
       const opened = journal ?? (await journalReady);
       if (controller.signal.aborted) {
+        finalStatus = '已停止';
         if (!replaced.has(controller)) show('已停止', 'note');
         release(controller);
         return;
@@ -531,6 +552,7 @@ export function mountPanel(
         signal: controller.signal,
         onEvent(event) {
           if (controller.signal.aborted) return;
+          status.event(event);
           switch (event.type) {
             case 'text':
               sawText = true;
@@ -566,6 +588,7 @@ export function mountPanel(
         await opened?.recordUsage(reply.usage);
       }
       if (controller.signal.aborted) {
+        finalStatus = '已停止';
         if (!replaced.has(controller)) show('已停止', 'note');
         release(controller);
       } else {
@@ -577,6 +600,7 @@ export function mountPanel(
             recorded = true;
           } catch (error) {
             failed = true;
+            finalStatus = '保存失败';
             show(explain(error instanceof Error ? error.message : String(error)), 'note');
           }
         }
@@ -586,11 +610,16 @@ export function mountPanel(
       if (dialog.open && !usagePanel.hidden) await usage.refresh();
     } catch (error) {
       if (controller.signal.aborted || isAbort(error)) {
+        finalStatus = '已停止';
         if (!replaced.has(controller)) show('已停止', 'note');
         release(controller);
-      } else show(explain(error instanceof Error ? error.message : String(error)), 'note');
+      } else {
+        finalStatus = '处理失败';
+        show(explain(error instanceof Error ? error.message : String(error)), 'note');
+      }
     } finally {
       if (current === controller) {
+        status.finish(finalStatus);
         current = null;
         send.textContent = '发送';
       }

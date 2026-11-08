@@ -23,6 +23,23 @@ export type AgentEvent =
   | { type: 'text'; text: string }
   | { type: 'tool-call'; name: string; input: unknown }
   | { type: 'tool-result'; name: string; output: unknown }
+  | {
+      type: 'context';
+      step: number;
+      instructions: unknown;
+      messages: unknown;
+      tools: string[];
+      local: boolean;
+    }
+  | {
+      type: 'usage';
+      step: number;
+      input: number | null;
+      output: number | null;
+      cacheRead: number | null;
+      cacheWrite: number | null;
+      reasoning: number | null;
+    }
   | { type: 'error'; message: string };
 
 export interface AgentReply {
@@ -111,6 +128,16 @@ export async function runAgent({
       reasoning: reasoningOf(settings),
       abortSignal: signal,
       toolCallConcurrency: 1,
+      onStepStart(event) {
+        onEvent?.({
+          type: 'context',
+          step: event.stepNumber,
+          instructions: event.instructions,
+          messages: event.messages,
+          tools: Object.keys(event.tools ?? {}),
+          local,
+        });
+      },
       onToolExecutionStart(event) {
         onEvent?.({
           type: 'tool-call',
@@ -131,6 +158,15 @@ export async function runAgent({
         });
       },
       onStepEnd(step) {
+        onEvent?.({
+          type: 'usage',
+          step: step.stepNumber,
+          input: step.usage?.inputTokens ?? null,
+          output: step.usage?.outputTokens ?? null,
+          cacheRead: step.usage?.inputTokenDetails?.cacheReadTokens ?? null,
+          cacheWrite: step.usage?.inputTokenDetails?.cacheWriteTokens ?? null,
+          reasoning: step.usage?.outputTokenDetails?.reasoningTokens ?? null,
+        });
         const stepTools = step.toolCalls.map((call) => {
           const recorded = pendingTools.get(call.toolCallId);
           if (recorded) return recorded;

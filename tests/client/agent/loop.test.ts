@@ -67,6 +67,57 @@ beforeEach(() => {
 });
 
 describe('runAgent', () => {
+  it('reports the request context and provider usage without changing the request', async () => {
+    stream([]);
+    const events: AgentEvent[] = [];
+    await runAgent({
+      goal: 'go',
+      session: fakeSession(),
+      settings,
+      onEvent: (event) => events.push(event),
+    });
+    const options = aiControl.streamText.mock.calls[0][0];
+    const messages = [{ role: 'user', content: 'go' }];
+    options.onStepStart({ stepNumber: 0, instructions: 'rules', messages });
+    options.onStepEnd({
+      callId: 'c1',
+      stepNumber: 0,
+      model: { provider: 'test', modelId: 'model' },
+      usage: { inputTokens: 1200, outputTokens: 20, inputTokenDetails: { cacheReadTokens: 300 } },
+      finishReason: 'stop',
+      toolCalls: [],
+      toolResults: [],
+      performance: {},
+    });
+    options.onStepEnd({
+      callId: 'c2',
+      stepNumber: 1,
+      model: { provider: 'test', modelId: 'model' },
+      finishReason: 'stop',
+      toolCalls: [],
+      toolResults: [],
+      performance: {},
+    });
+    expect(events).toContainEqual({
+      type: 'context',
+      step: 0,
+      instructions: 'rules',
+      messages,
+      tools: [],
+      local: false,
+    });
+    expect(events).toContainEqual({
+      type: 'usage',
+      step: 0,
+      input: 1200,
+      output: 20,
+      cacheRead: 300,
+      cacheWrite: null,
+      reasoning: null,
+    });
+    expect(messages).toEqual([{ role: 'user', content: 'go' }]);
+  });
+
   it('keeps only the final words when one message mixes prose and tools', async () => {
     stream([
       { type: 'text-delta', text: '我先看看' },
