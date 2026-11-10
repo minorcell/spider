@@ -5,23 +5,23 @@ import type { BodySpec, BodyState, Motion, PhysicsView } from './module_Physics'
 export type Freshness = 'fresh' | 'rotten' | 'expired';
 
 export interface DroppedItemData {
-  /** Reference to the shared item definition. */
+  /** 引用共享的物品类型定义。 */
   readonly itemTypeId: TypeId;
-  /** Committed bites only. An interrupted bite leaves this unchanged. */
+  /** 只记录已经结算的口数。中断一口的过程会保留这个值。 */
   readonly completedBites: number;
-  /** Instance thresholds survive handling and save/load. */
+  /** 实例的时间阈值，在搬运和存档恢复时继续沿用。 */
   readonly deadline?: Deadline;
 }
 
 export interface FoodSource {
   readonly spec: FoodSpec;
-  /** Commits one bite after the action executor revalidates the target. */
+  /** 动作执行器重新校验目标后，结算一口。 */
   bite(): Readonly<{ completedBites: number; nutrition: number; depleted: boolean }>;
 }
 
 export interface Metabolism {
   readonly hunger: number;
-  /** Apply one committed bite. The actor clamps its own needs. */
+  /** 应用已经结算的一口营养。行动者负责将自身需求值限制在有效范围内。 */
   feed(nutrition: number): void;
 }
 
@@ -29,9 +29,9 @@ export interface EntityView {
   readonly id: EntityId;
   readonly typeId: TypeId;
   readonly modelId: TypeId;
-  /** Derived from the last committed physics state. */
+  /** 根据上次提交的物理状态生成。 */
   readonly body: BodyState;
-  /** Shared by rendering, perception, and diagnostics. */
+  /** 渲染、感知与诊断共用这份状态。 */
   readonly item?: Readonly<{ itemTypeId: TypeId; completedBites: number; freshness: Freshness }>;
   readonly hunger?: number;
   readonly tetherable: boolean;
@@ -40,24 +40,24 @@ export interface EntityView {
 export interface Entity {
   readonly id: EntityId;
   readonly typeId: TypeId;
-  /** Static physical definition. The world owns changes to pose and velocity. */
+  /** 固定的物理定义。由世界负责更改位姿和速度。 */
   readonly bodySpec: BodySpec;
   readonly tetherable: boolean;
   readonly food?: FoodSource;
   readonly metabolism?: Metabolism;
-  /** A shared query used for expiry, food validation, and read projections. */
+  /** 过期处理、食用校验和只读视图使用同一个查询。 */
   freshnessAt?(clock: Clock): Freshness;
-  /** Update private behavior such as metabolism, and return proposed motion. */
+  /** 更新代谢等对象自有状态，并返回运动意图。 */
   tick(clock: Clock, dtSeconds: number, physics: PhysicsView): readonly Motion[];
-  /** Produce detached read data. Exposes neither an entity class nor a Three.js object. */
+  /** 生成独立的只读数据，对外只暴露数据投影。 */
   project(body: BodyState, clock: Clock): EntityView;
-  /** Serialize instance-owned data. Physics and relations are captured separately. */
+  /** 序列化实例自身的数据，物理状态和牵引关系分别保存。 */
   saveData(): Json;
 }
 
 export interface EntityType {
   readonly id: TypeId;
-  /** Validate instance data and construct the runtime object. */
+  /** 校验实例数据并构造运行时对象。 */
   create(id: EntityId, data: Json, catalog: ItemCatalog): Entity;
 }
 

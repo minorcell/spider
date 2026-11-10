@@ -2,31 +2,31 @@ import type { Pose, Registry, Tick, TypeId, UnixMs } from './base';
 import type { BodySpec, PhysicsView, Terrain } from './module_Physics';
 
 export interface FoodSpec {
-  /** Number of bites required to consume a full item. */
+  /** 从完整到吃完需要结算的口数。 */
   readonly bites: number;
-  /** Simulated duration of one bite. */
+  /** 吃完一口所需的模拟时间。 */
   readonly secondsPerBite: number;
-  /** Applied by the consumer once a bite commits. */
+  /** 每完成一口，由进食者应用这份营养。 */
   readonly nutritionPerBite: number;
 }
 
 export interface LifetimeSpec {
-  /** Real device time or actively simulated time. */
+  /** 物品可选择设备的现实时间或实际推进的模拟时间。 */
   readonly clock: 'wall' | 'simulation';
   readonly lifetimeSeconds: number;
-  /** Final part of the lifetime during which an item cannot be eaten. */
+  /** 生命周期末尾的腐烂时长。这段时间内物品无法食用。 */
   readonly rottenSeconds: number;
 }
 
 export type Deadline =
-  // Store both thresholds so tuning the definition affects new instances.
+  // 保存两个时间阈值。调整定义时，新的时长应用于之后创建的实例。
   | Readonly<{ clock: 'wall'; rotsAtMs: UnixMs; expiresAtMs: UnixMs }>
   | Readonly<{ clock: 'simulation'; rotsAtTick: Tick; expiresAtTick: Tick }>;
 
 export interface ItemType {
   readonly id: TypeId;
   readonly body: BodySpec;
-  /** The browser's model registry resolves this ID. */
+  /** 浏览器用这个 ID 从模型注册表查找外观。 */
   readonly modelId: TypeId;
   readonly tetherable: boolean;
   readonly food?: FoodSpec;
@@ -34,20 +34,20 @@ export interface ItemType {
 }
 
 export interface PopulationRule {
-  /** Separate from item type so a world can choose whether and where to grow items. */
+  /** 生成规则独立于物品类型，世界可决定是否生成、在哪里生成。 */
   readonly id: TypeId;
   readonly itemTypeId: TypeId;
-  /** Count instances on the ground. Tethered items can coexist beyond this cap. */
+  /** 统计地面实例。被牵引的同类物品可以使总数超过此上限。 */
   readonly targetCount: number;
-  /** Active seconds below the cap before trying another spawn. */
+  /** 低于上限时，距离再次尝试生成所需的前台模拟秒数。 */
   readonly intervalSeconds: number;
-  /** Registered policy for placement, including spacing and acceptable terrain. */
+  /** 已注册的放置规则，包含物体间距和可用地形的限制。 */
   readonly placementId: TypeId;
 }
 
 export interface PlacementPolicy {
   readonly id: TypeId;
-  /** Propose a resting pose using the same terrain and space as movement. */
+  /** 使用与移动相同的地形和空间查询，提出一个可落地的位姿。 */
   pick(terrain: Terrain, physics: PhysicsView, random: () => number): Pose | undefined;
 }
 

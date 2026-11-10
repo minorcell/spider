@@ -33,7 +33,7 @@ export const applePopulation: PopulationRule = {
   placementId: 'spider:dry-ground-fruit',
 };
 
-/** Example fixture for proving that a new food uses the same engine path. */
+/** 用这个测试用例验证新食物可以走同一套引擎逻辑。 */
 export function registerPearScenario(
   items: RegistryBuilder<ItemType>,
   populations: RegistryBuilder<PopulationRule>,

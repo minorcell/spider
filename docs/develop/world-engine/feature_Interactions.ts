@@ -7,7 +7,7 @@ interface Interaction {
   readonly target: EntityId;
 }
 
-/** Called when the executor reaches a bite boundary, after physics. */
+/** 物理求解完成后，动作执行器在一口到达结算时点时调用。 */
 export function commitBite(world: ActionWorld, interaction: Interaction): void {
   const { command, actor: actorId, target: targetId } = interaction;
   const actor = world.entity(actorId);
@@ -47,7 +47,7 @@ export function commitBite(world: ActionWorld, interaction: Interaction): void {
   });
   if (!bite.depleted) return;
 
-  // Retire the successful command before removal invalidates other references to the target.
+  // 先将当前命令标记为成功，再移除目标。移除时会让其他引用该目标的命令失效。
   world.finish(command, {
     ok: true,
     detail: { kind: 'meal', target: targetId, completedBites: bite.completedBites, removed: true },
@@ -55,7 +55,7 @@ export function commitBite(world: ActionWorld, interaction: Interaction): void {
   world.remove(targetId, 'eaten');
 }
 
-/** Release removes exactly one constraint. The next physics solve sees the original body. */
+/** 松手只解除这一条约束。下一次物理求解继续使用原物理体。 */
 export function release(world: ActionWorld, interaction: Interaction): void {
   const { command, actor, target } = interaction;
   if (!world.entity(target)) {

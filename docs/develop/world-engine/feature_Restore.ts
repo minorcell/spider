@@ -11,11 +11,11 @@ import type { World, WorldFrame, WorldRestoreResult } from './module_World';
 
 interface LegacyApple {
   readonly stage: number;
-  /** Present only in snapshots produced by the earlier apple-lifecycle prototype. */
+  /** 只有早期苹果生命周期原型保存过这个字段。 */
   readonly expiresAt?: UnixMs;
 }
 
-/** The inputs have already passed legacy format validation. */
+/** 输入已通过旧版格式校验。 */
 export function restoreApple(
   item: LegacyApple,
   ordinal: number,
@@ -26,7 +26,7 @@ export function restoreApple(
   const deadline: Deadline = { clock: 'wall', rotsAtMs: expiresAtMs - 90_000, expiresAtMs };
   return {
     itemTypeId: 'spider:apple',
-    // A 3-bite apple with 1 or 2 completed bites maps to 2 or 4 out of 6.
+    // 旧版苹果共三口，已经吃掉一口或两口时，分别换算为六口中的两口或四口。
     completedBites: Math.min(5, Math.floor(item.stage) * (legacy ? 2 : 1)),
     deadline,
   };
@@ -43,7 +43,7 @@ export type RestoreResult =
     }>
   | Readonly<{ ok: false; reason: CheckpointError }>;
 
-/** The host installs the returned world only on success, after checking write authority. */
+/** 宿主确认恢复成功且具备写入权限后，才接管返回的世界。 */
 export function restoreCandidate(
   raw: unknown,
   wallNowMs: UnixMs,

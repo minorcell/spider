@@ -2,13 +2,13 @@ import type { Vec3 } from './base';
 import type { BodyState, Motion, Tether } from './module_Physics';
 
 export interface AnchorMotion {
-  /** Local mount transformed through the carrier's current pose. */
+  /** 用牵引者的当前位姿，将局部挂点转换到世界坐标。 */
   readonly position: Vec3;
-  /** World-space mount velocity, including carrier motion. */
+  /** 挂点在世界坐标下的速度，包含牵引者自身的运动。 */
   readonly velocity: Vec3;
 }
 
-/** The space supplies this impulse to its normal dynamic-body solve. */
+/** 空间求解器将这份冲量纳入常规动态体求解。 */
 export function tetherImpulse(
   tether: Tether,
   anchor: AnchorMotion,

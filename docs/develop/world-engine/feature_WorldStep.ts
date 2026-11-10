@@ -4,26 +4,26 @@ import type { Entity } from './module_Entity';
 import type { PhysicsSpace } from './module_Physics';
 import type { WorldFrame } from './module_World';
 
-/** The implementation of World opens this transaction internally. */
+/** 世界的实现负责在内部开启这个事务。 */
 export interface StepTransaction extends ActionWorld {
   readonly physics: PhysicsSpace;
   readonly actions: ActionExecutor;
   readonly gravity: Vec3;
-  /** Visits a stable list of the entities present after lifecycle and spawning. */
+  /** 以稳定的顺序遍历生命周期处理和生成结束后仍在世界中的实体。 */
   entities(): readonly Entity[];
-  /** Remove expired bodies and constraints, invalidate actions, and record transitions. */
+  /** 移除到期的物理体与约束，结束失效动作，并记录状态变化。 */
   reconcileExpiry(): void;
-  /** Advance eligible population timers by one fixed step and add any successful spawns. */
+  /** 将符合条件的种群计时器推进一个固定步，并加入成功生成的实体。 */
   advancePopulations(): void;
-  /** Offer work for idle actors using the same action queue as user commands. */
+  /** 为空闲行动者提出自主动作，与用户指令共用动作队列。 */
   offerAutonomy(): void;
-  /** Return the projected state and all events, after every effect is applied. */
+  /** 所有效果应用完毕后，返回状态视图及本次更新的全部事件。 */
   publish(): WorldFrame;
 }
 
 export type BeginStep = (clock: Clock) => StepTransaction;
 
-/** Reference flow. The runtime supplies the transaction and the individual systems. */
+/** 世界步进示例。运行时负责提供事务及各系统的实现。 */
 export function advance(previous: Clock, wallNowMs: UnixMs, dtSeconds: number, begin: BeginStep) {
   const world = begin({
     tick: previous.tick + 1,
@@ -31,7 +31,7 @@ export function advance(previous: Clock, wallNowMs: UnixMs, dtSeconds: number, b
     wallNowMs,
   });
 
-  // An item expiring at this clock cannot finish a bite or start a tether in this step.
+  // 本步到期的物品会先被移除，本步内无法继续吃这一口或建立牵引。
   world.reconcileExpiry();
   world.advancePopulations();
   world.offerAutonomy();

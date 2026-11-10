@@ -4,41 +4,41 @@ import type { BodyState, Tether } from './module_Physics';
 export interface EntityRecord {
   readonly id: EntityId;
   readonly typeId: TypeId;
-  /** Body pose and velocity are saved separately from entity behavior data. */
+  /** 物理体的位姿和速度与实体行为数据分别保存。 */
   readonly body: BodyState;
-  /** Validated by the registered type when it constructs the entity. */
+  /** 已注册的类型在构造实体时校验这份数据。 */
   readonly data: Json;
 }
 
 export interface PopulationRecord {
   readonly ruleId: TypeId;
-  /** Active seconds remaining until the next attempt. */
+  /** 距离下次尝试生成还有多少前台模拟秒。 */
   readonly secondsUntilAttempt: number;
-  /** Advances on failed placement too, so restore cannot reroll an attempt. */
+  /** 放置失败也递增尝试次数，避免恢复时重新抽取同一次尝试。 */
   readonly attempts: number;
 }
 
 export interface WorldSnapshot {
-  /** Version of the data inside the local and cloud envelopes. */
+  /** 本地存档和云端存档封装内部的世界数据版本。 */
   readonly schema: 1;
   readonly seed: number;
   readonly tick: Tick;
   readonly simSeconds: number;
   readonly gravity: Vec3;
-  /** The next entity identity counter, retained after removals. */
+  /** 分配下一个实体 ID 的计数器。移除实体时也保留计数。 */
   readonly nextEntity: number;
   readonly controlledActor: EntityId;
-  /** Ground and tethered objects share this list. IDs appear once. */
+  /** 地面物品和被牵引的物品共享这份列表。每个 ID 只出现一次。 */
   readonly entities: readonly EntityRecord[];
   readonly tethers: readonly Tether[];
   readonly populations: readonly PopulationRecord[];
   readonly marks: readonly Mark[];
 }
 
-/** Browser-only metadata kept outside the engine snapshot. */
+/** 浏览器使用的元数据，与引擎快照分开保存。 */
 export interface CheckpointPayload {
   readonly world: WorldSnapshot;
-  /** Text retained for the existing interruption prompt. */
+  /** 保留的文本用于现有的指令中断提示。 */
   readonly pending: Readonly<{ text: string; tool: string | null }> | null;
 }
 
@@ -48,8 +48,8 @@ export type DecodedCheckpoint =
   | Readonly<{ ok: false; reason: CheckpointError }>;
 
 export interface SnapshotCodec {
-  /** Decode the world payload of local format 3 or 4 and cloud format 1 or 2. */
+  /** 解码本地格式 3、4 和云端格式 1、2 中的世界数据。 */
   decode(raw: unknown, wallNowMs: UnixMs): DecodedCheckpoint;
-  /** Encode a versioned, JSON-safe payload. The storage layer owns its envelope. */
+  /** 将带版本的世界数据编码为 JSON 安全值。存储层负责外层封装。 */
   encode(checkpoint: CheckpointPayload): Json;
 }

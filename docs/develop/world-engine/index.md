@@ -1,85 +1,85 @@
-# World simulation engine
+# 世界模拟引擎设计
 
-## What changes in the game
+## 游戏里的变化
 
-An apple currently leaves the ground-object collection when the spider picks it up. Ground physics and the tether code then apply different rules to the same object. A tethered apple should still collide with a stone or the nest, roll on release, and retain its bite progress and age. The same behaviors should work for another registered food without a new path through the engine. [Current world data](../../../src/shared/state.ts) · [Current session](../../../src/shared/sim/session.ts)
+蜘蛛拾起苹果时，现有实现会把苹果移出地面物体列表。地面物理和牵引逻辑随后用不同的规则处理同一个物体。被牵引的苹果也应该能撞到石头或巢穴，松手后继续滚动，并保留已吃口数和到期时间。注册另一种食物时，它也应该具备这些行为。 [现有世界数据](../../../src/shared/state.ts) · [现有模拟会话](../../../src/shared/sim/session.ts)
 
-This proposal defines one integrated redesign of the simulation core, its browser adapter, and its save format. The island remains continuous terrain. Existing movement, sight, water, gait, tool calls, local persistence, and cloud sync are part of the contract. Apple behavior uses six bites and the smaller physical and visual size described below.
+本提案把模拟核心、浏览器接入和存档作为一次完整重构来设计。岛屿继续采用连续地形，现有移动、视野、水域、步态、工具调用、本地存档和云同步均纳入验收。苹果改为六口，物理和视觉尺寸按下面的定义缩小。
 
-## Ownership and dependencies
+## 状态归属与模块依赖
 
-| Owner           | Authoritative state                                                                        | Contract                                                                    |
-| --------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| World           | Terrain, clock, entity identity, relationships, population rules and marks                 | [World](./module_World.ts)                                                  |
-| Physics space   | Position, orientation, velocity, contact results and the spatial representation of tethers | [Physics](./module_Physics.ts)                                              |
-| Runtime entity  | Per-instance behavior state such as completed bites, lifetime thresholds and hunger        | [Entity](./module_Entity.ts)                                                |
-| Content catalog | Shared definitions and factories keyed by stable namespaced ID                             | [Content](./module_Content.ts) · [Registry](./base.ts)                      |
-| Action executor | Command admission, arbitration, active action progress and terminal results                | [Action](./module_Action.ts)                                                |
-| Browser host    | Animation timing, visibility, tool promises, write leases, and checkpoints                 | [Host example](./feature_BrowserHost.ts) · [Snapshot](./module_Snapshot.ts) |
+| 模块       | 负责的状态                                               | 接口                                                                    |
+| ---------- | -------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 世界       | 地形、时钟、实体身份、实体关系、种群规则和地点标记       | [世界接口](./module_World.ts)                                           |
+| 物理空间   | 位置、朝向、速度、接触结果和参与物理求解的牵引约束       | [物理接口](./module_Physics.ts)                                         |
+| 运行时实体 | 已吃口数、生命周期阈值、饥饿等实例状态                   | [实体接口](./module_Entity.ts)                                          |
+| 内容注册表 | 按稳定的命名空间 ID 查找共享定义和实体工厂               | [内容接口](./module_Content.ts) · [注册表接口](./base.ts)               |
+| 动作执行器 | 指令受理、仲裁、动作进度和终态结果                       | [动作接口](./module_Action.ts)                                          |
+| 浏览器宿主 | 动画时钟、页面可见性、工具调用的 Promise、写入租约和存档 | [宿主示例](./feature_BrowserHost.ts) · [快照接口](./module_Snapshot.ts) |
 
-World is the only writer at the public boundary. It owns the physics writer and provides actions with a scoped interaction interface. An entity can change its own behavior state and propose a motion. Physics commits the actual pose. Terrain, fixed scenery, dynamic objects, and the driven spider enter the same spatial queries. Motion, visibility, and selection can filter different shapes from those queries.
+世界是公开边界上唯一的写入方。它持有物理写接口，动作执行器通过受限接口交互。实体可以更改自身的行为状态并提出运动意图，物理空间负责提交实际位姿。地形、固定景物、动态物体和受控的蜘蛛共用空间查询。运动、视线和选取可按各自用途筛选查询结果中的形状。
 
-The world uses one ID index. A tether is a relation between two IDs. Static, dynamic, and driven bodies differ in how they respond to forces and controller inputs. A driven body still queries and collides with the rest of the space. Its leg solver and visual rig can consume support and contact results without owning the body transform. Terrain generation and rendering continue to use the height field; body and visibility queries derive their geometry from that same terrain and the entity definitions.
+世界只维护一份实体 ID 索引，蛛丝是两个 ID 之间的约束。静态体、动态体和受控体各自决定如何响应力和控制输入，受控体也在同一个空间里查询和碰撞。腿部求解和视觉骨架读取支撑与接触结果，身体变换由物理空间维护。地形生成和渲染继续使用高度场，物理和视线查询从同一份地形与实体定义取得所需的形状。
 
-The engine exposes committed projections. UI, Agent, and rendering receive those values and events. They cannot mutate live entities or call physics writers. A view may share read data within one publication; consumers that need an independent copy use the snapshot boundary. Three.js objects remain in the browser's model and animation code.
+引擎向界面、Agent 和渲染发布已提交的状态视图与事件。这些调用方通过只读接口获取数据。一次发布内可以共享视图数据，需要独立副本时使用快照。Three.js 对象由浏览器的模型和动画代码管理。
 
-## What one world update guarantees
+## 一次世界更新的约定
 
-[World step example](./feature_WorldStep.ts) shows the calls and the order in which their effects become visible. These are runtime semantics.
+[世界步进示例](./feature_WorldStep.ts)展示一次更新中各模块怎样调用，以及变更何时对外可见。
 
-- One fixed step advances simulation by **1/60 second**. The browser supplies one wall timestamp for a batch of steps. It runs at most three steps per animation callback and discards excess accumulated time. Needs and respawn advance with the steps that actually ran. A hidden page or held write lease suspends advancement. Resume reconciles real-time expiry before movement can run.
-- Expiry is processed before movement and action settlement. Then the world advances population timers, admits eligible actions, collects proposed motion, solves contacts and constraints, and settles actions against the committed physics state. Readers and save requests see the result only after the transaction.
-- Commands have a stable ID and one terminal event. For each actor, the most recently submitted user command supersedes older work when admitted. An autonomous command can run only while the actor is idle and autonomy is allowed. The browser reserves the actor while handling a user turn, including time spent waiting for the model. Cancel is a world transaction that advances neither clock. A cancelled command cannot commit another bite or change a tether.
-- Removal detaches every relation involving the removed ID and retires unfinished commands that refer to it. The resulting events and view are published together. The final bite completes its own command before removal invalidates any other references. A target expiring at the same update as a due bite is removed before that bite and grants no nutrition.
-- A visibility or lease change discards the animation accumulator. Each completed world update delivers its events even if drawing is throttled. The host resolves a tool promise by command ID from the same committed frame it uses to compose the tool response.
+- 每个固定步推进 **1/60 模拟秒**。浏览器为一批模拟步提供同一个现实时刻。每次动画回调最多运行三步，超出的积累时间丢弃。身体需求和补充计时只随实际执行的模拟步推进。页面隐藏或当前浏览器失去写入租约时暂停模拟，恢复时先按现实时间处理到期，再继续移动。
+- 世界先处理到期，再推进种群计时、受理可执行的动作、收集运动意图并求解接触和约束。动作执行器根据已提交的物理结果结算。读取方和存档请求在事务完成后看到同一份结果。
+- 每条指令有稳定 ID 和唯一的终态事件。同一行动者最新提交的用户指令在受理时取代之前的动作。自主指令仅在行动者空闲且允许自主行动时执行。处理用户指令期间，包括等待模型响应时，浏览器为用户保留行动者的控制权。取消也通过世界事务结算，并保持两个时钟的原有进度。已取消的指令无法继续吃下一口或更改牵引。
+- 移除实体时，同时解除涉及该 ID 的所有关系，并结束引用它的未完成指令。事件和视图一起发布。最后一口吃完时，当前进食指令先成功结束，随后移除实体并让其他引用失效。如果最后一口的结算恰好遇到目标到期，目标先被移除，这一口没有营养收益。
+- 页面可见性或租约状态变化时，清空动画计时的积累量。绘制降频时，每次已完成的世界更新仍会交付事件。宿主按指令 ID 找到等待中的工具调用，用同一帧的状态构造工具结果。
 
-## Interaction examples and decisions
+## 交互示例与设计决策
 
-### Carrying is a constraint
+### 搬运使用牵引约束
 
-When the user picks up a reachable object, the executor checks that it is live, tetherable and available. An actor can hold up to seven tethers. The world adds a relation from a mount on the carrier to the target, using their committed poses. The solver applies tension when stretched and leaves the tether slack otherwise. The fruit remains in the spatial index with its own collision body. It can hit a wall, be held against it or slide around it as the carrier moves.
+用户拾取够得着的物体时，执行器检查目标仍存在、可牵引且可用。每个行动者最多挂七条蛛丝。世界根据双方已提交的位姿，从牵引者的挂点到目标建立约束。蛛丝绷紧时产生拉力，松弛时拉力为零。果子保留在空间索引中，继续使用自己的碰撞体。它能撞墙、被拉住抵着墙，或者随牵引者移动绕过墙面。
 
-A plain release removes the constraint and preserves pose and velocity. The existing `drop` tool requests placement in front, and `store` requests a valid position inside the nest. Both use the same collision query and detach only after placement is accepted. A blocked placement retains the tether. The return value and sound follow the committed result. [Release and bite example](./feature_Interactions.ts)
+单纯松手会解除约束，并保留位姿和速度。现有的 `drop` 工具请求把物品放在面前，`store` 请求放到巢内的有效位置。两者都通过相同的碰撞查询校验位置，放置成功后才解除约束。放置受阻时保留蛛丝。工具返回值和音效都根据实际提交的结果生成。 [释放与进食示例](./feature_Interactions.ts)
 
-The tether computes a spring-damper impulse at the mount. Apply that impulse, gravity, and buoyancy to the target before sweeping its proposed motion through terrain and entity colliders. Resolve velocity at contact so resting and sliding behave the same with or without a tether. A wall hit never triggers a second position update from the action layer. The driven spider supplies its mount trajectory and uses the same space to solve its own movement. Reuse the existing support, flotation, and loose-body contact math through these interfaces. [Tether impulse example](./feature_TetherPhysics.ts) · [Existing loose-body solver](../../../src/shared/sim/physics.ts)
+蛛丝在挂点处按弹簧和阻尼计算冲量。目标先受到这份冲量、重力和浮力的共同作用，再沿预期位移对地形和实体的碰撞体做扫掠检测。接触时修正速度，使物体的静止与滑动遵守同一套规则。碰撞后的位姿由物理空间提交。受控蜘蛛提供挂点的运动轨迹，自身也在同一空间中求解移动。现有支撑、浮力和松散物体接触计算通过这些接口复用。 [牵引冲量示例](./feature_TetherPhysics.ts) · [现有松散物体求解器](../../../src/shared/sim/physics.ts)
 
-### Content and behaviors are registered independently
+### 分开注册内容和行为
 
-At startup a world registers entity factories, item definitions, placement policies and population rules. Definitions are shared and immutable once the world starts. `DroppedItem` owns per-fruit progress and lifetime and exposes a food capability when its definition supplies one. `Spider` owns its needs and control behavior. The action executor depends on these capabilities and instance IDs. The model registry resolves the appearance ID separately.
+启动时注册实体工厂、物品定义、放置策略和种群规则。世界创建后，各实例共享只读的定义。`DroppedItem` 管理每颗果子的进食进度和生命周期，定义包含食物配置时就提供可食用能力。`Spider` 管理自身需求和控制行为。动作执行器通过这些能力和实例 ID 与实体交互。渲染层用外观 ID 查询模型注册表。
 
-The apple uses a sphere of radius 0.1944, mass 0.025, and the current proposed model scale of 0.54. Its six bites take half a simulated second each, with 10 points of hunger relieved per completed bite. Hunger starts at 25, rises one point per six simulated seconds up to 100, and allows idle foraging at 60. Nearby fresh food and food already tethered to the spider take priority over a path toward a visible fruit. The common reach and visibility logic applies to the same world view used by Agent tools. The executor schedules each bite at an integer tick boundary by rounding its duration up to a whole step. It revalidates the actor, target, freshness, and reach at that boundary. Partial progress inside an interrupted bite is discarded.
+苹果的碰撞体是半径 0.1944 的球体，质量为 0.025，模型缩放系数为 0.54。吃完一颗需要六口，每口半个模拟秒，每完成一口降低 10 点饥饿值。饥饿值从 25 开始，每六个模拟秒增加 1 点，上限 100。达到 60 时，空闲的蜘蛛可以自主觅食。够得着的新鲜食物和蜘蛛已经牵着的食物优先，其次才是走向看得见的果子。触及与视野判断使用 Agent 工具读取的同一份世界视图。执行器把每口所需的时间向上取整到模拟步，在结算时重新验证行动者、目标、新鲜程度和可达性。中断时只保留已完成的口数。
 
-New apples last 720 seconds of device time and spoil during the last 90 seconds. Stagger the initial batch in 24-second increments so the first group does not disappear together. Tethering, placing, or partial eating preserves a fruit's deadline. The world population rule caps ground apples at 20 and attempts a spawn after 24 active seconds below that cap. At the cap, reset the countdown to the full interval. Failed placement consumes an attempt, so reload cannot reroll it. The seed, rule ID, and attempt counter select each attempt's random stream. [Apple definition and second-food example](./feature_RegisterContent.ts)
+新长出的苹果按设备时间存活 720 秒，最后 90 秒处于腐烂状态。首批苹果的到期时间相隔 24 秒，分散消失。牵引、放置和部分进食均沿用实例自己的到期时间。地面苹果的数量上限是 20 颗，低于上限时，每累计 24 个模拟秒尝试补一颗。达到上限时将倒计时重置为完整间隔。放置失败也计入一次尝试，重新打开时继续使用原来的生成序列。每次尝试使用的随机序列由种子、规则 ID 和尝试次数共同确定。 [苹果定义与第二种食物示例](./feature_RegisterContent.ts)
 
-### Save/load has a distinct ownership boundary
+### 存档与恢复的边界
 
-The world checkpoint saves the ID allocator, simulation time, bodies, instance data, tethers, population counters, and marks. The browser's existing checkpoint envelope owns sequence, owner, lease, and pending instruction text. It also manages the existing checkpoint cadence. Semantic changes such as completed bites, removals, and tether changes are dirty events. Idle motion still uses checkpoint coalescing. A saved pending instruction can be offered to the user after restart; in-flight commands and promises belong to the current session.
+世界快照保存实体 ID 分配计数、模拟时间、物理体、实例数据、牵引关系、种群计数和地点标记。浏览器的存档封装负责保存序号、拥有者、租约和待处理指令文本，并沿用现有保存频率。已完成的进食、实体移除和牵引变化会标记待保存状态。空闲时的运动变化仍合并进定期存档。重新打开后可以把保存的待处理指令展示给用户，正在执行的命令和 Promise 由当前会话管理。
 
-The new local envelope uses format 4 and the cloud envelope uses format 2 under the existing world key. Both accept the currently shipped formats on read. Compare local checkpoints using the existing sequence and timestamp rules. Cloud writes retain lease ownership and ETag preconditions. An unsupported format or unrecognized type leaves the existing checkpoint intact and blocks a replacement from that input. An older client encountering a newer cloud envelope follows its existing parse-error path for an existing object. Stale ETags prevent a pre-upgrade writer from replacing that object.
+本地存档封装采用格式 4，云端存档在原世界存储键上使用格式 2，两者都能读取现有线上格式。本地存档仍按序号和时间戳比较。云端写入继续校验租约和 ETag 前置条件。遇到不支持的格式或未知类型时，保留已有存档，并拒绝用该输入替换世界。旧客户端遇到使用新封装的已有云端对象时，会走现有解析错误路径。过期的 ETag 会拒绝升级前客户端对该对象的覆盖。
 
-For older saves, keep entity IDs, the stored world seed, marks, position and orientation. Rebuild scenery with the existing compatibility rules. Merge ground and carried entries into one index and reconstruct the saved order of tethers. Carrying can influence rest lengths; reconstruction uses that order and saved positions. Preserve old bite fractions, translating one or two completed bites from the three-bite format into two or four. A legacy apple without a deadline receives its staggered initial deadline when a compatible checkpoint is first restored. A saved deadline takes precedence. Preserve saved hunger and timers when present, and use the starting value for records that predate hunger.
+读取旧存档时保留实体 ID、世界种子、地点标记、位置和朝向，并沿用现有景物兼容规则。地面物品和携带物合并到同一个实体索引，按保存顺序恢复蛛丝。携带顺序会影响约束的自然长度，恢复时结合原顺序和保存的位置计算。旧三口制中已吃一口或两口，分别转换为六口制中已吃两口或四口。没有到期时间的旧苹果，在兼容存档首次恢复时获得错开的初始到期时间。已有到期时间优先。饥饿值和计时器有存档值就继续使用，早于饥饿机制的存档使用初始饥饿值。
 
-Decode and build a candidate world before publishing it, changing the active host, or writing a new checkpoint. Validate duplicate IDs, missing endpoints, registered types, numeric fields, and the controlled actor. When the browser has write authority, reconcile real-time expiry on the candidate before publishing its first authoritative frame. For a cloud adoption, commit the accepted checkpoint and its memories in the same IndexedDB transaction. Publish the new world and refresh the browser recovery copy after that commit. A failed restore retains the last good checkpoint and memories. [Restore and legacy apple example](./feature_Restore.ts) · [Existing local format](../../../src/shared/sim/snapshot.ts) · [Existing cloud reconciliation](../../../src/client/cloud/engine.ts)
+先解码并构建候选世界，再替换宿主中的活跃世界、发布状态或写入存档。校验重复 ID、缺失的关系端点、注册类型、数值字段和受控行动者。浏览器具备写入权限时，在发布候选世界的第一份正式状态前，先按现实时间处理到期。采用云端存档时，在同一个 IndexedDB 事务中提交新世界存档和记忆。提交成功后再发布世界并刷新浏览器恢复副本。恢复失败时保留上一次有效的存档和记忆。 [恢复与旧苹果转换示例](./feature_Restore.ts) · [现有本地格式](../../../src/shared/sim/snapshot.ts) · [现有云端同步逻辑](../../../src/client/cloud/engine.ts)
 
-## Acceptance scenarios
+## 验收场景
 
-| Situation                                                                                                      | Observable result                                                                                                                                                                                     |
-| -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Push an apple, attach a tether, pull it into a wall, and release                                               | The body keeps its ID, collider and velocity state. The wall blocks it while tethered. Releasing it applies no teleport or reset.                                                                     |
-| An apple rots before the next bite, expires as the last bite becomes due, or disappears while being approached | The action returns `spoiled` or `stale-target` as appropriate. Only earlier committed bites affect hunger. The view and events agree about presence and tether state.                                 |
-| Finish eating a held apple                                                                                     | The last bite grants nutrition once, the command succeeds once, and the apple and tether disappear in the same publication.                                                                           |
-| Submit a user command during a foraging action                                                                 | The autonomous command terminates, no subsequent autonomous bite commits, and the user's result arrives through the same command channel.                                                             |
-| Save on Monday, reopen Friday                                                                                  | Apples with expired real deadlines disappear before the first authoritative frame. The saved hunger and population countdown resume from their stored values. Include held and partially eaten fruit. |
-| Load malformed data or a checkpoint with an unknown type                                                       | No partial candidate or writes replace the previous world. The user receives an actionable failure.                                                                                                   |
-| Register the pear scenario                                                                                     | Only definitions and appearance are added. Shared physics, actions, persistence, and simulation support the different bite count, nutrition and time domain.                                          |
-| Compare existing behavior and performance                                                                      | Exercise current tools, land and water locomotion, sight and restore against the existing tests. Compare the current frame, route, and snapshot benchmarks and measure event dispatch separately.     |
+| 场景                                                             | 可观察结果                                                                                                       |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 推滚一颗苹果，牵引它撞墙，再松手                                 | 全程保留同一个实体 ID、碰撞体和速度状态。牵引时仍会被墙阻挡，松手后从原位继续运动。                              |
+| 苹果在下一口前腐烂、在最后一口到达结算时点时到期，或在走近时消失 | 按情况返回 `spoiled` 或 `stale-target`。只有之前完成的口数影响饥饿值，视图和事件对实体与蛛丝状态保持一致。       |
+| 吃完一颗牵在身后的苹果                                           | 最后一口只结算一次营养，指令只成功一次，苹果和蛛丝在同一份发布结果中消失。                                       |
+| 蜘蛛自主觅食期间收到用户指令                                     | 自主指令结束，剩余的自主进食不再结算。用户指令经同一渠道返回结果。                                               |
+| 周一保存，周五打开                                               | 超过现实到期时间的苹果在首次正式发布前被移除，饥饿值和补充倒计时从存档值继续。覆盖地面、被牵引和部分吃过的苹果。 |
+| 加载损坏数据或包含未知类型的存档                                 | 旧世界和原存档得到保留，用户收到明确的失败原因。                                                                 |
+| 注册示例中的梨                                                   | 增加种类定义和外观即可。物理、动作、存档和模拟复用同一套接口，并支持不同的口数、营养和时间规则。                 |
+| 比较现有行为与性能                                               | 用现有测试回归工具、陆地与水中运动、视野和恢复。对照现有帧、寻路与快照基准，并单独测量事件分发。                 |
 
-## Reviewing the proposal
+## 审阅提案
 
-The TypeScript modules are the proposed interfaces. The `feature_*.ts` files are reviewable examples of calls and transactions against those interfaces. The examples type-check together and are separate from the application build.
+TypeScript 模块定义拟议的接口。`feature_*.ts` 文件演示各接口怎样在实际场景中协作。这些文件单独通过类型检查，应用的构建入口仍在原处。
 
 ```sh
 pnpm exec tsc -p docs/develop/world-engine/tsconfig.json
 ```
 
-The documentation format follows Builder's routing and editor designs, which keep contracts and worked interactions together. [Builder routing proposal](https://github.com/goplus/builder/pull/1799) · [Builder editor proposal](https://github.com/goplus/builder/pull/1087)
+文档结构参考 Builder 的编辑器与路由设计，把模块契约和跨模块调用示例放在一起供评审。 [Builder 路由设计 PR](https://github.com/goplus/builder/pull/1799) · [Builder 编辑器设计 PR](https://github.com/goplus/builder/pull/1087)

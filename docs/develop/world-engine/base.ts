@@ -1,6 +1,6 @@
-/** Namespaced ID of a registered definition. */
+/** 已注册定义的命名空间 ID。 */
 export type TypeId = `${string}:${string}`;
-/** Stable world instance ID. Never reused in a world, including after restore. */
+/** 世界内稳定的实例 ID。从存档恢复后也沿用原 ID，已分配的 ID 不再复用。 */
 export type EntityId = string;
 export type Tick = number;
 export type UnixMs = number;
@@ -18,22 +18,22 @@ export type Json =
   | { readonly [key: string]: Json };
 
 export interface Clock {
-  /** Number of committed simulation steps. */
+  /** 已提交的模拟步数。 */
   readonly tick: Tick;
-  /** Active simulation seconds, including the fractional time from legacy saves. */
+  /** 累计的模拟秒数，包含旧版存档保留的小数部分。 */
   readonly simSeconds: number;
-  /** UTC epoch milliseconds sampled once by the browser for this update. */
+  /** 浏览器为这次更新采样的 UTC Unix 时间戳，单位为毫秒。 */
   readonly wallNowMs: UnixMs;
 }
 
-/** Shared definitions are immutable once the world is constructed. */
+/** 世界创建后，共享定义保持只读。 */
 export interface Registry<T> {
   get(id: TypeId): T | undefined;
 }
 
 export interface RegistryBuilder<T extends { readonly id: TypeId }> {
-  /** Reject duplicate IDs and invalid configuration at bootstrap. */
+  /** 启动时拒绝重复的 ID 和无效配置。 */
   register(definition: T): void;
-  /** Freeze registration and expose lookup to the world. */
+  /** 锁定注册表，并向世界开放查询。 */
   seal(): Registry<T>;
 }

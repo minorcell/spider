@@ -1,7 +1,7 @@
 import type { UnixMs } from './base';
 import type { World, WorldFrame, WorldView } from './module_World';
 
-/** A host can consume every event even when drawing is throttled for local inference. */
+/** 即使本地推理期间降低绘制频率，宿主也能处理每次更新的全部事件。 */
 export function browserDriver(
   world: World,
   publish: (frame: WorldFrame) => void,
@@ -14,7 +14,7 @@ export function browserDriver(
   const maxCatchup = 3 * step;
 
   return {
-    /** Active means visible and authorized by the local and cloud write lease rules. */
+    /** 页面可见且符合本地与云端写入租约的条件时，才推进模拟。 */
     setActive(next: boolean, wallNowMs: UnixMs): void {
       if (active === next) return;
       active = next;
@@ -23,7 +23,7 @@ export function browserDriver(
       if (active) publish(world.reconcileWallTime(wallNowMs));
     },
 
-    /** The animation source provides monotonic and wall time separately. */
+    /** 动画回调分别提供单调时间和现实时间。 */
     frame(monotonicMs: number, wallNowMs: UnixMs): void {
       if (active) {
         const elapsed = Math.max(0, (monotonicMs - (previousFrameMs ?? monotonicMs)) / 1000);
