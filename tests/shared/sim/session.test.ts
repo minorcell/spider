@@ -450,7 +450,7 @@ describe('moveTo', () => {
 
   it('retries a blocked route and reports the solids', async () => {
     const session = new SimSession(5);
-    session.spider.bindBlocked(() => true);
+    session.spider.bindMotion((x, z) => ({ x, z, dx: 0, dz: 0, halt: 'solid' }));
     const blocked = await settle(session.moveTo(0, -5), session);
     expect(blocked).toMatchObject({ ok: false, reason: 'blocked', detour: null });
     const around = await settle(session.moveTo(0, 5), session);
@@ -490,7 +490,7 @@ describe('moveTo', () => {
       around: [],
       direct: false,
     });
-    session.spider.bindBlocked(() => true);
+    session.spider.bindMotion((x, z) => ({ x, z, dx: 0, dz: 0, halt: 'solid' }));
     const outcome = await settle(session.moveTo(0, -1), session);
     expect(outcome).toMatchObject({
       ok: false,
@@ -563,7 +563,7 @@ describe('approach', () => {
   it('returns a failed move', async () => {
     const session = new SimSession(6);
     const apple = session.addEntity('apple', 0, -1.2);
-    session.spider.bindBlocked(() => true);
+    session.spider.bindMotion((x, z) => ({ x, z, dx: 0, dz: 0, halt: 'solid' }));
     await expect(settle(session.approach(apple.id), session)).resolves.toMatchObject({
       ok: false,
       reason: 'blocked',

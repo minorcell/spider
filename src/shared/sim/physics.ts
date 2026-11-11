@@ -3,7 +3,7 @@ import { groundSupport } from '@/src/shared/contact';
 import { CONTACT, PHYSICS } from '@/src/shared/config';
 import { pullTether, type TetherMotion } from '@/src/shared/sim/tether';
 import { kindOf } from '@/src/shared/kinds';
-import { BODY_RADIUS, blockedAt } from '@/src/shared/sight';
+import { BODY_RADIUS, blockedAt, moveCircle, type MotionResult } from '@/src/shared/collision';
 import { insideLand } from '@/src/shared/terrain';
 import { sphereVolume, submergedFraction, WATER, waterAt } from '@/src/shared/water';
 import type { EntityState, WorldState } from '@/src/shared/state';
@@ -22,6 +22,7 @@ function floorAt(world: WorldState, x: number, z: number, radius: number): numbe
 }
 
 interface Mover {
+  solid: boolean;
   entity: EntityState;
   radius: number;
   rolls: boolean;
@@ -45,6 +46,7 @@ const spinAxis = new Vector3();
 const asleepBodies = new WeakSet<EntityState>();
 
 function looseOf(entity: EntityState): {
+  solid: boolean;
   radius: number;
   rolls: boolean;
   mass: number;
@@ -54,6 +56,7 @@ function looseOf(entity: EntityState): {
   if (!physics?.loose) return null;
   const volume = physics.volume ?? sphereVolume(physics.radius);
   return {
+    solid: physics.solid,
     radius: physics.radius,
     rolls: physics.rolls,
     mass: physics.mass ?? volume,
@@ -75,13 +78,18 @@ function roll(entity: EntityState, radius: number, dx: number, dz: number): void
 }
 
 export function fitsPlacement(world: WorldState, item: EntityState, x: number, z: number): boolean {
-  const radius = kindOf(item.kind)?.physics?.radius ?? 0.2;
-  if (blockedAt(x, z, world.blocks, radius)) return false;
+  const spec = kindOf(item.kind);
+  const radius = spec?.physics?.radius ?? 0.2;
   if (!insideLand(world.terrain, x, z, Math.max(BODY_RADIUS, radius))) return false;
+  if (spec?.physics?.solid === false) return true;
+  if (blockedAt(x, z, world.blocks, radius)) return false;
   for (const other of world.entities.values()) {
     if (other === item) continue;
-    const separation = radius + (kindOf(other.kind)?.physics?.radius ?? 0);
-    if (Math.hypot(other.x - x, other.z - z) <= Math.max(0.4, separation)) return false;
+    const otherSpec = kindOf(other.kind);
+    // Static shapes have already participated in the shared space query.
+    if (otherSpec?.boxes || otherSpec?.block || otherSpec?.physics?.solid === false) continue;
+    const separation = radius + (otherSpec?.physics?.radius ?? 0.2);
+    if (Math.hypot(other.x - x, other.z - z) <= separation) return false;
   }
   return true;
 }
@@ -117,6 +125,7 @@ export function stepPhysics(
       vz === 0 &&
       dx * dx + dz * dz >= reach * reach;
     movers.push({
+      solid: loose.solid,
       entity,
       radius: loose.radius,
       rolls: loose.rolls,
@@ -175,34 +184,26 @@ export function stepPhysics(
         vx = (vx / speed) * rules.maxSpeed;
         vz = (vz / speed) * rules.maxSpeed;
       }
-      const nx = entity.x + vx * dt;
-      const nz = entity.z + vz * dt;
-      if (blockedAt(nx, nz, world.blocks, radius) || !insideLand(world.terrain, nx, nz, radius)) {
-        vx = 0;
-        vz = 0;
-      } else {
-        entity.x = nx;
-        entity.z = nz;
-      }
+      const moved = moveBody(world, mover, vx * dt, vz * dt);
+      vx = moved.dx / dt;
+      vz = moved.dz / dt;
     }
 
     const dx = entity.x - body.x;
     const dz = entity.z - body.z;
     const distance = Math.hypot(dx, dz);
     const contact = BODY_RADIUS + radius;
-    if (distance < contact) {
+    if (mover.solid && distance < contact) {
       const free = distance > 1e-6;
       const nx = free ? dx / distance : 1;
       const nz = free ? dz / distance : 0;
-      const px = body.x + nx * contact;
-      const pz = body.z + nz * contact;
-      if (!blockedAt(px, pz, world.blocks, radius) && insideLand(world.terrain, px, pz, radius)) {
-        entity.x = px;
-        entity.z = pz;
-        const push = Math.max(1, body.speed * 0.8);
-        vx = nx * push;
-        vz = nz * push;
-      }
+      const moveX = body.x + nx * contact - entity.x;
+      const moveZ = body.z + nz * contact - entity.z;
+      const moved = moveBody(world, mover, moveX, moveZ);
+      const push = Math.max(1, body.speed * 0.8);
+      const length = contact - distance;
+      vx = (moved.dx / length) * push;
+      vz = (moved.dz / length) * push;
     }
     mover.vx = vx;
     mover.vy = vy;
@@ -385,6 +386,7 @@ function contactNormal(
   b: Mover,
   slop = 0,
 ): { nx: number; ny: number; nz: number; depth: number } | null {
+  if (!a.solid || !b.solid) return null;
   const dx = b.entity.x - a.entity.x;
   const dy = b.entity.y + b.radius - (a.entity.y + a.radius);
   const dz = b.entity.z - a.entity.z;
@@ -406,23 +408,13 @@ function moveBy(
   dz: number,
 ): { dx: number; dy: number; dz: number } {
   const entity = mover.entity;
-  let x = entity.x;
-  let z = entity.z;
-  let appliedX = 0;
-  let appliedZ = 0;
-  if (dx !== 0 || dz !== 0) {
-    const nextX = entity.x + dx;
-    const nextZ = entity.z + dz;
-    if (
-      !blockedAt(nextX, nextZ, world.blocks, mover.radius) &&
-      insideLand(world.terrain, nextX, nextZ, mover.radius)
-    ) {
-      x = nextX;
-      z = nextZ;
-      appliedX = dx;
-      appliedZ = dz;
-    }
-  }
+  const x0 = entity.x;
+  const z0 = entity.z;
+  moveBody(world, mover, dx, dz);
+  const x = entity.x;
+  const z = entity.z;
+  const appliedX = x - x0;
+  const appliedZ = z - z0;
   const nextY = entity.y + dy;
   const floor = floorAt(world, x, z, mover.radius);
   mover.floor = floor;
@@ -436,4 +428,15 @@ function moveBy(
   entity.y = y;
   entity.z = z;
   return { dx: appliedX, dy: appliedY, dz: appliedZ };
+}
+
+function moveBody(world: WorldState, mover: Mover, dx: number, dz: number): MotionResult {
+  const { entity, radius } = mover;
+  const moved = moveCircle(entity.x, entity.z, dx, dz, radius, {
+    blocks: mover.solid ? world.blocks : [],
+    inside: world.terrain.inside ? (x, z) => insideLand(world.terrain, x, z, radius) : undefined,
+  });
+  entity.x = moved.x;
+  entity.z = moved.z;
+  return moved;
 }

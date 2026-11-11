@@ -1,7 +1,7 @@
 import { kindOf, type CoverSpec, type CoverVolume } from '@/src/shared/kinds';
 import type { Block, EntityState } from '@/src/shared/state';
 
-export const BODY_RADIUS = 0.48;
+export { BODY_RADIUS, blockAt, blockedAt } from '@/src/shared/collision';
 
 export function homeAt(x: number, z: number, entities: Iterable<EntityState>): EntityState | null {
   for (const entity of entities) {
@@ -16,43 +16,6 @@ export function homeAt(x: number, z: number, entities: Iterable<EntityState>): E
       return entity;
   }
   return null;
-}
-
-export function blockAt(
-  x: number,
-  z: number,
-  blocks: readonly Block[],
-  radius = BODY_RADIUS,
-): Block | null {
-  let nearest: Block | null = null;
-  let nearestD = Infinity;
-  const radiusSquared = radius * radius;
-  for (const block of blocks) {
-    if (
-      x < block.minX - radius ||
-      x > block.maxX + radius ||
-      z < block.minZ - radius ||
-      z > block.maxZ + radius
-    )
-      continue;
-    const cx = Math.min(block.maxX, Math.max(block.minX, x));
-    const cz = Math.min(block.maxZ, Math.max(block.minZ, z));
-    const d = (x - cx) ** 2 + (z - cz) ** 2;
-    if (d < radiusSquared && d < nearestD) {
-      nearest = block;
-      nearestD = d;
-    }
-  }
-  return nearest;
-}
-
-export function blockedAt(
-  x: number,
-  z: number,
-  blocks: readonly Block[],
-  radius = BODY_RADIUS,
-): boolean {
-  return blockAt(x, z, blocks, radius) !== null;
 }
 
 export function occluded(

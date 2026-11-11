@@ -1,3 +1,5 @@
+import { BODY_RADIUS, moveCircle } from '@/src/shared/collision';
+import { block } from '@/tests/helpers';
 import { indexEntities } from '@/src/shared/world';
 import { describe, expect, it } from 'vitest';
 import { Matrix4, Vector3 } from 'three';
@@ -183,7 +185,11 @@ describe('Spider', () => {
 
   it('stops dead against a solid', () => {
     const spider = new Spider();
-    spider.bindBlocked(() => true);
+    spider.bindMotion((x, z, dx, dz) =>
+      moveCircle(x, z, dx, dz, BODY_RADIUS, {
+        blocks: [block('wall', -10, 10, -10, -BODY_RADIUS)],
+      }),
+    );
     spider.update(0.1, { ...IDLE, throttle: 1 });
     expect(spider.halt).toBe('solid');
     expect(spider.speed).toBe(0);
@@ -192,7 +198,11 @@ describe('Spider', () => {
   it('slides along x when only the forward step is blocked', () => {
     const spider = new Spider();
     spider.yaw = Math.PI / 4;
-    spider.bindBlocked((_x, z) => z < -1e-6);
+    spider.bindMotion((x, z, dx, dz) =>
+      moveCircle(x, z, dx, dz, BODY_RADIUS, {
+        blocks: [block('wall', -10, 10, -10, -BODY_RADIUS)],
+      }),
+    );
     spider.update(0.05, { ...IDLE, throttle: 1 });
     expect(spider.halt).toBe('clear');
     expect(spider.root.position.x).toBeLessThan(0);
@@ -202,7 +212,11 @@ describe('Spider', () => {
   it('slides along z when only the sideways step is blocked', () => {
     const spider = new Spider();
     spider.yaw = Math.PI / 4;
-    spider.bindBlocked((x) => x < -1e-6);
+    spider.bindMotion((x, z, dx, dz) =>
+      moveCircle(x, z, dx, dz, BODY_RADIUS, {
+        blocks: [block('wall', -10, -BODY_RADIUS, -10, 10)],
+      }),
+    );
     spider.update(0.05, { ...IDLE, throttle: 1 });
     expect(spider.halt).toBe('clear');
     expect(spider.root.position.z).toBeLessThan(0);
@@ -223,7 +237,7 @@ describe('Spider', () => {
     spider.root.position.set(0.9, 0, 0);
     spider.yaw = Math.PI / 2;
     spider.update(0.2, { ...IDLE, throttle: -1 });
-    expect(spider.root.position.x).toBe(1);
+    expect(spider.root.position.x).toBeCloseTo(1, 6);
   });
 
   it('floats over deep water instead of standing on the bottom', () => {

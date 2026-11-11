@@ -1,3 +1,7 @@
+import { GAIT } from '@/src/shared/config';
+import { BODY_RADIUS, moveCircle } from '@/src/shared/collision';
+import { insideLand, WORLD_RADIUS } from '@/src/shared/terrain';
+import { floatHeight, waterAt } from '@/src/shared/water';
 import { kindOf, type KindSpec } from '@/src/shared/kinds';
 import type { EntityState, WorldState } from '@/src/shared/state';
 import type { LegSphere } from '@/src/shared/sim/legPose';
@@ -14,7 +18,7 @@ export function bindLegWorld(spider: Spider, world: WorldState): void {
         const spec = kindOf(entity.kind);
         if (spec?.support) supports.push({ entity, surface: spec.support });
         const physics = spec?.physics;
-        if (!physics?.loose || physics.radius <= 0) continue;
+        if (!physics?.loose || !physics.solid || physics.radius <= 0) continue;
         const slot = pool[count] ?? { x: 0, y: 0, z: 0, radius: 0 };
         pool[count] = slot;
         slot.x = entity.x;
@@ -31,5 +35,24 @@ export function bindLegWorld(spider: Spider, world: WorldState): void {
       for (const { entity, surface } of supports) height = Math.max(height, surface(entity, x, z));
       return height;
     },
+  );
+}
+
+export function bindWorld(spider: Spider, world: WorldState): void {
+  bindLegWorld(spider, world);
+  spider.bindGround((x, z) => world.terrain.height(x, z));
+  spider.bindWater((x, z) => waterAt(world.terrain, x, z));
+  spider.bindMotion((x, z, dx, dz) =>
+    moveCircle(x, z, dx, dz, BODY_RADIUS, {
+      blocks: world.blocks,
+      inside: (px, pz) =>
+        Math.hypot(px, pz) <= WORLD_RADIUS && insideLand(world.terrain, px, pz, BODY_RADIUS),
+      surface: (px, pz) => {
+        const water = waterAt(world.terrain, px, pz);
+        const ground = world.terrain.height(px, pz);
+        return water.depth > 0 ? Math.max(ground, floatHeight(water)) : ground;
+      },
+      maxSlope: GAIT.maxSlope,
+    }),
   );
 }

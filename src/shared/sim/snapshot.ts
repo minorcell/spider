@@ -15,7 +15,6 @@ import type {
   SpiderState,
   WorldState,
 } from '@/src/shared/state';
-import { blockedAt, BODY_RADIUS } from '@/src/shared/sight';
 import {
   expireEntities,
   indexEntities,
@@ -24,15 +23,14 @@ import {
   restingY,
   removeEntity,
 } from '@/src/shared/world';
-import { insideLand, Terrain } from '@/src/shared/terrain';
-import { waterAt } from '@/src/shared/water';
+import { Terrain } from '@/src/shared/terrain';
 import {
   carriedItems,
   MIN_TETHER_LENGTH,
   tetherAnchor,
   tetherLength,
 } from '@/src/shared/sim/tether';
-import { bindLegWorld } from '@/src/shared/sim/bindWorld';
+import { bindWorld } from '@/src/shared/sim/bindWorld';
 import type { Spider } from '@/src/shared/sim/Spider';
 
 export const FORMAT = 3;
@@ -172,12 +170,7 @@ export function applyBody(
     world.populations.set(id, { ...state });
   }
   expireEntities(world, body.spider.time);
-  bindLegWorld(session.spider, world);
-  session.spider.bindGround((x, z) => world.terrain.height(x, z));
-  session.spider.bindWater((x, z) => waterAt(world.terrain, x, z));
-  session.spider.bindBlocked(
-    (x, z) => blockedAt(x, z, world.blocks) || !insideLand(world.terrain, x, z, BODY_RADIUS),
-  );
+  bindWorld(session.spider, world);
   session.spider.settle(body.spider);
 }
 

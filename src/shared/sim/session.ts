@@ -37,7 +37,6 @@ import {
 } from '@/src/shared/world';
 import { insideLand, nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '@/src/shared/terrain';
 import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
-import { waterAt } from '@/src/shared/water';
 import {
   heightGoal,
   routeGoal,
@@ -48,7 +47,7 @@ import {
 } from '@/src/shared/sim/goals';
 import { planRoute } from '@/src/shared/route';
 import { applyBody, type SimBody } from '@/src/shared/sim/snapshot';
-import { bindLegWorld } from '@/src/shared/sim/bindWorld';
+import { bindWorld } from '@/src/shared/sim/bindWorld';
 import { fitsPlacement, stepPhysics } from '@/src/shared/sim/physics';
 import {
   carriedItems,
@@ -95,13 +94,7 @@ export class SimSession {
 
   constructor(seed?: number, terrain?: Terrain) {
     this.world = terrain ? createWorld(terrain.seed, terrain) : createWorld(seed);
-    bindLegWorld(this.spider, this.world);
-    this.spider.bindGround((x, z) => this.world.terrain.height(x, z));
-    this.spider.bindWater((x, z) => waterAt(this.world.terrain, x, z));
-    this.spider.bindBlocked(
-      (x, z) =>
-        blockedAt(x, z, this.world.blocks) || !insideLand(this.world.terrain, x, z, BODY_RADIUS),
-    );
+    bindWorld(this.spider, this.world);
   }
 
   #active: ActiveGoal | null = null;

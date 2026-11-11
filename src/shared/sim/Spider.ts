@@ -1,3 +1,4 @@
+import { BODY_RADIUS, moveCircle, type MotionSolver } from '@/src/shared/collision';
 import {
   BufferGeometry,
   Euler,
@@ -95,7 +96,13 @@ export class Spider {
   #head!: Group;
   #seeded = false;
   #ground: (x: number, z: number) => number = () => 0;
-  #blocked: (x: number, z: number) => boolean = () => false;
+  #move: MotionSolver = (x, z, dx, dz) =>
+    moveCircle(x, z, dx, dz, BODY_RADIUS, {
+      blocks: [],
+      inside: (px, pz) => Math.hypot(px, pz) <= this.#limit,
+      surface: (px, pz) => this.#travel(px, pz),
+      maxSlope: GAIT.maxSlope,
+    });
   #water: (x: number, z: number) => Water = () => NO_WATER;
   #waterNow: Water = NO_WATER;
   /** True while the water is deep enough that the feet leave the bottom. */
@@ -147,14 +154,14 @@ export class Spider {
     this.update(0, IDLE_CONTROLS);
   }
 
-  /** Solids you cannot walk through. */
-  bindBlocked(blocked: (x: number, z: number) => boolean): void {
-    this.#blocked = blocked;
+  /** The world resolves a movement intent before the rig poses itself. */
+  bindMotion(move: MotionSolver): void {
+    this.#move = move;
   }
 
   /**
-   * What a leg may not pass through. `fill` lists sphere centers (apples).
-   * `mound` is extra ground, or −∞ where there is none (the nest).
+   * What a leg may not pass through. `fill` lists registered sphere centers.
+   * `mound` is registered support geometry, or −∞ where there is none.
    */
   bindLegs(fill: (into: LegSphere[]) => void, mound: (x: number, z: number) => number): void {
     this.#fillLegs = fill;
@@ -357,32 +364,12 @@ export class Spider {
     if (run < 1e-6) return;
     const x = this.root.position.x;
     const z = this.root.position.z;
-    const next = clampToRadius(x + stepX, z + stepZ, this.#limit);
-    const nextX = next.x;
-    const nextZ = next.z;
-    const rise = this.#travel(nextX, nextZ) - this.#travel(x, z);
-    if (rise > GAIT.maxSlope * run) {
+    const moved = this.#move(x, z, stepX, stepZ);
+    this.root.position.x = moved.x;
+    this.root.position.z = moved.z;
+    if (moved.halt === 'steep' || Math.hypot(moved.x - x, moved.z - z) <= 1e-6) {
       this.speed = 0;
-      this.halt = 'steep';
-      return;
-    }
-    let moved = false;
-    if (!this.#blocked(nextX, nextZ)) {
-      this.root.position.x = nextX;
-      this.root.position.z = nextZ;
-      moved = true;
-    } else if (!this.#blocked(nextX, z) && Math.abs(nextX - x) > 1e-5) {
-      this.root.position.x = nextX;
-      moved = true;
-    } else if (!this.#blocked(x, nextZ) && Math.abs(nextZ - z) > 1e-5) {
-      this.root.position.z = nextZ;
-      moved = true;
-    }
-    // A free axis with a zero step is not progress. Head-on into a wall used to
-    // count that as a slide and keep the gait stepping until the goal timed out.
-    if (!moved) {
-      this.speed = 0;
-      this.halt = 'solid';
+      this.halt = moved.halt;
     }
   }
 
@@ -762,14 +749,6 @@ function orientedMinY(matrix: Matrix4, part: FootPart): number {
   const worldY = e[1] * part.cx + e[5] * part.cy + e[9] * part.cz + e[13];
   const half = Math.abs(e[1]) * part.hx + Math.abs(e[5]) * part.hy + Math.abs(e[9]) * part.hz;
   return worldY - half;
-}
-
-/** Keep a step inside the round island instead of the old square corners. */
-function clampToRadius(x: number, z: number, limit: number): { x: number; z: number } {
-  const radius = Math.hypot(x, z);
-  if (radius <= limit) return { x, z };
-  const scale = limit / radius;
-  return { x: x * scale, z: z * scale };
 }
 
 function placeBone(group: Group, a: Vector3, b: Vector3, radius: number, side: number): void {

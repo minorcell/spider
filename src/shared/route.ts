@@ -1,5 +1,5 @@
 import { GAIT } from '@/src/shared/config';
-import { blockAt, BODY_RADIUS } from '@/src/shared/sight';
+import { blockAt, BODY_RADIUS, sweepCircle } from '@/src/shared/collision';
 import type { Block } from '@/src/shared/state';
 
 const PAD = BODY_RADIUS + 0.35;
@@ -35,6 +35,22 @@ class BlockGrid {
 
   blockedAt(x: number, z: number): boolean {
     return this.blockAt(x, z) !== null;
+  }
+
+  between(a: PlanPoint, b: PlanPoint): Block[] {
+    const found = new Set<Block>();
+    const steps = Math.max(1, Math.ceil(span(a, b) / (CELL / 2)));
+    for (let i = 0; i <= steps; i++) {
+      const x = Math.floor((a.x + ((b.x - a.x) * i) / steps) / CELL);
+      const z = Math.floor((a.z + ((b.z - a.z) * i) / steps) / CELL);
+      // Include neighboring cells so even a diagonal corner crossing is covered.
+      for (let ix = x - 1; ix <= x + 1; ix++) {
+        for (let iz = z - 1; iz <= z + 1; iz++) {
+          for (const block of this.#cells.get(cellKey(ix, iz)) ?? []) found.add(block);
+        }
+      }
+    }
+    return [...found];
   }
 }
 
@@ -157,6 +173,7 @@ function segmentClear(
   grid: BlockGrid,
   height: (x: number, z: number) => number,
 ): boolean {
+  if (sweepCircle(a.x, a.z, b.x - a.x, b.z - a.z, BODY_RADIUS, grid.between(a, b))) return false;
   const length = span(a, b);
   const steps = Math.max(1, Math.ceil(length / SAMPLE));
   let previous = height(a.x, a.z);
@@ -164,7 +181,6 @@ function segmentClear(
     const t = i / steps;
     const x = a.x + (b.x - a.x) * t;
     const z = a.z + (b.z - a.z) * t;
-    if (grid.blockedAt(x, z)) return false;
     const ground = height(x, z);
     if (ground - previous > GAIT.maxSlope * (length / steps)) return false;
     previous = ground;
@@ -173,17 +189,12 @@ function segmentClear(
 }
 
 function blocksBetween(a: PlanPoint, b: PlanPoint, grid: BlockGrid): string[] {
-  const length = span(a, b);
-  const steps = Math.max(1, Math.ceil(length / SAMPLE));
-  const ids: string[] = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const x = a.x + (b.x - a.x) * t;
-    const z = a.z + (b.z - a.z) * t;
-    const hit = grid.blockAt(x, z);
-    if (hit && !ids.includes(hit.id)) ids.push(hit.id);
+  const ids = new Set<string>();
+  for (const block of grid.between(a, b)) {
+    if (sweepCircle(a.x, a.z, b.x - a.x, b.z - a.z, BODY_RADIUS, [block]))
+      ids.add(block.owner ?? block.id);
   }
-  return ids;
+  return [...ids];
 }
 
 function pull(

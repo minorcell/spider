@@ -210,7 +210,7 @@ describe('stepPhysics', () => {
       entities: indexEntities([apple({ x: 5.5, vx: 2 })]),
     });
     stepPhysics(edge, body, 1 / 2);
-    expect([...edge.entities.values()][0].x).toBe(5.5);
+    expect([...edge.entities.values()][0].x).toBeCloseTo(6 - APPLE_RADIUS, 6);
     expect([...edge.entities.values()][0].vx).toBe(0);
 
     const shoved = world({
@@ -218,14 +218,14 @@ describe('stepPhysics', () => {
       entities: indexEntities([apple({ x: 5.55 })]),
     });
     stepPhysics(shoved, { x: 5.15, z: 0, speed: 10 }, 1 / 60);
-    expect([...shoved.entities.values()][0].x).toBe(5.55);
+    expect([...shoved.entities.values()][0].x).toBeCloseTo(6 - APPLE_RADIUS, 6);
 
     const pair = world({
       terrain: { height: () => 0, inside: land },
       entities: indexEntities([apple({ id: 'a', x: 5.7 }), apple({ id: 'b', x: 5.3 })]),
     });
     stepPhysics(pair, body, 1 / 60);
-    expect([...pair.entities.values()][0].x).toBe(5.7);
+    expect([...pair.entities.values()][0].x).toBeCloseTo(6 - APPLE_RADIUS, 6);
     expect([...pair.entities.values()][0].vx).toBe(0);
   });
 
@@ -326,7 +326,7 @@ describe('stepPhysics', () => {
     stepPhysics(shore, body, 1 / 60);
     const [inner, outer] = shore.entities.values();
     expect(inner.x).toBeLessThan(5.55);
-    expect(outer.x).toBeLessThanOrEqual(5.72);
+    expect(outer.x).toBeLessThanOrEqual(6 - APPLE_RADIUS);
     expect(Math.hypot(inner.x - outer.x, inner.z - outer.z)).toBeGreaterThanOrEqual(
       2 * APPLE_RADIUS - 1e-6,
     );

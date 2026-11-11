@@ -229,6 +229,7 @@ export function propBlocks(entities: Iterable<EntityState>): Block[] {
   const blocks: Block[] = [];
   for (const entity of entities) {
     const kind = kindOf(entity.kind);
+    if (kind?.physics?.solid === false) continue;
     for (const box of kind?.boxes ?? []) {
       blocks.push({
         id: `${entity.id}/${box.id}`,
