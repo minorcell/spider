@@ -616,6 +616,50 @@ describe('flushWorld', () => {
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(moved + 2);
   });
 
+  it('saves registered population attempts, countdowns and ID allocations', async () => {
+    const session = new SimSession(2);
+    await restoreWorld(session);
+    installWorldStore(session);
+    session.spider.root.position.x += 0.2;
+    flushWorld('poke');
+    await writesDone();
+    const seq = () => JSON.parse(localStorage.getItem(KEY) ?? '').seq as number;
+    let previous = seq();
+    const check = async (writes: number) => {
+      flushWorld('interval');
+      await writesDone();
+      expect(seq()).toBe(previous + writes);
+      previous = seq();
+    };
+
+    const berryClock = session.world.populations.get('berries')!;
+    berryClock.remaining -= 1;
+    await check(0);
+    berryClock.remaining -= 5;
+    await check(1);
+    berryClock.attempts += 1;
+    await check(1);
+    session.world.populations.delete('pebbles');
+    await check(1);
+    session.world.populations.delete('berries');
+    session.world.populations.set('pebbles', berryClock);
+    await check(1);
+    session.world.populations.delete('pebbles');
+    await check(1);
+    session.world.populations.set('berries', berryClock);
+    await check(1);
+
+    session.world.entitySerials.set('berry', 20);
+    await check(1);
+    session.world.entitySerials.set('berry', 21);
+    await check(1);
+    await check(0);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '')).toMatchObject({
+      entitySerials: { berry: 21 },
+      populations: { berries: berryClock },
+    });
+  });
+
   it('lets this tab keep its lease across a reload', async () => {
     sessionStorage.setItem('spider.world.owner', 'tab-a');
     const session = new SimSession(2);

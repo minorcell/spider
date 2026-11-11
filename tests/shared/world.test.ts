@@ -17,6 +17,8 @@ import {
   REACH,
   REACH_Y,
   restingY,
+  removeEntity,
+  addEntity,
   VIEW_DISTANCE,
 } from '@/src/shared/world';
 
@@ -246,6 +248,18 @@ describe('createWorld', () => {
     expect(a.entities).toEqual(b.entities);
     expect(a.blocks).toEqual(b.blocks);
     expect(a.seed).toBe(1234);
+  });
+
+  it('removes a scenery body and keeps its ID reserved', () => {
+    const world = createWorld(7);
+    const tree = [...world.entities.values()].filter((item) => item.kind === 'tree').at(-1)!;
+    expect(world.blocks.some((block) => block.id === tree.id)).toBe(true);
+    removeEntity(world, tree);
+    expect(world.entities.has(tree.id)).toBe(false);
+    expect(world.blocks.some((block) => block.id === tree.id)).toBe(false);
+    const replacement = addEntity(world, 'tree', tree, 0);
+    expect(replacement.id).not.toBe(tree.id);
+    expect(world.blocks.some((block) => block.id === replacement.id)).toBe(true);
   });
 
   it('draws a random seed when none is given', () => {

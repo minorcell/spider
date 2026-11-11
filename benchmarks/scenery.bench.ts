@@ -90,9 +90,10 @@ describe('scenery boot', () => {
 
 describe('scenery runtime', () => {
   test('query grass cover across all patches', async ({ bench }) => {
-    expect(grassHere(grassX, grassZ, world.entities, grass.y + 0.5)).toBe(true);
+    expect(grassHere(grassX, grassZ, world.entities.values(), grass.y + 0.5)).toBe(true);
     await bench('120 grass queries', () => {
-      for (let i = 0; i < 120; i++) grassHere(grassX, grassZ, world.entities, grass.y + 0.5);
+      for (let i = 0; i < 120; i++)
+        grassHere(grassX, grassZ, world.entities.values(), grass.y + 0.5);
     }).run();
   });
 

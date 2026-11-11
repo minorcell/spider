@@ -499,6 +499,53 @@ describe('snapshot', () => {
     expect(bad({ pending: null })).toBe('ok');
   });
 
+  it('rejects malformed entity sequences, population clocks and lifetimes', () => {
+    const record = good();
+    const status = (patch: Record<string, unknown>) =>
+      classify({ ...record, ...patch }, today).status;
+    const clock = { remaining: 6, attempts: 3 };
+    for (const entitySerials of [
+      null,
+      [],
+      'bad',
+      { absent: 1 },
+      { apple: '1' },
+      { apple: 1.5 },
+      { apple: 0 },
+    ]) {
+      expect(status({ entitySerials })).toBe('malformed');
+    }
+    for (const populations of [
+      null,
+      [],
+      'bad',
+      { absent: clock },
+      { apple: clock },
+      { berries: null },
+      { berries: 1 },
+    ]) {
+      expect(status({ populations })).toBe('malformed');
+    }
+    for (const remaining of [Number.NaN, -1, 13]) {
+      expect(status({ populations: { berries: { ...clock, remaining } } })).toBe('malformed');
+    }
+    for (const attempts of [Number.NaN, 1.5, -1, 1_000_001]) {
+      expect(status({ populations: { berries: { ...clock, attempts } } })).toBe('malformed');
+    }
+    const berry = record.entities.find((item) => item.kind === 'berry')!;
+    const withBerry = (patch: Record<string, unknown>) =>
+      status({
+        entities: record.entities.map((item) =>
+          item.id === berry.id ? { ...item, ...patch } : item,
+        ),
+      });
+    expect(withBerry({ kind: null })).toBe('malformed');
+    expect(withBerry({ expiresAt: Number.NaN })).toBe('malformed');
+    expect(withBerry({ expiresAt: -1 })).toBe('malformed');
+    const [home, ...others] = record.entities;
+    expect(status({ entities: [{ ...home, expiresAt: 1 }, ...others] })).toBe('malformed');
+  });
+
   it('rejects a world that is not one nest with unique props', () => {
     const base = good();
     const home = base.entities[0];

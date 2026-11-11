@@ -266,3 +266,23 @@ it('paints carrying and listens to item and gait changes in the real world', asy
   expect(sound.place).toHaveBeenCalledOnce();
   stage.dispose();
 });
+
+it('draws a pebble and a berry using their registered pixel colors', () => {
+  const session = new SimSession(7);
+  session.world.entities.clear();
+  session.addEntity('pebble', 0, -1);
+  session.addEntity('berry', 1, -1);
+  const colors = new Set<string>();
+  context.fillRect.mockImplementation(() => {
+    colors.add(Reflect.get(context, 'fillStyle'));
+  });
+  const { stage, step, observe } = stageFor(session);
+  stage.bind(step, () => session.world, observe);
+  stage.start();
+  frame(17);
+  stage.dispose();
+  context.fillRect.mockReset();
+
+  expect(colors).toContain('#8793a4');
+  expect(colors).toContain('#a05f9d');
+});

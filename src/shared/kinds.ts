@@ -55,6 +55,19 @@ export const KINDS: Record<string, KindSpec> = {
     rest: 0,
     physics: { solid: true, radius: 0.26, loose: true, rolls: true, mass: 0.059, volume: 0.074 },
   },
+  pebble: {
+    carryable: true,
+    pixels: { base: '#8793a4', top: '#c1ccd5', shade: '#4c596e', shape: 'stone' },
+    rest: 0,
+    physics: { solid: true, radius: 0.19, loose: true, rolls: true, mass: 0.07 },
+  },
+  berry: {
+    pixels: { base: '#a05f9d', top: '#e2a9d4', shade: '#613757', shape: 'fruit' },
+    lifetime: 180,
+    eat: { duration: 1, stages: 1, removes: true },
+    rest: 0,
+    physics: { solid: true, radius: 0.16, loose: true, rolls: true, mass: 0.018 },
+  },
   grass: {
     properties: ['cover'],
     pixels: { base: '#688651', top: '#9aaa67', shade: '#456b48', shape: 'grass' },
