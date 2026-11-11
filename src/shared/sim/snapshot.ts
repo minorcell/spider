@@ -1,9 +1,10 @@
-import { grassOnDryGround, grassRadius } from '@/src/shared/grass';
 import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX, MOUNTS } from '@/src/shared/config';
 import { kindOf } from '@/src/shared/kinds';
 import {
   applePopulation,
   initialPopulations,
+  islandFamilies,
+  islandPlacements,
   populationRules,
   type PopulationState,
 } from '@/src/shared/islandContent';
@@ -17,13 +18,11 @@ import type {
 import { blockedAt, BODY_RADIUS } from '@/src/shared/sight';
 import {
   expireEntities,
-  GRASS,
   indexEntities,
-  TREES,
-  nestBlocks,
   populateScenery,
   propBlocks,
   restingY,
+  removeEntity,
 } from '@/src/shared/world';
 import { insideLand, Terrain } from '@/src/shared/terrain';
 import { waterAt } from '@/src/shared/water';
@@ -85,7 +84,16 @@ export interface Restorable {
 }
 
 export function bodyOfRecord(record: WorldRecord): SimBody {
-  const { id, format, savedAt, day, owner, seq, leaseUntil, ...body } = record;
+  const {
+    id: _id,
+    format: _format,
+    savedAt: _savedAt,
+    day: _day,
+    owner: _owner,
+    seq: _seq,
+    leaseUntil: _leaseUntil,
+    ...body
+  } = record;
   return body;
 }
 
@@ -122,27 +130,27 @@ export function applyBody(
   const world = session.world;
   world.terrain = terrain;
   world.seed = terrain.seed;
-  let ground = structuredClone(body.entities).map((entity) =>
-    entity.kind === 'nest'
-      ? entity
-      : { ...entity, y: restingY(terrain, entity.kind, entity.x, entity.z, entity.footprint) },
-  );
-  if (body.scenery === 2) {
-    let patches = 0;
-    ground = ground.filter((entity) => entity.kind !== 'grass' || ++patches <= GRASS);
-  }
-  if (body.scenery !== 4 && body.scenery !== 5) {
-    for (const entity of ground) {
-      if (entity.kind === 'grass') entity.footprint = { kind: 'circle', r: grassRadius(entity.id) };
+  let ground = structuredClone(body.entities);
+  for (const family of islandFamilies) {
+    const legacy = family.legacy;
+    if (legacy?.cap.includes(body.scenery)) {
+      let count = 0;
+      ground = ground.filter((entity) => entity.kind !== family.kind || ++count <= family.count);
+    }
+    if (legacy?.footprint?.includes(body.scenery)) {
+      for (const entity of ground) {
+        if (entity.kind === family.kind)
+          entity.footprint = kindOf(entity.kind)?.placement?.footprint(entity.id);
+      }
     }
   }
-  if (body.scenery !== 5) {
-    let trees = 0;
-    ground = ground.filter((entity) => entity.kind !== 'tree' || ++trees <= TREES);
+  for (const entity of ground) {
+    if (!kindOf(entity.kind)?.fixedElevation)
+      entity.y = restingY(terrain, entity.kind, entity.x, entity.z, entity.footprint);
   }
   world.entities = indexEntities(ground);
   world.entitySerials = new Map(Object.entries(body.entitySerials ?? {}));
-  world.blocks = [...nestBlocks(), ...propBlocks(ground)];
+  world.blocks = propBlocks(ground);
   world.marks = structuredClone(body.marks);
   world.tethers.clear();
   const anchor = tetherAnchor(body.spider.position, body.spider.yaw);
@@ -155,16 +163,8 @@ export function applyBody(
   if (body.scenery !== 2 && body.scenery !== 3 && body.scenery !== 4 && body.scenery !== 5)
     populateScenery(world, body.spider.position, MAX_ENTITIES);
   for (const entity of world.entities.values()) {
-    if (
-      entity.kind === 'grass' &&
-      !grassOnDryGround(
-        (x, z) => terrain.height(x, z),
-        entity.x,
-        entity.z,
-        entity.footprint?.kind === 'circle' ? entity.footprint.r : 1.7,
-      )
-    )
-      world.entities.delete(entity.id);
+    const placement = kindOf(entity.kind)?.placement;
+    if (placement && !placement.fits(terrain, entity)) removeEntity(world, entity);
   }
   world.populations = initialPopulations();
   world.populations.set(applePopulation.id, { remaining: body.appleIn, attempts: body.sprouts });
@@ -256,8 +256,13 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
   if (entities.some((entity) => !entity) || carrying.some((entity) => !entity)) return null;
   const ground = entities as EntityState[];
   const held = carrying as CarriedRecord[];
-  const homes = ground.filter((entity) => entity.id === 'home' && entity.kind === 'nest');
-  if (homes.length !== 1) return null;
+  for (const placement of islandPlacements) {
+    if (
+      kindOf(placement.kind)?.home &&
+      !ground.some((entity) => entity.id === placement.id && kindOf(entity.kind)?.home)
+    )
+      return null;
+  }
   const ids = new Set<string>();
   for (const entity of [...ground, ...held]) {
     if (ids.has(entity.id)) return null;

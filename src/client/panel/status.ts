@@ -259,7 +259,7 @@ export function bindStatus(options: {
     spiderPosition.value.textContent = `(${number(self.x)}, ${number(self.y)}, ${number(self.z)})`;
     spiderBody.value.textContent = `${number(self.heading)}° / ${number(self.speed)}`;
     spiderHeight.value.textContent = `${number(self.ground)} / ${number(self.height)}`;
-    spiderPlace.value.textContent = `${self.home ? '在巢里' : self.wet ? '在水中' : '在陆地'} · 灯${info.lamp ? '开' : '关'}`;
+    spiderPlace.value.textContent = `${self.home ? '在家里' : self.wet ? '在水中' : '在陆地'} · 灯${info.lamp ? '开' : '关'}`;
     spiderDetails.querySelector('pre')!.textContent = json({
       附近可操作目标: session.near(),
       背上物品: self.carrying,
@@ -269,7 +269,7 @@ export function bindStatus(options: {
       浮水: self.swimming,
       水边: self.water,
       岸边: self.shore,
-      草丛: self.cover,
+      遮蔽: self.cover,
       可见物体: observation.entities,
       地形: observation.terrain,
     });

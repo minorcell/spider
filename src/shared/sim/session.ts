@@ -20,7 +20,7 @@ import {
   BODY_RADIUS,
   EYE_HEIGHT,
   groundOccluded,
-  insideHome,
+  homeAt,
   occluded,
   SIGHT_TOP,
 } from '@/src/shared/sight';
@@ -481,8 +481,9 @@ export class SimSession {
     const item = this.#carried(id);
     if (!item) return { ok: false, reason: 'not-carrying', id };
     const { x, z } = this.spider.root.position;
-    if (!insideHome(x, z)) return { ok: false, reason: 'not-home' };
-    const spot = this.#stash(item);
+    const home = homeAt(x, z, this.world.entities.values());
+    if (!home) return { ok: false, reason: 'not-home' };
+    const spot = this.#stash(item, home);
     if (!spot) return { ok: false, reason: 'no-room' };
     this.#putDown(item, spot.x, spot.z);
     return {
@@ -497,7 +498,8 @@ export class SimSession {
 
   sleep(): Promise<GoalOutcome> {
     const { x, z } = this.spider.root.position;
-    if (!insideHome(x, z)) return Promise.resolve({ ok: false, reason: 'not-home' });
+    if (!homeAt(x, z, this.world.entities.values()))
+      return Promise.resolve({ ok: false, reason: 'not-home' });
     const duration = 4;
     const startedAt = this.spider.time;
     const woke = this.spider.heightSet;
@@ -622,15 +624,17 @@ export class SimSession {
     return spots.find((spot) => fitsPlacement(this.world, item, spot.x, spot.z)) ?? null;
   }
 
-  #stash(item: EntityState): { x: number; z: number } | null {
-    const step = 0.45;
-    const start = 1.15;
+  #stash(item: EntityState, home: EntityState): { x: number; z: number } | null {
+    const {
+      half,
+      storage: { step, start },
+    } = kindOf(home.kind)!.home!;
     for (let column = 0; ; column += 1) {
-      const x = start - column * step;
-      if (!insideHome(x, 0)) break;
+      const x = home.x + start - column * step;
+      if (Math.abs(x - home.x) > half) break;
       for (let row = 0; ; row += 1) {
-        const z = start - row * step;
-        if (!insideHome(x, z)) break;
+        const z = home.z + start - row * step;
+        if (Math.abs(z - home.z) > half) break;
         if (fitsPlacement(this.world, item, x, z)) return { x, z };
       }
     }

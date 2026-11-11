@@ -1,5 +1,5 @@
 import { indexEntities } from '@/src/shared/world';
-import { applePopulation } from '@/src/shared/islandContent';
+import { applePopulation, islandPlacements } from '@/src/shared/islandContent';
 import { attachCargo } from '@/tests/simHelpers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { groundSupport } from '@/src/shared/contact';
@@ -9,8 +9,6 @@ import { Terrain, TERRAIN } from '@/src/shared/terrain';
 import {
   createWorld,
   grow,
-  GRASS_VIEW,
-  nestBlocks,
   populateScenery,
   propBlocks,
   settle,
@@ -98,7 +96,7 @@ describe('constants', () => {
   it('exposes the sensing ranges', () => {
     expect(REACH).toBe(1.2);
     expect(VIEW_DISTANCE).toBe(24);
-    expect(GRASS_VIEW).toBe(4.5);
+    expect(KINDS.grass.cover?.range).toBe(4.5);
     expect(REACH_Y).toBe(1.6);
   });
 });
@@ -130,7 +128,7 @@ describe('restingY', () => {
   });
 });
 
-describe('nestBlocks', () => {
+describe('registered collision shapes', () => {
   it('uses saved footprints and ground height for prop walls', () => {
     const blocks = propBlocks([
       { id: 'tree', kind: 'tree', x: 0, y: 4, z: 0, stage: 0 },
@@ -162,7 +160,7 @@ describe('nestBlocks', () => {
   });
 
   it('builds a ring of walls with a door at -Z', () => {
-    const blocks = nestBlocks();
+    const blocks = propBlocks(islandPlacements);
     expect(blocks.length).toBeGreaterThan(12);
     expect(blocks.length).toBeLessThan(24);
     expect(blocks.every((wall) => wall.height === 1)).toBe(true);
@@ -184,7 +182,7 @@ describe('nestBlocks', () => {
   });
 
   it('leaves a body-wide door on -Z', () => {
-    const blocks = nestBlocks();
+    const blocks = propBlocks(islandPlacements);
     for (let z = -0.5; z >= -3.2; z -= 0.1) {
       expect(blockedAt(0, z, blocks)).toBe(false);
     }
@@ -385,7 +383,7 @@ describe('grow', () => {
     world.entities = indexEntities(
       [...world.entities.values()].filter((entity) => entity.kind === 'nest'),
     );
-    world.blocks = nestBlocks();
+    world.blocks = propBlocks(islandPlacements);
     world.populations.get('apple')!.remaining = 0;
     const rolls = Array.from({ length: 80 }, (_, index) =>
       index % 2 === 0 ? toRng(spot.x) : toRng(spot.z),

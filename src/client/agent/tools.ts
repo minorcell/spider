@@ -151,10 +151,10 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         const observation = session.observe(distance ?? VIEW_DISTANCE);
         const world = session.worldInfo();
         const hint =
-          observation.self.cover === 'grass' && observation.view < VIEW_DISTANCE
+          observation.self.cover && observation.view < VIEW_DISTANCE
             ? {
-                code: 'view-limited-by-grass',
-                message: `草丛把视野缩短到了 ${observation.view}。先用 set_height 抬高身体，再 observe。`,
+                code: 'view-limited-by-cover',
+                message: `遮蔽物把视野缩短到了 ${observation.view}。先用 set_height 抬高身体，再 observe。`,
                 next: 'set_height',
               }
             : !session.lamp && world.view < 0.9 && observation.view < VIEW_DISTANCE

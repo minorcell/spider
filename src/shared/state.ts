@@ -13,9 +13,9 @@ import {
 } from '@/src/shared/sense';
 import {
   EYE_HEIGHT,
-  grassHere,
+  coverAt,
   groundOccluded,
-  insideHome,
+  homeAt,
   occluded,
   SIGHT_TOP,
 } from '@/src/shared/sight';
@@ -90,6 +90,8 @@ export interface EntityState {
 
 export interface Block {
   id: string;
+  owner?: string;
+  kind?: string;
   minX: number;
   maxX: number;
   minZ: number;
@@ -183,7 +185,7 @@ export interface Observation {
     heading: number;
     height: number;
     speed: number;
-    cover: 'grass' | null;
+    cover: string | null;
     home: boolean;
     wet: boolean;
     waterDepth: number;
@@ -264,8 +266,8 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
     heading: Math.round(heading * 10) / 10,
     height: round3(state.height),
     speed: round3(state.speed),
-    cover: grassHere(px, pz, world.entities.values(), eye) ? 'grass' : null,
-    home: insideHome(px, pz),
+    cover: coverAt(px, pz, world.entities.values(), eye)?.kind ?? null,
+    home: homeAt(px, pz, world.entities.values()) !== null,
     wet: waterDepth > 0,
     waterDepth: round3(waterDepth),
     swimming,
@@ -392,8 +394,8 @@ export function toObservation(
       heading: Math.round(heading * 10) / 10,
       height: round3(state.height),
       speed: round3(state.speed),
-      cover: grassHere(px, pz, world.entities.values(), eye) ? 'grass' : null,
-      home: insideHome(px, pz),
+      cover: coverAt(px, pz, world.entities.values(), eye)?.kind ?? null,
+      home: homeAt(px, pz, world.entities.values()) !== null,
       wet: waterDepth > 0,
       waterDepth: round3(waterDepth),
       swimming,

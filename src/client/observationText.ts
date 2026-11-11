@@ -1,3 +1,4 @@
+import { kindOf } from '@/src/shared/kinds';
 import type { Observation } from '@/src/shared/state';
 import { REACH } from '@/src/shared/world';
 
@@ -11,11 +12,11 @@ export function describeObservation(observation: Observation): string {
         : `面前 ${aheadInfo.open} 米是空的`;
   const carrying = observation.self.carrying.map((item) => item.id).join('、') || '空';
   const where = observation.self.home
-    ? '在巢里'
+    ? '在家里'
     : observation.self.wet
       ? '在水里'
-      : observation.self.cover === 'grass'
-        ? '在草里'
+      : observation.self.cover
+        ? `在${kindOf(observation.self.cover)?.label ?? observation.self.cover}里`
         : '在空地上';
   const water = observation.self.water;
   const shore = observation.self.shore;

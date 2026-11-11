@@ -74,7 +74,7 @@ describe('toSense', () => {
   it('reports the body without the island around it', () => {
     const worldState = world({ entities: indexEntities([apple()]) });
     const sense = toSense(spider(), worldState);
-    expect(sense).toMatchObject({ x: 0, z: 0, heading: 0, home: true });
+    expect(sense).toMatchObject({ x: 0, z: 0, heading: 0, home: false });
     expect(sense.ahead).toEqual({ open: 8, by: 'clear', id: null, kind: null });
     expect(sense).not.toHaveProperty('entities');
     expect(sense).not.toHaveProperty('nearby');
@@ -221,7 +221,7 @@ describe('toObservation', () => {
       height: 0.25,
       speed: 1.235,
       cover: null,
-      home: true,
+      home: false,
     });
   });
 

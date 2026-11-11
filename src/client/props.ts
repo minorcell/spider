@@ -2,7 +2,7 @@ import { Group, Mesh, MeshLambertMaterial, SphereGeometry } from 'three';
 import { kindOf } from '@/src/shared/kinds';
 import type { Footprint } from '@/src/shared/state';
 import { buildApple } from '@/src/client/appleMesh';
-import { buildGrass, type GrassStyle } from '@/src/client/grassMesh';
+import { buildGrass, drapeGrass, type GrassStyle } from '@/src/client/grassMesh';
 import { buildStone } from '@/src/client/models/stone';
 import { buildTree } from '@/src/client/models/tree';
 import { buildNest } from '@/src/client/nest';
@@ -52,18 +52,44 @@ export function buildProp(
     mesh.position.y = radius;
     return new Group().add(mesh);
   }
-  if (model === 'apple') return buildApple(stage);
-  if (model === 'nest') return buildNest();
-  if (model === 'grass') {
-    const radius = footprint?.kind === 'circle' ? footprint.r : 1.7;
-    const { style, seed } = grassStyle(id);
-    return buildGrass(radius, seed, style);
-  }
-  if (model === 'tree') {
-    const radius = circleRadius(footprint, 0.4);
-    return buildTree(propSeed(id, 13), 2.55 + radius * 3.3);
-  }
-  const bog = model === 'bog-stone';
-  const radius = circleRadius(footprint, bog ? 0.75 : 0.8);
-  return buildStone(propSeed(id, bog ? 41 : 29), radius / 0.82, bog);
+  return modelOf(model)?.build(stage, footprint, id) ?? null;
+}
+
+interface ModelSpec {
+  build(stage: number, footprint: Footprint | undefined, id: string): Group;
+  drape?: typeof drapeGrass;
+}
+
+/** Presentation assets are registered separately from gameplay capabilities. */
+export const MODELS: Record<string, ModelSpec> = {
+  apple: { build: (stage) => buildApple(stage) },
+  nest: { build: () => buildNest() },
+  grass: {
+    build: (_stage, footprint, id) => {
+      const { style, seed } = grassStyle(id);
+      return buildGrass(circleRadius(footprint, 1.7), seed, style);
+    },
+    drape: drapeGrass,
+  },
+  tree: {
+    build: (_stage, footprint, id) =>
+      buildTree(propSeed(id, 13), 2.55 + circleRadius(footprint, 0.4) * 3.3),
+  },
+  stone: {
+    build: (_stage, footprint, id) =>
+      buildStone(propSeed(id, 29), circleRadius(footprint, 0.8) / 0.82, false),
+  },
+  'bog-stone': {
+    build: (_stage, footprint, id) =>
+      buildStone(propSeed(id, 41), circleRadius(footprint, 0.75) / 0.82, true),
+  },
+};
+
+export function propDrape(kind: string): ModelSpec['drape'] {
+  const model = kindOf(kind)?.model;
+  return typeof model === 'string' ? modelOf(model)?.drape : undefined;
+}
+
+function modelOf(id: string): ModelSpec | undefined {
+  return Object.hasOwn(MODELS, id) ? MODELS[id] : undefined;
 }

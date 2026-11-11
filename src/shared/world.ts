@@ -1,10 +1,10 @@
-import { grassOnDryGround, grassRadius } from '@/src/shared/grass';
 import { groundSupport } from '@/src/shared/contact';
 import { PHYSICS } from '@/src/shared/config';
 import { kindOf } from '@/src/shared/kinds';
 import {
   initialPopulations,
   islandFamilies,
+  islandPlacements,
   populationRules,
   type PopulationRule,
   type ScatterOptions,
@@ -18,8 +18,6 @@ import { Terrain, TERRAIN } from '@/src/shared/terrain';
 export const REACH = 1.2;
 
 export const VIEW_DISTANCE = 24;
-
-export const GRASS_VIEW = 4.5;
 
 export const REACH_Y = 1.6;
 
@@ -72,9 +70,19 @@ export function createWorld(
   terrain = new Terrain(seed),
 ): WorldState {
   const rng = mulberry32(seed ^ 0x9e3779b9);
-  const blocks = nestBlocks();
-  const placed: { x: number; z: number }[] = [];
-  const entities: EntityState[] = [{ id: 'home', kind: 'nest', x: 0, y: 0.02, z: 0, stage: 0 }];
+  const entities: EntityState[] = islandPlacements.map((placement) => ({
+    ...makeEntity(
+      terrain,
+      placement.id,
+      placement.kind,
+      placement,
+      0,
+      placement.footprint ?? kindOf(placement.kind)?.placement?.footprint(placement.id),
+    ),
+    ...structuredClone(placement),
+  }));
+  const blocks = propBlocks(entities);
+  const placed: { x: number; z: number; kind?: string }[] = [...entities];
   for (const family of islandFamilies) {
     const offset = entities.filter((entity) => entity.kind === family.kind).length;
     entities.push(
@@ -96,7 +104,7 @@ export function createWorld(
     terrain,
     entities: indexEntities(entities),
     entitySerials: new Map(),
-    blocks: [...blocks, ...propBlocks(entities)],
+    blocks: propBlocks(entities),
     marks: [],
     tethers: new Map(),
     populations: initialPopulations(),
@@ -111,7 +119,14 @@ export function addEntity(
   time: number,
 ): EntityState {
   const id = nextPropId(world, kind);
-  const entity = makeEntity(world.terrain, id, kind, position, time);
+  const entity = makeEntity(
+    world.terrain,
+    id,
+    kind,
+    position,
+    time,
+    kindOf(kind)?.placement?.footprint(id),
+  );
   world.entities.set(id, entity);
   world.blocks.push(...propBlocks([entity]));
   return entity;
@@ -124,9 +139,7 @@ export function removeEntity(world: WorldState, entity: EntityState): void {
   }
   world.entities.delete(entity.id);
   world.tethers.delete(entity.id);
-  if (kindOf(entity.kind)?.block) {
-    world.blocks = world.blocks.filter((block) => block.id !== entity.id);
-  }
+  world.blocks = world.blocks.filter((block) => (block.owner ?? block.id) !== entity.id);
 }
 
 export function expireEntities(world: WorldState, time: number): void {
@@ -212,38 +225,23 @@ function nextPropId(world: WorldState, kind: string): string {
   return `${kind}-${serial}`;
 }
 
-export function nestBlocks(): Block[] {
-  const segments = 22;
-  const radius = 2.62;
-  const half = 0.42;
-  const thickness = 0.24;
-  const door = -Math.PI / 2;
-  const gap = 0.62;
-  const blocks: Block[] = [];
-  for (let i = 0; i < segments; i++) {
-    const angle = (i / segments) * Math.PI * 2;
-    const away = Math.abs(Math.atan2(Math.sin(angle - door), Math.cos(angle - door)));
-    if (away < gap) continue;
-    const cx = Math.cos(angle) * radius;
-    const cz = Math.sin(angle) * radius;
-    const ex = Math.abs(Math.sin(angle) * half) + Math.abs(Math.cos(angle) * thickness);
-    const ez = Math.abs(Math.cos(angle) * half) + Math.abs(Math.sin(angle) * thickness);
-    blocks.push({
-      id: `nest-ring-${i}`,
-      minX: cx - ex,
-      maxX: cx + ex,
-      minZ: cz - ez,
-      maxZ: cz + ez,
-      height: 1,
-    });
-  }
-  return blocks;
-}
-
 export function propBlocks(entities: Iterable<EntityState>): Block[] {
   const blocks: Block[] = [];
   for (const entity of entities) {
-    const spec = kindOf(entity.kind)?.block;
+    const kind = kindOf(entity.kind);
+    for (const box of kind?.boxes ?? []) {
+      blocks.push({
+        id: `${entity.id}/${box.id}`,
+        owner: entity.id,
+        kind: entity.kind,
+        minX: entity.x + box.minX,
+        maxX: entity.x + box.maxX,
+        minZ: entity.z + box.minZ,
+        maxZ: entity.z + box.maxZ,
+        height: entity.y + box.height,
+      });
+    }
+    const spec = kind?.block;
     if (!spec) continue;
     const footprint = entity.footprint;
     const radius =
@@ -255,6 +253,7 @@ export function propBlocks(entities: Iterable<EntityState>): Block[] {
     const half = spec.radius * radius;
     blocks.push({
       id: entity.id,
+      kind: entity.kind,
       minX: entity.x - half,
       maxX: entity.x + half,
       minZ: entity.z - half,
@@ -299,7 +298,7 @@ export function populateScenery(
 function scatter(
   rng: () => number,
   terrain: WorldState['terrain'],
-  placed: { x: number; z: number }[],
+  placed: { x: number; z: number; kind?: string }[],
   blocks: readonly Block[],
   kind: string,
   count: number,
@@ -316,23 +315,18 @@ function scatter(
     const settled = settle(terrain, blocks, kind, spot, placed, undefined, options.gap);
     if (!settled) continue;
     const id = `${kind}-${offset + entities.length + 1}`;
+    const placement = kindOf(kind)?.placement;
     const footprint =
       options.radius != null
         ? {
             kind: 'circle' as const,
             r: quantize(options.radius[0] + rng() * (options.radius[1] - options.radius[0])),
           }
-        : kind === 'grass'
-          ? { kind: 'circle' as const, r: grassRadius(id) }
-          : undefined;
-    if (
-      kind === 'grass' &&
-      footprint?.kind === 'circle' &&
-      !grassOnDryGround((x, z) => terrain.height(x, z), settled.x, settled.z, footprint.r)
-    )
-      continue;
-    placed.push(settled);
-    entities.push(makeEntity(terrain, id, kind, settled, 0, footprint));
+        : placement?.footprint(id);
+    const entity = makeEntity(terrain, id, kind, settled, 0, footprint);
+    if (placement && !placement.fits(terrain, entity)) continue;
+    placed.push(entity);
+    entities.push(entity);
   }
   return entities;
 }
@@ -345,7 +339,7 @@ export function settle(
   blocks: readonly Block[],
   kind: string,
   start: { x: number; z: number },
-  placed: { x: number; z: number }[],
+  placed: { x: number; z: number; kind?: string }[],
   avoid?: { x: number; z: number },
   gap = MIN_GAP,
 ): { x: number; z: number } | null {
@@ -434,7 +428,7 @@ function lowerAround(
 function roll(
   rng: () => number,
   terrain: { height(x: number, z: number): number },
-  placed: { x: number; z: number }[],
+  placed: { x: number; z: number; kind?: string }[],
   blocks: readonly Block[],
   kind: string,
   minFromHome: number,
@@ -444,7 +438,16 @@ function roll(
   const x = quantize((rng() * 2 - 1) * TERRAIN.island * 0.8);
   const z = quantize((rng() * 2 - 1) * TERRAIN.island * 0.8);
   const radius = Math.hypot(x, z);
-  if (radius < minFromHome || radius > TERRAIN.island * 0.72) return null;
+  if (radius > TERRAIN.island * 0.72) return null;
+  if (
+    placed.some(
+      (point) =>
+        point.kind &&
+        kindOf(point.kind)?.home &&
+        Math.hypot(x - point.x, z - point.z) < minFromHome,
+    )
+  )
+    return null;
   const ground = terrain.height(x, z);
   const depth = WATER - ground;
   const wet = kindOf(kind)?.wet === true;
@@ -455,7 +458,7 @@ function roll(
   const gap = options.gap ?? MIN_GAP;
   if (placed.some((point) => Math.hypot(point.x - x, point.z - z) < gap)) return null;
   if (avoid && Math.hypot(avoid.x - x, avoid.z - z) < SPROUT_CLEAR) return null;
-  const probe = kind === 'grass' ? 3.2 : 0.2;
+  const probe = kindOf(kind)?.placement?.probe ?? 0.2;
   if (blockedAt(x, z, blocks, probe)) return null;
   return { x, z };
 }

@@ -1,19 +1,19 @@
-import { kindOf } from '@/src/shared/kinds';
-import { nestSolidSurface } from '@/src/shared/nestCollision';
-import type { WorldState } from '@/src/shared/state';
+import { kindOf, type KindSpec } from '@/src/shared/kinds';
+import type { EntityState, WorldState } from '@/src/shared/state';
 import type { LegSphere } from '@/src/shared/sim/legPose';
 import type { Spider } from '@/src/shared/sim/Spider';
 
 export function bindLegWorld(spider: Spider, world: WorldState): void {
   const pool: LegSphere[] = [];
-  let nest: { x: number; y: number; z: number } | null = null;
+  const supports: { entity: EntityState; surface: NonNullable<KindSpec['support']> }[] = [];
   spider.bindLegs(
     (into) => {
       let count = 0;
-      nest = null;
+      supports.length = 0;
       for (const entity of world.entities.values()) {
-        if (entity.kind === 'nest') nest = entity;
-        const physics = kindOf(entity.kind)?.physics;
+        const spec = kindOf(entity.kind);
+        if (spec?.support) supports.push({ entity, surface: spec.support });
+        const physics = spec?.physics;
         if (!physics?.loose || physics.radius <= 0) continue;
         const slot = pool[count] ?? { x: 0, y: 0, z: 0, radius: 0 };
         pool[count] = slot;
@@ -26,6 +26,10 @@ export function bindLegWorld(spider: Spider, world: WorldState): void {
       into.length = count;
       for (let i = 0; i < count; i++) into[i] = pool[i];
     },
-    (x, z) => (nest ? nestSolidSurface(nest, x, z) : Number.NEGATIVE_INFINITY),
+    (x, z) => {
+      let height = Number.NEGATIVE_INFINITY;
+      for (const { entity, surface } of supports) height = Math.max(height, surface(entity, x, z));
+      return height;
+    },
   );
 }

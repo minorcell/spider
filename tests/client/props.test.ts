@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Box3, Group, LineSegments, Mesh, Vector3 } from 'three';
-import { buildProp, drapeGrass } from '@/src/client/props';
+import { buildProp, drapeGrass, MODELS, propDrape } from '@/src/client/props';
 import { KINDS } from '@/src/shared/kinds';
 import { nestSurface } from '@/src/shared/nestShape';
 
@@ -135,6 +135,29 @@ describe('buildProp', () => {
       expect(bounds(buildProp('decoration', 0)!).y).toBeCloseTo(0.4);
     } finally {
       delete KINDS.decoration;
+    }
+  });
+
+  it('resolves new model registrations and rejects missing or inherited model IDs', () => {
+    const model = new Group();
+    const drape = (): void => {};
+    MODELS.banner = { build: () => model, drape };
+    KINDS.banner = { rest: 0, model: 'banner' };
+    try {
+      expect(buildProp('banner', 0)).toBe(model);
+      expect(propDrape('banner')).toBe(drape);
+      expect(propDrape('grass')).toBe(drapeGrass);
+      expect(propDrape('apple')).toBeUndefined();
+      expect(propDrape('berry')).toBeUndefined();
+      expect(propDrape('missing')).toBeUndefined();
+      KINDS.banner.model = 'missing';
+      expect(buildProp('banner', 0)).toBeNull();
+      expect(propDrape('banner')).toBeUndefined();
+      KINDS.banner.model = 'constructor';
+      expect(buildProp('banner', 0)).toBeNull();
+    } finally {
+      delete MODELS.banner;
+      delete KINDS.banner;
     }
   });
 

@@ -1,3 +1,5 @@
+import { describeObservation } from '@/src/client/observationText';
+import { SimSession } from '@/src/shared/sim/session';
 import { indexEntities } from '@/src/shared/world';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BufferAttribute, Line, LineSegments, PerspectiveCamera, Vector3 } from 'three';
@@ -183,7 +185,7 @@ describe('ObserveOverlay', () => {
     );
     expect(behind?.hidden).toBe(true);
     const readout = parent.querySelector('#observe-readout')!;
-    expect(readout.textContent).toContain('在巢里');
+    expect(readout.textContent).toContain('在空地上');
     expect(readout.textContent).toContain('面前');
     expect(readout.textContent).toContain('是 screen');
     expect(readout.textContent).toContain('背上 空');
@@ -472,4 +474,13 @@ describe('ObserveOverlay', () => {
     ) as BufferAttribute;
     expect(pos.getX(1)).toBeLessThan(3);
   });
+});
+
+it('describes a registered home and unnamed cover without assuming a content kind', () => {
+  const observation = new SimSession(7).observe();
+  expect(describeObservation(observation)).toContain('在家里');
+  observation.self.home = false;
+  observation.self.wet = false;
+  observation.self.cover = 'unnamed-canopy';
+  expect(describeObservation(observation)).toContain('在unnamed-canopy里');
 });

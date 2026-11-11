@@ -219,7 +219,7 @@ describe('spiderTools', () => {
       string,
       any
     >;
-    expect(grass.hint).toMatchObject({ code: 'view-limited-by-grass', next: 'set_height' });
+    expect(grass.hint).toMatchObject({ code: 'view-limited-by-cover', next: 'set_height' });
 
     session.observe.mockReturnValueOnce({ ...observation, beyond: 2, hidden: 1 });
     const partial = (await execute(tools.observe, { distance: VIEW_DISTANCE })) as Record<

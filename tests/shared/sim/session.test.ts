@@ -5,7 +5,7 @@ import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
 import { STUCK_LIMIT, type Goal } from '@/src/shared/sim/goals';
 import { visualRange, worldClock } from '@/src/shared/ecology';
 import { SimSession } from '@/src/shared/sim/session';
-import { insideHome } from '@/src/shared/sight';
+import { homeAt } from '@/src/shared/sight';
 import { Terrain } from '@/src/shared/terrain';
 import type { EntityState } from '@/src/shared/state';
 import type { Controls } from '@/src/shared/types';
@@ -990,7 +990,13 @@ describe('carrying', () => {
     const session = new SimSession(9);
     const item = fakeEntity({ id: 'apple-back' });
     attachCargo(session.world, item);
-    expect(insideHome(session.spider.root.position.x, session.spider.root.position.z)).toBe(true);
+    expect(
+      homeAt(
+        session.spider.root.position.x,
+        session.spider.root.position.z,
+        session.world.entities.values(),
+      ),
+    ).not.toBeNull();
     const outcome = session.store();
     expect(outcome).toMatchObject({ ok: true, action: 'store', target: item.id });
     expect(carriedItems(session.world)).toEqual([]);

@@ -27,7 +27,7 @@ import { applyEcologyLighting, EcologySky, enableWorldShadows } from '@/src/clie
 import { Headlamp } from '@/src/client/headlamp';
 import { worldClock } from '@/src/shared/ecology';
 import { ObserveOverlay } from '@/src/client/observeView';
-import { buildProp, drapeGrass } from '@/src/client/props';
+import { buildProp, propDrape } from '@/src/client/props';
 import { createSound } from '@/src/client/sound';
 import { tetherAnchor } from '@/src/shared/sim/tether';
 
@@ -79,7 +79,7 @@ export class Stage {
   #islandSource: ((seed: number) => Promise<Group>) | null = null;
   /** Last drawn action stage, so a new bite can make a sound. */
   readonly #stages = new Map<string, number>();
-  readonly #drapedGrass = new Map<
+  readonly #drapedProps = new Map<
     string,
     { x: number; z: number; terrain: WorldState['terrain'] }
   >();
@@ -249,7 +249,7 @@ export class Stage {
       this.#props.delete(id);
       this.#stages.delete(id);
     }
-    this.#drapedGrass.clear();
+    this.#drapedProps.clear();
     this.#carried = null;
     this.#heard = false;
     this.#halt = 'clear';
@@ -290,7 +290,7 @@ export class Stage {
       this.#scene.remove(prop);
       this.#props.delete(id);
       this.#stages.delete(id);
-      this.#drapedGrass.delete(id);
+      this.#drapedProps.delete(id);
       this.#sound.take();
     }
   }
@@ -346,7 +346,7 @@ export class Stage {
       disposeGeometries(prop);
       this.#scene.remove(prop);
       this.#props.delete(entity.id);
-      this.#drapedGrass.delete(entity.id);
+      this.#drapedProps.delete(entity.id);
       prop = undefined;
       if (previous != null && entity.stage > previous) this.#sound.bite();
     }
@@ -370,11 +370,12 @@ export class Stage {
       this.#scene.add(prop);
     }
     this.#stages.set(entity.id, entity.stage);
-    if (spec?.model === 'grass') {
-      const draped = this.#drapedGrass.get(entity.id);
+    const drape = propDrape(entity.kind);
+    if (drape) {
+      const draped = this.#drapedProps.get(entity.id);
       if (!draped || draped.x !== x || draped.z !== z || draped.terrain !== world.terrain) {
-        drapeGrass(prop, x, z, (px, pz) => world.terrain.height(px, pz));
-        this.#drapedGrass.set(entity.id, { x, z, terrain: world.terrain });
+        drape(prop, x, z, (px, pz) => world.terrain.height(px, pz));
+        this.#drapedProps.set(entity.id, { x, z, terrain: world.terrain });
       }
       return;
     }

@@ -5,7 +5,7 @@ import { islandGroup } from '@/src/client/groundView';
 import { grassClumps, grassSeed } from '@/src/shared/grass';
 import { groundAttributes, islandBuffers } from '@/src/shared/island';
 import { planRoute } from '@/src/shared/route';
-import { grassHere } from '@/src/shared/sight';
+import { coverAt } from '@/src/shared/sight';
 import { SimSession } from '@/src/shared/sim/session';
 import { applyBody, captureBody } from '@/src/shared/sim/snapshot';
 import { surfaceOf, Terrain, TERRAIN, WORLD_RADIUS } from '@/src/shared/terrain';
@@ -90,10 +90,9 @@ describe('scenery boot', () => {
 
 describe('scenery runtime', () => {
   test('query grass cover across all patches', async ({ bench }) => {
-    expect(grassHere(grassX, grassZ, world.entities.values(), grass.y + 0.5)).toBe(true);
+    expect(coverAt(grassX, grassZ, world.entities.values(), grass.y + 0.5)).toBeTruthy();
     await bench('120 grass queries', () => {
-      for (let i = 0; i < 120; i++)
-        grassHere(grassX, grassZ, world.entities.values(), grass.y + 0.5);
+      for (let i = 0; i < 120; i++) coverAt(grassX, grassZ, world.entities.values(), grass.y + 0.5);
     }).run();
   });
 

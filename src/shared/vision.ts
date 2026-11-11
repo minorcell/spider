@@ -1,10 +1,10 @@
 import { visualRange, worldClock } from '@/src/shared/ecology';
-import { EYE_HEIGHT, grassHere } from '@/src/shared/sight';
+import { EYE_HEIGHT, coverAt } from '@/src/shared/sight';
 import { surfaceOf } from '@/src/shared/terrain';
-import { GRASS_VIEW, VIEW_DISTANCE } from '@/src/shared/world';
+import { VIEW_DISTANCE } from '@/src/shared/world';
 import type { WorldState } from '@/src/shared/state';
 
-/** The same light, grass and distance limits for the agent and the observation view. */
+/** The same light, cover and distance limits for the agent and the observation view. */
 export function viewDistance(
   world: WorldState,
   x: number,
@@ -16,6 +16,6 @@ export function viewDistance(
 ): number {
   const eye = surfaceOf(world.terrain, x, z) + EYE_HEIGHT + height;
   const light = VIEW_DISTANCE * visualRange(worldClock(now), lamp);
-  const grass = grassHere(x, z, world.entities.values(), eye) ? GRASS_VIEW : VIEW_DISTANCE;
-  return Math.min(VIEW_DISTANCE, Math.max(0, requested), light, grass);
+  const cover = coverAt(x, z, world.entities.values(), eye)?.range ?? VIEW_DISTANCE;
+  return Math.min(VIEW_DISTANCE, Math.max(0, requested), light, cover);
 }

@@ -1,3 +1,32 @@
+import { grassClumps, grassSeed, grassRadius, grassOnDryGround } from '@/src/shared/grass';
+import { nestSolidSurface } from '@/src/shared/nestCollision';
+import { ringBoxes } from '@/src/shared/shapes';
+import type { Block, EntityState, Footprint, WorldState } from '@/src/shared/state';
+
+export interface CoverVolume {
+  x: number;
+  z: number;
+  radius: number;
+  height: number;
+}
+
+export interface CoverSpec {
+  range: number;
+  volumes(id: string, radius: number): readonly CoverVolume[];
+}
+
+export interface PlacementSpec {
+  probe: number;
+  footprint(id: string): Footprint;
+  fits(terrain: WorldState['terrain'], entity: EntityState): boolean;
+}
+
+export interface HomeSpec {
+  half: number;
+  storage: { start: number; step: number };
+  landmark: string;
+}
+
 export interface EatSpec {
   duration: number;
   stages: number;
@@ -18,14 +47,7 @@ export interface BlockSpec {
   height: number;
 }
 
-export type PropModel =
-  | 'apple'
-  | 'grass'
-  | 'nest'
-  | 'tree'
-  | 'stone'
-  | 'bog-stone'
-  | { readonly color: number; readonly segments: number };
+export type PropModel = string | { readonly color: number; readonly segments: number };
 
 export interface KindSpec {
   properties?: readonly string[];
@@ -38,6 +60,13 @@ export interface KindSpec {
   rest: number;
   physics?: PhysicsSpec;
   block?: BlockSpec;
+  boxes?: readonly Block[];
+  support?: (origin: EntityState, x: number, z: number) => number;
+  cover?: CoverSpec;
+  placement?: PlacementSpec;
+  home?: HomeSpec;
+  /** Authored placements retain their saved elevation when terrain is regenerated. */
+  fixedElevation?: true;
   wet?: boolean;
 }
 
@@ -68,14 +97,36 @@ export const KINDS: Record<string, KindSpec> = {
     physics: { solid: true, radius: 0.16, loose: true, rolls: true, mass: 0.018 },
   },
   grass: {
-    properties: ['cover'],
+    cover: { range: 4.5, volumes: (id, radius) => grassClumps(radius, grassSeed(id)) },
+    placement: {
+      probe: 3.2,
+      footprint: (id) => ({ kind: 'circle', r: grassRadius(id) }),
+      fits: (terrain, entity) =>
+        grassOnDryGround(
+          (x, z) => terrain.height(x, z),
+          entity.x,
+          entity.z,
+          entity.footprint?.kind === 'circle' ? entity.footprint.r : 1.7,
+        ),
+    },
     label: '草',
     model: 'grass',
     rest: 0,
     physics: { solid: false, radius: 0, loose: false, rolls: false },
   },
   nest: {
-    properties: ['home'],
+    home: { half: 2.15, storage: { start: 1.15, step: 0.45 }, landmark: '巢穴' },
+    fixedElevation: true,
+    boxes: ringBoxes({
+      segments: 22,
+      radius: 2.62,
+      half: 0.42,
+      thickness: 0.24,
+      door: -Math.PI / 2,
+      gap: 0.62,
+      height: 0.98,
+    }),
+    support: nestSolidSurface,
     label: '巢',
     model: 'nest',
     rest: 0,
@@ -112,10 +163,12 @@ export function kindOf(kind: string): KindSpec | null {
 export function propertiesOf(kind: string): readonly string[] {
   const spec = kindOf(kind);
   const properties = spec?.properties ?? EMPTY_PROPERTIES;
-  if (!spec?.eat && !spec?.carryable) return properties;
+  if (!spec?.eat && !spec?.carryable && !spec?.cover && !spec?.home) return properties;
   const result = [...properties];
   if (spec.eat) result.push('edible');
   if (spec.carryable) result.push('carryable');
+  if (spec.cover) result.push('cover');
+  if (spec.home) result.push('home');
   return result;
 }
 

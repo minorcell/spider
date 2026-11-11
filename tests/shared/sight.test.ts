@@ -3,22 +3,23 @@ import {
   blockAt,
   blockedAt,
   BODY_RADIUS,
-  grassHere,
+  coverAt,
   groundOccluded,
-  HOME,
-  insideHome,
+  homeAt,
   occluded,
   sightOutline,
 } from '@/src/shared/sight';
 import type { EntityState } from '@/src/shared/state';
 import { block } from '@/tests/helpers';
 
-describe('insideHome', () => {
-  it('includes the boundary', () => {
-    expect(insideHome(0, 0)).toBe(true);
-    expect(insideHome(HOME.half, -HOME.half)).toBe(true);
-    expect(insideHome(HOME.half + 0.01, 0)).toBe(false);
-    expect(insideHome(0, -HOME.half - 0.01)).toBe(false);
+describe('homeAt', () => {
+  it('uses a registered home boundary at the entity position', () => {
+    const home: EntityState = { id: 'home', kind: 'nest', x: 5, y: 0, z: -3, stage: 0 };
+    expect(homeAt(5, -3, [home])).toBe(home);
+    expect(homeAt(5 + 2.15, -3 - 2.15, [home])).toBe(home);
+    expect(homeAt(5 + 2.16, -3, [home])).toBeNull();
+    expect(homeAt(5, -3 - 2.16, [home])).toBeNull();
+    expect(homeAt(0, 0, [])).toBeNull();
   });
 });
 
@@ -147,7 +148,7 @@ describe('sightOutline', () => {
   });
 });
 
-describe('grassHere', () => {
+describe('coverAt', () => {
   const at = (kind: string, footprint?: EntityState['footprint']): EntityState => ({
     id: kind,
     kind,
@@ -159,21 +160,21 @@ describe('grassHere', () => {
   });
 
   it('is true inside a grass circle while the eyes are below the blades', () => {
-    expect(grassHere(1, 0, [at('grass', { kind: 'circle', r: 2 })])).toBe(true);
-    expect(grassHere(1, 0, [at('grass', { kind: 'circle', r: 2 })], 0.5)).toBe(true);
+    expect(coverAt(1, 0, [at('grass', { kind: 'circle', r: 2 })])).toBeTruthy();
+    expect(coverAt(1, 0, [at('grass', { kind: 'circle', r: 2 })], 0.5)).toBeTruthy();
   });
 
   it('is false once the eyes are above the grass', () => {
-    expect(grassHere(1, 0, [at('grass', { kind: 'circle', r: 2 })], 2)).toBe(false);
+    expect(coverAt(1, 0, [at('grass', { kind: 'circle', r: 2 })], 2)).toBeNull();
   });
 
   it('is false outside it, or for other kinds', () => {
-    expect(grassHere(3, 0, [at('grass', { kind: 'circle', r: 2 })])).toBe(false);
-    expect(grassHere(0, 0, [at('apple', { kind: 'circle', r: 2 })])).toBe(false);
+    expect(coverAt(3, 0, [at('grass', { kind: 'circle', r: 2 })])).toBeNull();
+    expect(coverAt(0, 0, [at('apple', { kind: 'circle', r: 2 })])).toBeNull();
   });
 
   it('ignores grass without a circle footprint', () => {
-    expect(grassHere(0, 0, [at('grass')])).toBe(false);
-    expect(grassHere(0, 0, [at('grass', { kind: 'box', hx: 1, hz: 1 })])).toBe(false);
+    expect(coverAt(0, 0, [at('grass')])).toBeNull();
+    expect(coverAt(0, 0, [at('grass', { kind: 'box', hx: 1, hz: 1 })])).toBeNull();
   });
 });
