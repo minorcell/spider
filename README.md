@@ -94,6 +94,8 @@ pnpm dev
 
 在浏览器中打开终端输出的地址，再按上面的步骤接入模型。
 
+在 `v2.0` 分支访问 `/v2/` 可以体验俯视像素场景。点地面或用 WASD 移动，点选物品后用 E 牵引、F 进食。物品和场景定义在 [island.ts](src/shared/v2/island.ts)，模拟和 Canvas 渲染分别位于 [src/shared/v2](src/shared/v2/) 和 [src/client/v2](src/client/v2/)。
+
 | 命令                | 用途                           |
 | ------------------- | ------------------------------ |
 | `pnpm build`        | 构建生产版本                   |
