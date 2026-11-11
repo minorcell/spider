@@ -1,13 +1,10 @@
 import {
   BufferAttribute,
   BufferGeometry,
-  DoubleSide,
   Group,
   Line,
   LineBasicMaterial,
   LineSegments,
-  Mesh,
-  MeshBasicMaterial,
   Matrix4,
   Vector3,
   type Camera,
@@ -16,7 +13,6 @@ import { PALETTE } from '@/src/shared/config';
 import { kindOf } from '@/src/shared/kinds';
 import { paintObserve, paintPin } from '@/src/ui/dress';
 import { aheadAt } from '@/src/shared/sense';
-import { EYE_HEIGHT, sightOutline } from '@/src/shared/sight';
 import { surfaceOf } from '@/src/shared/terrain';
 import { toHeading, toObservation, type Observation, type WorldState } from '@/src/shared/state';
 import { viewDistance } from '@/src/shared/vision';
@@ -30,7 +26,6 @@ const OBSERVE_REFRESH_MS = 100;
 export class ObserveOverlay {
   readonly #root = new Group();
   readonly #viewRing: Line;
-  readonly #viewFill: Mesh;
   readonly #reachRing: Line;
   readonly #ahead: Line;
   readonly #marks: LineSegments;
@@ -42,7 +37,7 @@ export class ObserveOverlay {
   readonly #at = new Map<string, { x: number; y: number; z: number }>();
   #observation: Observation | null = null;
   #observedAt = Number.NEGATIVE_INFINITY;
-  #ringAt = { x: Number.NaN, z: Number.NaN, view: Number.NaN, lift: Number.NaN };
+  #ringAt = { x: Number.NaN, z: Number.NaN, view: Number.NaN };
   #aheadAt = { x: Number.NaN, z: Number.NaN, heading: Number.NaN, open: Number.NaN };
   readonly #pinCamera = new Matrix4();
   readonly #pinProjection = new Matrix4();
@@ -53,31 +48,34 @@ export class ObserveOverlay {
   constructor(parent: HTMLElement) {
     const ink = new LineBasicMaterial({ color: PALETTE.ink });
     const quiet = new LineBasicMaterial({ color: PALETTE.grid });
-    this.#viewRing = new Line(ringGeometry(), ink);
-    this.#viewFill = new Mesh(fillGeometry(), fillMat);
-    this.#reachRing = new Line(ringGeometry(), quiet);
+    this.#viewRing = new Line(
+      ringGeometry(),
+      new LineBasicMaterial({
+        color: 0xd88e81,
+        transparent: true,
+        opacity: 0.9,
+        depthTest: false,
+        depthWrite: false,
+      }),
+    );
+    this.#reachRing = new Line(
+      ringGeometry(),
+      new LineBasicMaterial({
+        color: PALETTE.paper,
+        transparent: true,
+        opacity: 0.9,
+        depthTest: false,
+        depthWrite: false,
+      }),
+    );
     this.#ahead = new Line(
       new BufferGeometry().setAttribute('position', new BufferAttribute(new Float32Array(6), 3)),
       ink,
     );
     this.#marks = new LineSegments(tickGeometry(24), ink);
     this.#dim = new LineSegments(tickGeometry(24), quiet);
-    this.#root.add(
-      this.#viewRing,
-      this.#reachRing,
-      this.#ahead,
-      this.#marks,
-      this.#dim,
-      this.#viewFill,
-    );
-    for (const object of [
-      this.#viewRing,
-      this.#viewFill,
-      this.#reachRing,
-      this.#ahead,
-      this.#marks,
-      this.#dim,
-    ]) {
+    this.#root.add(this.#viewRing, this.#reachRing, this.#ahead, this.#marks, this.#dim);
+    for (const object of [this.#viewRing, this.#reachRing, this.#ahead, this.#marks, this.#dim]) {
       object.frustumCulled = false;
     }
 
@@ -104,7 +102,7 @@ export class ObserveOverlay {
   reset(): void {
     this.#observation = null;
     this.#observedAt = Number.NEGATIVE_INFINITY;
-    this.#ringAt = { x: Number.NaN, z: Number.NaN, view: Number.NaN, lift: Number.NaN };
+    this.#ringAt = { x: Number.NaN, z: Number.NaN, view: Number.NaN };
     this.#aheadAt = { x: Number.NaN, z: Number.NaN, heading: Number.NaN, open: Number.NaN };
     this.#pinsDirty = true;
   }
@@ -125,7 +123,6 @@ export class ObserveOverlay {
 
     const x = spider.root.position.x;
     const z = spider.root.position.z;
-    const height = (px: number, pz: number) => world.terrain.height(px, pz);
     const walk = (px: number, pz: number) => surfaceOf(world.terrain, px, pz);
     const now = performance.now();
     let observation = this.#observation;
@@ -140,26 +137,11 @@ export class ObserveOverlay {
     const ground = (px: number, pz: number) => walk(px, pz) + 0.14;
 
     const ring = this.#ringAt;
-    const lift = observation.self.height;
-    if (
-      fresh &&
-      (ring.x !== x || ring.z !== z || ring.view !== observation.view || ring.lift !== lift)
-    ) {
+    if (fresh && (ring.x !== x || ring.z !== z || ring.view !== observation.view)) {
       ring.x = x;
       ring.z = z;
       ring.view = observation.view;
-      ring.lift = lift;
-      const outline = sightOutline(
-        x,
-        z,
-        walk(x, z) + EYE_HEIGHT + lift,
-        observation.view,
-        height,
-        world.blocks,
-        RING,
-      );
-      layOutline(this.#viewRing.geometry, outline, ground);
-      layFill(this.#viewFill.geometry, outline, x, z, ground);
+      layRing(this.#viewRing.geometry, x, z, observation.view, ground);
       layRing(this.#reachRing.geometry, x, z, REACH, ground);
     }
 
@@ -315,27 +297,6 @@ function ringGeometry(): BufferGeometry {
   );
 }
 
-function fillGeometry(): BufferGeometry {
-  const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array((RING + 1) * 3), 3));
-  const index = new Uint16Array(RING * 3);
-  for (let i = 0; i < RING; i++) {
-    index[i * 3] = 0;
-    index[i * 3 + 1] = i + 1;
-    index[i * 3 + 2] = ((i + 1) % RING) + 1;
-  }
-  geometry.setIndex(new BufferAttribute(index, 1));
-  return geometry;
-}
-
-const fillMat = new MeshBasicMaterial({
-  color: PALETTE.eye,
-  transparent: true,
-  opacity: 0.12,
-  depthWrite: false,
-  side: DoubleSide,
-});
-
 function tickGeometry(count: number): BufferGeometry {
   return new BufferGeometry().setAttribute(
     'position',
@@ -364,37 +325,6 @@ function layRing(
     const px = x + Math.sin(angle) * radius;
     const pz = z - Math.cos(angle) * radius;
     position.setXYZ(i, px, ground(px, pz), pz);
-  }
-  position.needsUpdate = true;
-}
-
-function layOutline(
-  geometry: BufferGeometry,
-  points: readonly { x: number; z: number }[],
-  ground: (x: number, z: number) => number,
-): void {
-  const position = geometry.getAttribute('position') as BufferAttribute;
-  for (let i = 0; i < points.length; i++) {
-    const point = points[i];
-    position.setXYZ(i, point.x, ground(point.x, point.z), point.z);
-  }
-  const first = points[0]!;
-  position.setXYZ(points.length, first.x, ground(first.x, first.z), first.z);
-  position.needsUpdate = true;
-}
-
-function layFill(
-  geometry: BufferGeometry,
-  points: readonly { x: number; z: number }[],
-  x: number,
-  z: number,
-  ground: (x: number, z: number) => number,
-): void {
-  const position = geometry.getAttribute('position') as BufferAttribute;
-  position.setXYZ(0, x, ground(x, z) - 0.03, z);
-  for (let i = 0; i < points.length; i++) {
-    const point = points[i];
-    position.setXYZ(i + 1, point.x, ground(point.x, point.z) - 0.03, point.z);
   }
   position.needsUpdate = true;
 }

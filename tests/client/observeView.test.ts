@@ -352,28 +352,24 @@ describe('ObserveOverlay', () => {
     expect(ring.getY(0)).toBeGreaterThan(y0);
   });
 
-  it('draws the sight area around a bank instead of a circle', () => {
+  it('shows circular range and reach outlines over terrain without filled geometry', () => {
     const overlay = new ObserveOverlay(parent);
     const bank = (_x: number, z: number): number => (z < -4 ? 3 : 0);
     overlay.sync(true, camera(), fakeSpider(0, 0), world({ terrain: { height: bank } }), view);
     const ring = (overlay.object.children[0] as Line).geometry.getAttribute(
       'position',
     ) as BufferAttribute;
-    expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeLessThan(5);
+    expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeCloseTo(24);
+    expect(
+      overlay.object.children.every(
+        (object) => object instanceof Line || object instanceof LineSegments,
+      ),
+    ).toBe(true);
+    const reach = (overlay.object.children[1] as Line).geometry.getAttribute(
+      'position',
+    ) as BufferAttribute;
+    expect(Math.hypot(reach.getX(0), reach.getZ(0))).toBeCloseTo(1.2);
     expect(Math.hypot(ring.getX(36), ring.getZ(36))).toBeCloseTo(24);
-  });
-
-  it('widens the sight area when the body rears up', () => {
-    const overlay = new ObserveOverlay(parent);
-    const bank = (_x: number, z: number): number => (z < -4 ? 3 : 0);
-    const ring = (overlay.object.children[0] as Line).geometry.getAttribute(
-      'position',
-    ) as BufferAttribute;
-    overlay.sync(true, camera(), fakeSpider(0, 0), world({ terrain: { height: bank } }), view);
-    const low = Math.hypot(ring.getX(0), ring.getZ(0));
-    overlay.reset();
-    overlay.sync(true, camera(), fakeSpider(0, 0, 1.6), world({ terrain: { height: bank } }), view);
-    expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeGreaterThan(low);
   });
 
   it('reports the nearest water and standing in it', () => {

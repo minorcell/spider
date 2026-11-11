@@ -63,47 +63,6 @@ export function groundOccluded(
   return false;
 }
 
-export function sightOutline(
-  x: number,
-  z: number,
-  eye: number,
-  view: number,
-  height: (x: number, z: number) => number,
-  blocks: readonly Block[],
-  segments = 72,
-  step = 0.25,
-): { x: number; z: number }[] {
-  const points: { x: number; z: number }[] = [];
-  const outer = Math.max(0, view);
-  const steps = Math.max(1, Math.ceil(outer / step));
-  for (let i = 0; i < segments; i++) {
-    const angle = (i / segments) * Math.PI * 2;
-    const dx = Math.sin(angle);
-    const dz = -Math.cos(angle);
-    let horizon = Number.NEGATIVE_INFINITY;
-    let reach = 0;
-    if (outer <= 0) {
-      points.push({ x, z });
-      continue;
-    }
-    const wall = nearestWall(x, z, dx, dz, blocks, eye, outer);
-    for (let s = 1; s <= steps; s++) {
-      const r = Math.min(outer, s * step);
-      if (r >= wall) break;
-      const px = x + dx * r;
-      const pz = z + dz * r;
-      const ground = height(px, pz);
-      const slope = (ground - eye) / r;
-      if (slope < horizon) break;
-      horizon = Math.max(horizon, (ground - eye - GROUND_CLEARANCE) / r);
-      reach = r;
-      if (r >= outer) break;
-    }
-    points.push({ x: x + dx * reach, z: z + dz * reach });
-  }
-  return points;
-}
-
 const coverShapes = new WeakMap<
   EntityState,
   { id: string; radius: number; spec: CoverSpec; volumes: readonly CoverVolume[] }
@@ -143,24 +102,6 @@ export function coverAt(
       cover = { kind: entity.kind, range: spec.range };
   }
   return cover;
-}
-
-function nearestWall(
-  x: number,
-  z: number,
-  dx: number,
-  dz: number,
-  blocks: readonly Block[],
-  eye: number,
-  reach: number,
-): number {
-  let nearest = Number.POSITIVE_INFINITY;
-  for (const block of blocks) {
-    if (block.height < eye) continue;
-    const entry = segmentEntry(x, z, x + dx * reach, z + dz * reach, block);
-    if (entry != null) nearest = Math.min(nearest, entry * reach);
-  }
-  return nearest;
 }
 
 function segmentHits(x0: number, z0: number, x1: number, z1: number, block: Block): boolean {

@@ -19,7 +19,6 @@ import {
   type WorldRecord,
 } from '@/src/shared/sim/snapshot';
 import { SimSession } from '@/src/shared/sim/session';
-import { EYE_HEIGHT, sightOutline } from '@/src/shared/sight';
 import { toObservation } from '@/src/shared/state';
 import { surfaceOf, Terrain } from '@/src/shared/terrain';
 import { createWorld, REACH, REACH_Y, VIEW_DISTANCE } from '@/src/shared/world';
@@ -163,8 +162,6 @@ describe('observe budgets', () => {
   const seed = 12345;
   const terrain = new Terrain(seed);
   const world = createWorld(seed, terrain);
-  const height = (x: number, z: number): number => terrain.height(x, z);
-  const eye = surfaceOf(terrain, 0, 0) + EYE_HEIGHT;
   const state = {
     time: 0,
     position: { x: 0, y: terrain.height(0, 0), z: 0 },
@@ -177,25 +174,10 @@ describe('observe budgets', () => {
     feet: [],
   };
 
-  it('traces a full sight outline in under 15 ms', () => {
-    expect(
-      bestOf(5, () => void sightOutline(0, 0, eye, VIEW_DISTANCE, height, world.blocks)),
-    ).toBeLessThan(15);
-  });
-
   it('observes the whole island in under 15 ms', () => {
     expect(
       bestOf(5, () => void toObservation(state, world, REACH, VIEW_DISTANCE, REACH_Y)),
     ).toBeLessThan(15);
-  });
-
-  it('refreshes the sight area in under 25 ms', () => {
-    expect(
-      bestOf(5, () => {
-        toObservation(state, world, REACH, VIEW_DISTANCE, REACH_Y);
-        sightOutline(0, 0, eye, VIEW_DISTANCE, height, world.blocks);
-      }),
-    ).toBeLessThan(25);
   });
 });
 
