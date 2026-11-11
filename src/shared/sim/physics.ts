@@ -336,7 +336,12 @@ function calmPair(a: Mover, b: Mover): void {
   applyPairImpulse(a, b, normal);
 }
 
-function applyPairImpulse(a: Mover, b: Mover, normal: Pick<SphereHit, 'nx' | 'ny' | 'nz'>): void {
+function applyPairImpulse(
+  a: Mover,
+  b: Mover,
+  normal: Pick<SphereHit, 'nx' | 'ny' | 'nz'>,
+  relativeY = b.vy - a.vy,
+): void {
   let { nx, ny, nz } = normal;
   if (Math.abs(ny) >= SUPPORT) {
     const mass = a.mass + b.mass;
@@ -348,7 +353,7 @@ function applyPairImpulse(a: Mover, b: Mover, normal: Pick<SphereHit, 'nx' | 'ny
     nz = 0;
     ny = ny >= 0 ? 1 : -1;
   }
-  const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny + (b.vz - a.vz) * nz;
+  const rel = (b.vx - a.vx) * nx + relativeY * ny + (b.vz - a.vz) * nz;
   if (rel >= 0) {
     syncVelocity(a);
     syncVelocity(b);
@@ -472,7 +477,7 @@ function pushFromController(movers: Mover[], world: WorldState, body: Body): voi
 type MotionEvent =
   | { kind: 'wall'; time: number; mover: Mover; nx: number; nz: number }
   | { kind: 'edge'; time: number; mover: Mover }
-  | { kind: 'pair'; time: number; a: Mover; b: Mover; normal: SphereHit }
+  | { kind: 'pair'; time: number; a: Mover; b: Mover; normal: SphereHit; relativeY: number }
   | { kind: 'controller'; time: number; mover: Mover; normal: SphereHit };
 
 /** All bodies share one timeline, including the controlled body's committed trajectory. */
@@ -539,7 +544,11 @@ function advanceMotion(
       for (let j = i + 1; j < movers.length; j++) {
         if (!movers[j].solid || (mover.asleep && movers[j].asleep)) continue;
         const normal = sweepSpheres(path, trajectories[j]);
-        if (normal) offer({ kind: 'pair', time: normal.time, a: mover, b: movers[j], normal });
+        if (normal) {
+          // A rising floor can drive the swept path upward without changing the body's fall speed.
+          const relativeY = (trajectories[j].dy - path.dy) / remaining;
+          offer({ kind: 'pair', time: normal.time, a: mover, b: movers[j], normal, relativeY });
+        }
       }
     }
     // The helper records the first event; TS cannot infer assignments through the callback.
@@ -563,7 +572,7 @@ function advanceMotion(
     if (!first) break;
     if (first.kind === 'pair') {
       first.a.asleep = first.b.asleep = false;
-      applyPairImpulse(first.a, first.b, first.normal);
+      applyPairImpulse(first.a, first.b, first.normal, first.relativeY);
     } else if (first.kind === 'controller') {
       const { mover, normal } = first;
       const approach =

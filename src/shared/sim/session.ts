@@ -21,7 +21,6 @@ import { freshnessOf, nourish, tickMetabolism } from '@/src/shared/life';
 import { IDLE_CONTROLS } from '@/src/shared/types';
 import {
   blockedAt,
-  BODY_RADIUS,
   EYE_HEIGHT,
   groundOccluded,
   homeAt,
@@ -39,7 +38,7 @@ import {
   restingY,
   VIEW_DISTANCE,
 } from '@/src/shared/world';
-import { insideLand, nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '@/src/shared/terrain';
+import { nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '@/src/shared/terrain';
 import {
   MARK_LIMIT,
   MARK_NAME_MAX,
@@ -55,6 +54,7 @@ import {
   type GoalOutcome,
 } from '@/src/shared/sim/goals';
 import { planRoute } from '@/src/shared/route';
+import { registeredFootprint } from '@/src/shared/registeredBodyMotion';
 import { applyBody, type SimBody } from '@/src/shared/sim/snapshot';
 import { bindController } from '@/src/shared/sim/bindController';
 import { fitsPlacement, stepPhysics } from '@/src/shared/sim/physics';
@@ -118,17 +118,20 @@ export class SimSession {
   #landmarkCache: {
     terrain: WorldState['terrain'];
     blocks: WorldState['blocks'];
+    blockCount: number;
     landmarks: Landmark[];
   } | null = null;
 
   landmarks(): Landmark[] {
     if (
       this.#landmarkCache?.terrain !== this.world.terrain ||
-      this.#landmarkCache.blocks !== this.world.blocks
+      this.#landmarkCache.blocks !== this.world.blocks ||
+      this.#landmarkCache.blockCount !== this.world.blocks.length
     ) {
       this.#landmarkCache = {
         terrain: this.world.terrain,
         blocks: this.world.blocks,
+        blockCount: this.world.blocks.length,
         landmarks: homeLandmarks(this.world),
       };
     }
@@ -323,9 +326,6 @@ export class SimSession {
   }
 
   async moveTo(x: number, z: number, fast = false): Promise<GoalOutcome> {
-    const limit = WORLD_RADIUS;
-    const blocks = this.world.blocks;
-    const height = (px: number, pz: number) => surfaceOf(this.world.terrain, px, pz);
     let direct = true;
     const around: string[] = [];
     let last: GoalOutcome = { ok: false, reason: 'no-path', detour: null };
@@ -335,7 +335,7 @@ export class SimSession {
       if (Math.hypot(x - x0, z - z0) <= 0.28) {
         return { ok: true, reason: 'reached', detour: detourNote(around, direct, true) };
       }
-      const plan = planRoute(x0, z0, x, z, blocks, height, limit);
+      const plan = this.#plan(x0, z0, x, z);
       if (!plan) return { ok: false, reason: 'no-path', detour: detourNote(around, direct, false) };
       direct = direct && plan.direct;
       for (const id of plan.around) if (!around.includes(id)) around.push(id);
@@ -343,12 +343,27 @@ export class SimSession {
       if (last.reason === 'cancelled') return { ...last, detour: null };
       if (last.ok) return { ok: true, reason: 'reached', detour: detourNote(around, direct, true) };
       if (last.reason !== 'blocked' && last.reason !== 'steep') return { ...last, detour: null };
+      if (Math.hypot(this.actor.position.x - x0, this.actor.position.z - z0) < 0.1) break;
     }
     return {
       ok: false,
       reason: last.reason,
       detour: detourNote(around, direct, false),
     };
+  }
+
+  #plan(x0: number, z0: number, x: number, z: number) {
+    const space = this.actor.motionSpace();
+    const { radius, turnRadius } = registeredFootprint(
+      this.actor.spec.clearance,
+      this.actor.radius,
+    );
+    return planRoute(x0, z0, x, z, space.blocks, space.surface, WORLD_RADIUS - radius, {
+      radius,
+      turnRadius,
+      inside: (px, pz) => space.insideRadius(px, pz, radius),
+      maxSlope: space.maxSlope,
+    });
   }
 
   async approach(id: string, standoff = REACH - 0.3, fast = false): Promise<GoalOutcome> {
@@ -600,9 +615,7 @@ export class SimSession {
   #standOff(entity: EntityState, standoff: number): { x: number; z: number } | null {
     const sx = this.actor.position.x;
     const sz = this.actor.position.z;
-    const blocks = this.world.blocks;
-    const limit = WORLD_RADIUS;
-    const height = (px: number, pz: number) => surfaceOf(this.world.terrain, px, pz);
+    const { blocks, insideRadius } = this.actor.motionSpace();
     const spots: { x: number; z: number; rank: number }[] = [];
     const dx = entity.x - sx;
     const dz = entity.z - sz;
@@ -611,7 +624,7 @@ export class SimSession {
       const travel = Math.max(0, dist - standoff);
       const x = sx + (dx / dist) * travel;
       const z = sz + (dz / dist) * travel;
-      if (!blockedAt(x, z, blocks) && insideLand(this.world.terrain, x, z, BODY_RADIUS)) {
+      if (!blockedAt(x, z, blocks, this.actor.radius) && insideRadius(x, z, this.actor.radius)) {
         spots.push({ x, z, rank: 0 });
       }
     }
@@ -619,12 +632,13 @@ export class SimSession {
       const angle = (i / 12) * Math.PI * 2;
       const x = entity.x + Math.cos(angle) * standoff;
       const z = entity.z + Math.sin(angle) * standoff;
-      if (blockedAt(x, z, blocks) || !insideLand(this.world.terrain, x, z, BODY_RADIUS)) continue;
+      if (blockedAt(x, z, blocks, this.actor.radius) || !insideRadius(x, z, this.actor.radius))
+        continue;
       spots.push({ x, z, rank: Math.hypot(x - sx, z - sz) });
     }
     spots.sort((a, b) => a.rank - b.rank);
     for (const spot of spots) {
-      if (planRoute(sx, sz, spot.x, spot.z, blocks, height, limit)) return spot;
+      if (this.#plan(sx, sz, spot.x, spot.z)) return spot;
     }
     return null;
   }

@@ -89,10 +89,15 @@ export function turnGoal(spider: MotionActor, degrees: number): Goal {
       return { ...IDLE_CONTROLS, turn: clamp(u, -1, 1) };
     },
     done() {
-      return Math.abs(error()) < 0.02 && Math.abs(spider.yawRate) < 0.08;
+      return (
+        spider.stuckFor >= STUCK_LIMIT ||
+        (Math.abs(error()) < 0.02 && Math.abs(spider.yawRate) < 0.08)
+      );
     },
     result() {
-      return { target: degrees, achieved: turned() };
+      return spider.stuckFor >= STUCK_LIMIT
+        ? { target: degrees, achieved: turned(), halt: spider.halt }
+        : { target: degrees, achieved: turned() };
     },
   };
 }
@@ -110,6 +115,8 @@ function segmentLeft(points: readonly PlanPoint[], index: number, place: PlanPoi
 
 export function routeGoal(spider: MotionActor, points: readonly PlanPoint[], fast = false): Goal {
   let index = points.length > 1 ? 1 : 0;
+  let escapes = 0;
+  let escapeFrom: PlanPoint | null = null;
   const length = points.reduce(
     (sum, point, i) =>
       i === 0 ? 0 : sum + Math.hypot(point.x - points[i - 1].x, point.z - points[i - 1].z),
@@ -119,15 +126,18 @@ export function routeGoal(spider: MotionActor, points: readonly PlanPoint[], fas
   const here = () => ({ x: spider.position.x, z: spider.position.z });
   const waypoint = () => points[Math.min(index, points.length - 1)];
   const remainingTo = (point: PlanPoint) => Math.hypot(point.x - here().x, point.z - here().z);
+  const bearingError = (point: PlanPoint, place: PlanPoint) =>
+    wrapRadians(Math.atan2(point.x - place.x, place.z - point.z) + spider.yaw);
 
   return {
     timeout: Math.max(8, length / (fast ? 2.2 : 1) + 4),
     controls() {
+      if (escapeFrom) return { ...IDLE_CONTROLS, throttle: escapes === 1 ? 0.65 : -0.65 };
       const point = waypoint();
       const place = here();
       const dx = point.x - place.x;
       const dz = point.z - place.z;
-      const clockwise = wrapRadians(Math.atan2(dx, -dz) + spider.yaw);
+      const clockwise = bearingError(point, place);
       const turn = clamp(-1.5 * (2.5 * -clockwise + spider.yawRate), -1, 1);
       const aligned = Math.abs(clockwise) < 0.55;
       const last = index >= points.length - 1;
@@ -140,12 +150,24 @@ export function routeGoal(spider: MotionActor, points: readonly PlanPoint[], fas
       return { ...IDLE_CONTROLS, throttle, turn, boost: fast ? 1 : 0 };
     },
     done() {
-      if (spider.stuckFor >= STUCK_LIMIT) return true;
       const point = waypoint();
+      const stalled = spider.stuckFor >= STUCK_LIMIT;
+      if (escapeFrom && remainingTo(escapeFrom) >= 1) {
+        escapeFrom = null;
+        return false;
+      }
+      if (stalled && escapes < 2 && (escapeFrom || Math.abs(bearingError(point, here())) >= 0.55)) {
+        escapes += 1;
+        escapeFrom = here();
+        return false;
+      }
+      if (stalled) return true;
+      if (escapeFrom) return false;
       const distance = remainingTo(point);
       const last = index >= points.length - 1;
       if (!last && distance < 0.3) {
         index += 1;
+        escapes = 0;
         return false;
       }
       const left = segmentLeft(points, index, here());

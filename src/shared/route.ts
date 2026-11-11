@@ -1,9 +1,7 @@
 import { GAIT } from '@/src/shared/config';
-import { blockAt, BODY_RADIUS, sweepCircle } from '@/src/shared/collision';
+import { blockAt, BODY_RADIUS, surfaceLimit, sweepCircle } from '@/src/shared/collision';
 import type { Block } from '@/src/shared/state';
 
-const PAD = BODY_RADIUS + 0.35;
-const SAMPLE = 0.2;
 const CELL = 3;
 const CORRIDOR = 12;
 const CORRIDOR_STEP = 0.5;
@@ -11,12 +9,15 @@ const CORRIDOR_STEP = 0.5;
 class BlockGrid {
   readonly #cells = new Map<number, Block[]>();
 
-  constructor(readonly blocks: readonly Block[]) {
+  constructor(
+    blocks: readonly Block[],
+    readonly radius: number,
+  ) {
     for (const block of blocks) {
-      const minX = Math.floor((block.minX - BODY_RADIUS) / CELL);
-      const maxX = Math.floor((block.maxX + BODY_RADIUS) / CELL);
-      const minZ = Math.floor((block.minZ - BODY_RADIUS) / CELL);
-      const maxZ = Math.floor((block.maxZ + BODY_RADIUS) / CELL);
+      const minX = Math.floor((block.minX - radius) / CELL);
+      const maxX = Math.floor((block.maxX + radius) / CELL);
+      const minZ = Math.floor((block.minZ - radius) / CELL);
+      const maxZ = Math.floor((block.maxZ + radius) / CELL);
       for (let x = minX; x <= maxX; x++) {
         for (let z = minZ; z <= maxZ; z++) {
           const key = cellKey(x, z);
@@ -30,7 +31,7 @@ class BlockGrid {
 
   blockAt(x: number, z: number): Block | null {
     const cell = this.#cells.get(cellKey(Math.floor(x / CELL), Math.floor(z / CELL)));
-    return cell ? blockAt(x, z, cell) : null;
+    return cell ? blockAt(x, z, cell, this.radius) : null;
   }
 
   blockedAt(x: number, z: number): boolean {
@@ -69,6 +70,13 @@ export interface Plan {
   direct: boolean;
 }
 
+interface RouteClearance {
+  radius?: number;
+  turnRadius?: number;
+  inside?: (x: number, z: number) => boolean;
+  maxSlope?: number;
+}
+
 export function planRoute(
   x0: number,
   z0: number,
@@ -77,23 +85,41 @@ export function planRoute(
   blocks: readonly Block[],
   height: (x: number, z: number) => number,
   limit: number,
+  clearance: RouteClearance = {},
 ): Plan | null {
-  const grid = new BlockGrid(blocks);
+  const radius = clearance.radius ?? BODY_RADIUS;
+  const grid = new BlockGrid(blocks, radius);
+  const pad = (clearance.turnRadius ?? radius) + 0.35;
   const start = { x: x0, z: z0 };
   const goal = { x: x1, z: z1 };
-  if (!standable(goal, grid, limit)) return null;
-  if (!standable(start, grid, limit)) return null;
-  const direct = segmentClear(start, goal, grid, height);
+  const standable = ({ x, z }: PlanPoint) =>
+    Math.hypot(x, z) <= limit && (clearance.inside?.(x, z) ?? true) && !grid.blockedAt(x, z);
+  const surface = {
+    blocks: [],
+    inside: clearance.inside,
+    surface: height,
+    maxSlope: clearance.maxSlope ?? GAIT.maxSlope,
+  };
+  const clear = (a: PlanPoint, b: PlanPoint) => {
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    return (
+      !sweepCircle(a.x, a.z, dx, dz, radius, grid.between(a, b)) &&
+      !surfaceLimit(a.x, a.z, dx, dz, surface)
+    );
+  };
+  if (!standable(goal) || !standable(start)) return null;
+  const direct = clear(start, goal);
   if (direct) return { points: [start, goal], around: [], direct: true };
 
   const nodes = [start, goal];
   for (const block of corridor(blocks, start, goal)) {
-    const xs = [block.minX - PAD, block.maxX + PAD];
-    const zs = [block.minZ - PAD, block.maxZ + PAD];
+    const xs = [block.minX - pad, block.maxX + pad];
+    const zs = [block.minZ - pad, block.maxZ + pad];
     for (const x of xs) {
       for (const z of zs) {
         const point = { x, z };
-        if (!standable(point, grid, limit)) continue;
+        if (!standable(point)) continue;
         if (nodes.some((other) => Math.hypot(other.x - x, other.z - z) < 0.05)) continue;
         nodes.push(point);
       }
@@ -101,10 +127,6 @@ export function planRoute(
   }
 
   const n = nodes.length;
-  const sees = (i: number, j: number): boolean => {
-    return segmentClear(nodes[i], nodes[j], grid, height);
-  };
-
   const goalIndex = 1;
   const gScore = Array.from({ length: n }, () => Infinity);
   const came = Array.from({ length: n }, () => -1);
@@ -123,9 +145,9 @@ export function planRoute(
     if (current === goalIndex) break;
     closed.add(current);
     for (let next = 0; next < n; next++) {
-      if (next === current || closed.has(next) || !sees(current, next)) continue;
+      if (next === current || closed.has(next)) continue;
       const score = gScore[current] + span(nodes[current], nodes[next]);
-      if (score >= gScore[next]) continue;
+      if (score >= gScore[next] || !clear(nodes[current], nodes[next])) continue;
       gScore[next] = score;
       came[next] = current;
       open.push(next);
@@ -137,14 +159,10 @@ export function planRoute(
   for (let at = goalIndex; at >= 0; at = came[at]) points.push(nodes[at]);
   points.reverse();
   return {
-    points: pull(points, grid, height),
+    points: pull(points, clear),
     around: blocksBetween(start, goal, grid),
     direct: false,
   };
-}
-
-function standable(point: PlanPoint, grid: BlockGrid, limit: number): boolean {
-  return Math.hypot(point.x, point.z) <= limit && !grid.blockedAt(point.x, point.z);
 }
 
 function corridor(blocks: readonly Block[], a: PlanPoint, b: PlanPoint): Block[] {
@@ -167,46 +185,21 @@ function span(a: PlanPoint, b: PlanPoint): number {
   return Math.hypot(b.x - a.x, b.z - a.z);
 }
 
-function segmentClear(
-  a: PlanPoint,
-  b: PlanPoint,
-  grid: BlockGrid,
-  height: (x: number, z: number) => number,
-): boolean {
-  if (sweepCircle(a.x, a.z, b.x - a.x, b.z - a.z, BODY_RADIUS, grid.between(a, b))) return false;
-  const length = span(a, b);
-  const steps = Math.max(1, Math.ceil(length / SAMPLE));
-  let previous = height(a.x, a.z);
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps;
-    const x = a.x + (b.x - a.x) * t;
-    const z = a.z + (b.z - a.z) * t;
-    const ground = height(x, z);
-    if (ground - previous > GAIT.maxSlope * (length / steps)) return false;
-    previous = ground;
-  }
-  return true;
-}
-
 function blocksBetween(a: PlanPoint, b: PlanPoint, grid: BlockGrid): string[] {
   const ids = new Set<string>();
   for (const block of grid.between(a, b)) {
-    if (sweepCircle(a.x, a.z, b.x - a.x, b.z - a.z, BODY_RADIUS, [block]))
+    if (sweepCircle(a.x, a.z, b.x - a.x, b.z - a.z, grid.radius, [block]))
       ids.add(block.owner ?? block.id);
   }
   return [...ids];
 }
 
-function pull(
-  points: PlanPoint[],
-  grid: BlockGrid,
-  height: (x: number, z: number) => number,
-): PlanPoint[] {
+function pull(points: PlanPoint[], clear: (a: PlanPoint, b: PlanPoint) => boolean): PlanPoint[] {
   const kept: PlanPoint[] = [];
   let i = 0;
   while (i < points.length - 1) {
     let j = points.length - 1;
-    while (j > i + 1 && !segmentClear(points[i], points[j], grid, height)) j -= 1;
+    while (j > i + 1 && !clear(points[i], points[j])) j -= 1;
     if (kept.length === 0) kept.push(points[i]);
     kept.push(points[j]);
     i = j;

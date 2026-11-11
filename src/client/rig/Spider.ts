@@ -96,7 +96,7 @@ export class Spider {
   /** Loose bodies the legs must not pass through. Filled once per pose. */
   #spheres: LegSphere[] = [];
   #blocks: () => readonly Block[] = () => [];
-  #blockHeight: (block: Block, x: number, z: number) => number = (block) => block.height;
+  #blockHeight?: (block: Block, x: number, z: number) => number;
   /** Last inputs that produced the current leg pose. Idle frames reuse it. */
   #held: {
     x: number;
@@ -138,7 +138,7 @@ export class Spider {
     fill: (into: LegSphere[]) => void,
     mound: (x: number, z: number) => number,
     blocks: () => readonly Block[] = () => [],
-    blockHeight: (block: Block, x: number, z: number) => number = (block) => block.height,
+    blockHeight?: (block: Block, x: number, z: number) => number,
   ): void {
     this.#blockHeight = blockHeight;
     this.#blocks = blocks;

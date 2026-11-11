@@ -113,6 +113,7 @@ export const GAIT = {
   liftRate: 1.2,
   liftEase: 8,
   maxSlope: Math.tan((85 * Math.PI) / 180),
+  stepHeight: 1.05,
   fallAccel: 14,
   fallMax: 8,
   drop: 0.2,

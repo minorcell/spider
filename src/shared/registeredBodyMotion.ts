@@ -1,12 +1,23 @@
 import {
   BODY_RADIUS,
-  blockedAt,
   moveCircle,
+  sweepCircle,
   type MotionResult,
   type MotionSpace,
 } from '@/src/shared/collision';
 import type { ControlSpec } from '@/src/shared/control';
 import type { Block, Vec3 } from '@/src/shared/state';
+
+export function registeredFootprint(clearance: ControlSpec['clearance'], radius: number) {
+  let width = radius;
+  let turnRadius = radius;
+  for (const { c, r } of clearance) {
+    const partRadius = Math.max(r[0], r[2]);
+    width = Math.max(width, Math.abs(c[0]) + partRadius);
+    turnRadius = Math.max(turnRadius, Math.hypot(c[0], c[2]) + partRadius);
+  }
+  return { radius: width, turnRadius };
+}
 
 function probes(body: Vec3, yaw: number, clearance: ControlSpec['clearance'], radius: number) {
   if (clearance.length === 0) return [{ x: body.x, z: body.z, bottom: body.y, radius }];
@@ -67,20 +78,26 @@ export function turnRegisteredBody(
   radius = BODY_RADIUS,
 ): number {
   const steps = Math.max(1, Math.ceil(Math.abs(to - from) / 0.025));
+  let previous = probes(body, from, clearance, radius);
+  const solids = previous.map(({ bottom }) => blocks.filter((block) => block.height > bottom));
   let last = from;
   for (let i = 1; i <= steps; i++) {
     const yaw = from + ((to - from) * i) / steps;
+    const next = probes(body, yaw, clearance, radius);
     if (
-      probes(body, yaw, clearance, radius).some((part) =>
-        blockedAt(
+      previous.some((part, index) =>
+        sweepCircle(
           part.x,
           part.z,
-          blocks.filter((block) => block.height > part.bottom),
+          next[index].x - part.x,
+          next[index].z - part.z,
           part.radius,
+          solids[index],
         ),
       )
     )
       return last;
+    previous = next;
     last = yaw;
   }
   return to;

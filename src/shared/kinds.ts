@@ -80,6 +80,7 @@ export interface KindSpec {
   block?: BlockSpec | ((entity: EntityState) => BlockSpec);
   boxes?: readonly Block[] | ((entity: EntityState) => readonly Block[]);
   support?: (origin: EntityState, x: number, z: number) => number;
+  walkable?: true;
   cover?: CoverSpec;
   placement?: PlacementSpec;
   home?: HomeSpec;
@@ -181,6 +182,7 @@ export const KINDS: Record<string, KindSpec> = {
     physics: { solid: true, radius: 0.8, loose: false, rolls: false },
     boxes: (entity) => stoneBoxes(entity),
     support: (entity, x, z) => stoneSupport(entity, x, z),
+    walkable: true,
   },
   'bog-stone': {
     label: '沼石',
@@ -190,6 +192,7 @@ export const KINDS: Record<string, KindSpec> = {
     physics: { solid: true, radius: 0.8, loose: false, rolls: false },
     boxes: (entity) => stoneBoxes(entity, true),
     support: (entity, x, z) => stoneSupport(entity, x, z, true),
+    walkable: true,
   },
 };
 

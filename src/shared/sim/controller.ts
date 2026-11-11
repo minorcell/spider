@@ -6,6 +6,7 @@ import type { ActorState, EntityState, Vec3 } from '@/src/shared/state';
 import { WORLD_RADIUS } from '@/src/shared/terrain';
 import { IDLE_CONTROLS, type Controls } from '@/src/shared/types';
 import { floatHeight, WATER, waterPace, type Water } from '@/src/shared/water';
+import type { ActorSpace } from '@/src/shared/sim/bindController';
 
 const NO_WATER: Water = Object.freeze({ surface: Number.NEGATIVE_INFINITY, depth: 0 });
 const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
@@ -14,10 +15,12 @@ const clamp = (v: number, min: number, max: number): number => Math.min(max, Mat
 export class Controller {
   entity!: EntityState;
   spec!: ControlSpec;
+  motionSpace!: () => ActorSpace;
   #samples: Vec3[] = [];
   #ground: (x: number, z: number) => number = () => 0;
   #water: (x: number, z: number) => Water = () => NO_WATER;
   #mound: (x: number, z: number) => number = () => Number.NEGATIVE_INFINITY;
+  #stepSupport: (x: number, z: number) => number = () => Number.NEGATIVE_INFINITY;
   #limit = WORLD_RADIUS;
   #turn: (from: number, to: number) => number = (_from, to) => to;
   #cache = { x: NaN, z: NaN, yaw: NaN, ground: 0 };
@@ -128,6 +131,9 @@ export class Controller {
     this.#mound = mound;
     this.#cache.x = NaN;
   }
+  bindStepSupport(support: (x: number, z: number) => number): void {
+    this.#stepSupport = support;
+  }
 
   travel(x: number, z: number): number {
     const water = this.#water(x, z);
@@ -138,7 +144,10 @@ export class Controller {
   support(): number {
     const water = this.water;
     const float = water.depth > 0 ? floatHeight(water) : Number.NEGATIVE_INFINITY;
-    return Math.max(this.#clearance(), float) + this.state.height;
+    return (
+      Math.max(this.#clearance(), this.#stepSupport(this.entity.x, this.entity.z), float) +
+      this.state.height
+    );
   }
 
   update(dt: number, input: Controls = IDLE_CONTROLS): void {
@@ -154,10 +163,12 @@ export class Controller {
     const yawTarget =
       turn * (input.boost ? spec.yawBoost : spec.yaw) * (water.depth > 0 ? WATER.turnPace : 1);
     state.yawRate += clamp(yawTarget - state.yawRate, -spec.yawAccel * dt, spec.yawAccel * dt);
-    const yaw = state.yaw - state.yawRate * dt;
-    state.yaw = this.#turn(state.yaw, yaw);
-    if (Math.abs(state.yaw - yaw) > 1e-8) state.yawRate = 0;
-    state.halt = 'clear';
+    const previousYaw = state.yaw;
+    const yaw = previousYaw - state.yawRate * dt;
+    state.yaw = yaw === previousYaw ? yaw : this.#turn(previousYaw, yaw);
+    const turnBlocked = Math.abs(state.yaw - yaw) > 1e-8;
+    if (turnBlocked) state.yawRate = 0;
+    state.halt = turnBlocked ? 'solid' : 'clear';
     const cruise = (input.boost ? spec.cruiseBoost : spec.cruise) * waterPace(water.depth);
     const ease = spec.speedEase + (water.depth > 0 ? WATER.spiderDrag : 0);
     state.speed += (throttle * cruise - state.speed) * (1 - Math.exp(-ease * dt));
@@ -169,12 +180,16 @@ export class Controller {
       this.entity.z = moved.z;
       if (moved.halt === 'steep' || Math.hypot(moved.x - before.x, moved.z - before.z) <= 1e-6) {
         state.speed = 0;
-        state.halt = moved.halt;
+        if (moved.halt !== 'clear') state.halt = moved.halt;
       }
     }
     const moved = Math.hypot(this.entity.x - before.x, this.entity.z - before.z);
+    const turningInPlace =
+      turnBlocked && Math.abs(turn) > 0.05 && Math.abs(state.yaw - previousYaw) < 1e-6;
     state.stuckFor =
-      Math.abs(throttle) > 0.05 && state.halt !== 'clear' && moved < 1e-4 ? state.stuckFor + dt : 0;
+      (Math.abs(throttle) > 0.05 || turningInPlace) && state.halt !== 'clear' && moved < 1e-4
+        ? state.stuckFor + dt
+        : 0;
     state.height = clamp(state.height + lift * spec.liftRate * dt, spec.heightMin, spec.heightMax);
     this.#vertical(dt);
     this.#velocity(before, dt);

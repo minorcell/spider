@@ -23,6 +23,7 @@ export interface ControlSpec {
   liftRate: number;
   liftEase: number;
   maxSlope: number;
+  stepHeight?: number;
   fallAccel: number;
   fallMax: number;
   drop: number;

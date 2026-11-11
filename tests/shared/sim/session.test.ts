@@ -1,4 +1,4 @@
-import { indexEntities, propBlocks } from '@/src/shared/world';
+import { addEntity, indexEntities, propBlocks, removeEntity } from '@/src/shared/world';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { kindOf, KINDS } from '@/src/shared/kinds';
 import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
@@ -456,6 +456,51 @@ describe('moveTo', () => {
     expect(String(outcome.detour)).toContain('绕开了');
   });
 
+  it('reaches a clear destination when a nearby tree clips the first turn', async () => {
+    const session = new SimSession(5);
+    for (const entity of session.world.entities.values()) {
+      if (entity !== session.actor.entity) removeEntity(session.world, entity);
+    }
+    addEntity(session.world, 'tree', { x: -1.4, z: 0.6 });
+
+    const outcome = await settle(session.moveTo(7, 0), session, 15, 60);
+    expect(outcome).toMatchObject({ ok: true, reason: 'reached' });
+    const { x, z } = session.actor.position;
+    expect(Math.hypot(x - 7, z)).toBeLessThan(0.45);
+  });
+
+  it('reverses out of a pinch when forward clearance is unavailable', async () => {
+    const session = new SimSession(5);
+    for (const entity of session.world.entities.values()) {
+      if (entity !== session.actor.entity) removeEntity(session.world, entity);
+    }
+    // Model a pinch where neither the desired rotation nor forward motion is possible.
+    let furthestBack = 0;
+    session.actor.bindTurn((from, to) => (furthestBack < 0.65 ? from : to));
+    session.actor.bindMotion((x, z, dx, dz) => {
+      if (furthestBack < 0.65 && dz < 0) return { x, z, dx: 0, dz: 0, halt: 'solid' };
+      furthestBack = Math.max(furthestBack, z + dz);
+      return { x: x + dx, z: z + dz, dx, dz, halt: 'clear' };
+    });
+
+    const outcome = await settle(session.moveTo(7, 0), session, 15, 60);
+    expect(outcome).toMatchObject({ ok: true, reason: 'reached' });
+    expect(furthestBack).toBeGreaterThanOrEqual(1);
+  });
+
+  it('settles a clipped turn as blocked and reports the actual angle turned', async () => {
+    const session = new SimSession(5);
+    for (const entity of session.world.entities.values()) {
+      if (entity !== session.actor.entity) removeEntity(session.world, entity);
+    }
+    addEntity(session.world, 'tree', { x: -1.4, z: 0.6 });
+
+    const outcome = await settle(session.turn(90), session, 3, 30);
+    expect(outcome).toMatchObject({ ok: false, reason: 'blocked', target: 90, halt: 'solid' });
+    expect(Number(outcome.achieved)).toBeGreaterThan(0);
+    expect(Number(outcome.achieved)).toBeLessThan(90);
+  });
+
   it('stops quietly when cancelled', async () => {
     const session = new SimSession(5);
     const promise = session.moveTo(0, -5);
@@ -471,6 +516,29 @@ describe('moveTo', () => {
     const around = await settle(session.moveTo(0, 5), session);
     expect(around.ok).toBe(false);
     expect(String(around.detour)).toContain('还是过不去');
+  });
+
+  it('reports a blocker only once when a partial advance permits replanning', async () => {
+    const session = new SimSession(5);
+    const plan = vi.fn((x0, z0, x1, z1) => ({
+      points: [
+        { x: x0, z: z0 },
+        { x: x1, z: z1 },
+      ],
+      around: ['barrier'],
+      direct: false,
+    }));
+    routeControl.plan = plan;
+    session.actor.bindMotion((x, z, dx, dz) =>
+      z + dz >= -1
+        ? { x: x + dx, z: z + dz, dx, dz, halt: 'clear' }
+        : { x, z, dx: 0, dz: 0, halt: 'solid' },
+    );
+
+    const outcome = await settle(session.moveTo(0, -5), session);
+    expect(plan).toHaveBeenCalledTimes(2);
+    expect(outcome).toMatchObject({ ok: false, reason: 'blocked' });
+    expect(outcome.detour?.match(/barrier/g)).toHaveLength(1);
   });
 
   it('returns a timeout when the route never settles', async () => {

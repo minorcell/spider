@@ -1,6 +1,5 @@
 import { Spider } from '@/src/client/rig/Spider';
 import { bindLegWorld } from '@/src/client/rig/bindWorld';
-import { propBlocks } from '@/src/shared/world';
 import { WORLD_RADIUS } from '@/src/shared/terrain';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PHYSICS } from '@/src/shared/config';
@@ -10,7 +9,8 @@ import { moveRegisteredBody } from '@/src/shared/registeredBodyMotion';
 import { planRoute } from '@/src/shared/route';
 import { SimSession } from '@/src/shared/sim/session';
 import { fitsPlacement, stepPhysics } from '@/src/shared/sim/physics';
-import { addEntity } from '@/src/shared/world';
+import { applyBody, captureBody } from '@/src/shared/sim/snapshot';
+import { addEntity, propBlocks, removeEntity } from '@/src/shared/world';
 
 const away = { x: 100, z: 100, speed: 0 };
 
@@ -35,6 +35,8 @@ afterEach(() => {
   delete KINDS.fence;
   delete KINDS.pellet;
   delete KINDS.ghost;
+  delete KINDS.slab;
+  delete KINDS['flat-walker'];
 });
 
 describe('registered bodies share continuous collision', () => {
@@ -192,5 +194,125 @@ describe('registered bodies share continuous collision', () => {
         ).toBe(false);
       }
     }
+  });
+});
+
+describe('registered walkable surfaces', () => {
+  function registerSlab(): void {
+    const half = 1;
+    KINDS.slab = {
+      rest: 0,
+      walkable: true,
+      boxes: (entity) => [
+        {
+          id: 'top',
+          minX: -half,
+          maxX: half,
+          minZ: -half,
+          maxZ: half,
+          height: entity.stage === 0 ? 0.75 : 2,
+        },
+      ],
+      support: (entity, x, z) =>
+        Math.abs(x - entity.x) <= half && Math.abs(z - entity.z) <= half
+          ? entity.y + (entity.stage === 0 ? 0.75 : 2)
+          : Number.NEGATIVE_INFINITY,
+    };
+  }
+
+  it.each(['stone', 'bog-stone'])('climbs a low %s using ordinary walking', (kind) => {
+    const session = scene();
+    const rock = addEntity(session.world, kind, { x: 0, z: -4 });
+    rock.footprint = { kind: 'circle', r: kind === 'stone' ? 0.5 : 0.85 };
+    session.world.blocks = propBlocks(session.world.entities.values());
+
+    let highest = 0;
+    for (let i = 0; i < 240 && session.actor.position.z > -4.75; i++) {
+      session.actor.update(1 / 60, { throttle: 0.55, turn: 0, lift: 0, boost: 0 });
+      highest = Math.max(highest, session.actor.position.y);
+    }
+
+    expect(session.actor.position.z).toBeLessThanOrEqual(-4.75);
+    expect(highest).toBeGreaterThan(0.04);
+  });
+
+  it('walks onto a low support through the route API after restoring it, and drops after removal', async () => {
+    const session = scene();
+    registerSlab();
+    const low = addEntity(session.world, 'slab', { x: 0, z: -4 });
+    const body = JSON.parse(JSON.stringify(captureBody(session, null)));
+    applyBody(session, body);
+    session.world.terrain = { height: () => 0 };
+    const restored = session.world.entities.get(low.id)!;
+    expect(restored).not.toBe(low);
+    expect(session.world.blocks).toContainEqual(
+      expect.objectContaining({ owner: restored.id, height: restored.y + 0.75 }),
+    );
+
+    let finished = false;
+    const route = session.moveTo(0, -4).finally(() => {
+      finished = true;
+    });
+    for (let i = 0; i < 600 && !finished; i++) {
+      session.frame(1 / 60);
+      await Promise.resolve();
+    }
+    expect(finished).toBe(true);
+    expect(await route).toMatchObject({ ok: true, reason: 'reached', detour: null });
+    expect(Math.abs(session.actor.position.z + 4)).toBeLessThan(0.45);
+    expect(session.actor.position.y).toBeGreaterThan(0.15);
+
+    removeEntity(session.world, restored);
+    expect(session.world.blocks.some((block) => block.owner === restored.id)).toBe(false);
+    for (let i = 0; i < 120; i++) session.frame(1 / 60);
+    expect(session.actor.position.y).toBeCloseTo(0, 4);
+  });
+
+  it('keeps low supports solid for a registered body without the step capability', async () => {
+    const session = scene();
+    registerSlab();
+    KINDS['flat-walker'] = {
+      ...KINDS.spider,
+      control: { ...session.actor.spec, stepHeight: undefined },
+    };
+    const walker = addEntity(session.world, 'flat-walker', { x: 0, z: 0 });
+    removeEntity(session.world, session.actor.entity);
+    session.world.controlledId = walker.id;
+    session.actor.bindEntity(walker);
+    addEntity(session.world, 'slab', { x: 0, z: -4 });
+
+    await expect(session.moveTo(0, -4)).resolves.toMatchObject({ ok: false, reason: 'no-path' });
+    for (let i = 0; i < 120; i++) {
+      session.actor.update(1 / 60, { throttle: 1, turn: 0, lift: 0, boost: 0 });
+    }
+    expect(walker.z).toBeGreaterThan(-3);
+    expect(session.actor.halt).toBe('solid');
+  });
+
+  it('preserves the turn collision when the movement solver returns no displacement', () => {
+    const session = scene();
+    session.actor.bindTurn((from) => from);
+    session.actor.bindMotion((x, z) => ({ x, z, dx: 0, dz: 0, halt: 'clear' }));
+
+    session.actor.update(0.5, { throttle: 1, turn: 1, lift: 0, boost: 0 });
+
+    expect(session.actor.position).toMatchObject({ x: 0, z: 0 });
+    expect(session.actor.halt).toBe('solid');
+    expect(session.actor.speed).toBe(0);
+  });
+
+  it('keeps taller instances of the same registered support solid to walking and routes', async () => {
+    const session = scene();
+    registerSlab();
+    const tall = addEntity(session.world, 'slab', { x: 0, z: -4 });
+    tall.stage = 1;
+    session.world.blocks = propBlocks(session.world.entities.values());
+
+    await expect(session.moveTo(0, -4)).resolves.toMatchObject({ ok: false, reason: 'no-path' });
+    for (let i = 0; i < 120; i++) {
+      session.actor.update(1 / 60, { throttle: 1, turn: 0, lift: 0, boost: 0 });
+    }
+    expect(session.actor.position.z).toBeGreaterThan(-3);
+    expect(session.actor.halt).toBe('solid');
   });
 });

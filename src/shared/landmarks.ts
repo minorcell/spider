@@ -1,5 +1,6 @@
 import { kindOf } from '@/src/shared/kinds';
-import { blockedAt } from '@/src/shared/sight';
+import { blockedAt, BODY_RADIUS } from '@/src/shared/collision';
+import { registeredFootprint } from '@/src/shared/registeredBodyMotion';
 import { TERRAIN, WORLD_RADIUS } from '@/src/shared/terrain';
 import type { WorldState } from '@/src/shared/state';
 
@@ -16,11 +17,18 @@ export function homeLandmarks(world: WorldState): Landmark[] {
   const { terrain, blocks } = world;
   const origin = [...world.entities.values()].find((entity) => kindOf(entity.kind)?.home);
   if (!origin) return [];
+  const actor =
+    world.controlledId === undefined ? undefined : world.entities.get(world.controlledId);
+  const kind = actor && kindOf(actor.kind);
+  const { radius } = registeredFootprint(
+    kind?.control?.clearance ?? [],
+    kind?.physics?.radius ?? BODY_RADIUS,
+  );
   const usable = (x: number, z: number): boolean =>
     Math.hypot(x, z) <= WORLD_RADIUS - 1 &&
     (!terrain.inside || terrain.inside(x, z, 1)) &&
     terrain.height(x, z) > TERRAIN.water &&
-    !blockedAt(x, z, blocks);
+    !blockedAt(x, z, blocks, radius);
   const home: Landmark = {
     name: kindOf(origin.kind)!.home!.landmark,
     x: origin.x,

@@ -32,6 +32,45 @@ afterEach(() => {
 });
 
 describe('continuous body contacts', () => {
+  it('bounds terrain queries per step while carrying an apple past a resting contact on seed 3', async () => {
+    const wallNow = Date.UTC(2026, 10, 12, 0);
+    const session = new SimSession(3, undefined, wallNow);
+    const apple = session.addEntity('apple', 0, -0.7);
+    const pickup = session.pickUp(apple.id);
+    for (let i = 0; i < 75; i++) session.frame(1 / 60, wallNow);
+    expect(await pickup).toMatchObject({ ok: true });
+
+    const rear = session.landmarks().find((landmark) => landmark.name === '后山')!;
+    const terrain = session.world.terrain;
+    const height = terrain.height.bind(terrain);
+    let heightQueries = 0;
+    terrain.height = (x, z) => {
+      heightQueries++;
+      return height(x, z);
+    };
+
+    let finished = false;
+    const route = session.moveTo(rear.x, rear.z, true).finally(() => {
+      finished = true;
+    });
+    try {
+      for (let i = 0; i < 1800 && !finished; i++) {
+        heightQueries = 0;
+        session.frame(1 / 60, wallNow);
+        expect(heightQueries, `terrain queries at route step ${i + 1}`).toBeLessThan(4_000);
+        await Promise.resolve();
+      }
+      expect(finished).toBe(true);
+      expect(await route).toMatchObject({ ok: true, reason: 'reached' });
+      expect(
+        Math.hypot(session.actor.position.x - rear.x, session.actor.position.z - rear.z),
+      ).toBeLessThan(0.45);
+    } finally {
+      session.cancel();
+      await route;
+    }
+  });
+
   it('prevents equal bodies from swapping sides in one step', () => {
     const session = scene();
     const a = addEntity(session.world, 'light', { x: -0.4, z: 0 });

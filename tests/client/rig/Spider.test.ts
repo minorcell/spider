@@ -595,6 +595,26 @@ describe('Spider', () => {
       }
   });
 
+  it('clears a solid leg obstacle using its block height by default', () => {
+    const spider = new Spider();
+    spider.bindGround(FLAT);
+    spider.update(1 / 60);
+    const claw = spider.legs[0].claw.position;
+    const start = claw.clone();
+    const wall = block('wall', start.x - 0.2, start.x + 0.2, start.z - 0.2, start.z + 0.2);
+    spider.bindLegs(
+      (into) => {
+        into.length = 0;
+      },
+      () => Number.NEGATIVE_INFINITY,
+      () => [wall],
+    );
+    spider.update(1 / 60);
+    expect(
+      claw.x <= wall.minX || claw.x >= wall.maxX || claw.z <= wall.minZ || claw.z >= wall.maxZ,
+    ).toBe(true);
+  });
+
   it('re-solves a planted leg when a loose body moves', () => {
     const spider = new Spider();
     spider.bindGround(FLAT);

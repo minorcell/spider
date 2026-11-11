@@ -189,7 +189,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
     }),
     go: tool({
       description:
-        '移动或转身，一次只做一件事。point 走到 x、z，自动绕开固体，陡坡仍需自己爬。id 走到对象旁边并面向它。heading 或 degrees 只转身。',
+        '移动或转身，一次只做一件事。point 走到 x、z，自动翻过可攀爬的矮地物，绕开挡路的高障碍。id 走到对象旁边并面向它。heading 或 degrees 只转身。',
       inputSchema: z.discriminatedUnion('mode', [
         call({
           mode: z.literal('point').describe('走到一个坐标。'),
