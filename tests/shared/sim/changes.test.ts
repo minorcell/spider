@@ -8,6 +8,8 @@ import { applyBody, captureBody } from '@/src/shared/sim/snapshot';
 import { attachTether, detachTether } from '@/src/shared/sim/tether';
 
 const epoch = 1_800_000_000_000;
+const appleRotsAtMs = epoch + 23 * 3_600_000;
+const appleExpiresAtMs = epoch + 24 * 3_600_000;
 function scene(): SimSession {
   const session = new SimSession(7, undefined, epoch);
   session.world.entities = new Map([[session.actor.entity.id, session.actor.entity]]);
@@ -113,7 +115,7 @@ describe('committed world changes', () => {
       },
     ]);
 
-    session.reconcileWallTime(epoch + 720_000);
+    session.reconcileWallTime(appleExpiresAtMs);
     expect(commits).toHaveLength(2);
     expect(commits[1].events).toEqual([
       {
@@ -166,7 +168,7 @@ describe('committed world changes', () => {
     onWorldCommit(session.world, (commit) => commits.push(commit));
     const eating = session.eat(food.id);
     ticks(session, 29);
-    session.frame(1 / 60, epoch + 720_000);
+    session.frame(1 / 60, appleExpiresAtMs);
     await expect(eating).resolves.toMatchObject({ reason: 'expired', nutrition: 0, stage: 0 });
     expect(commits).toHaveLength(1);
     expect(commits[0].clock.tick).toBe(29);
@@ -263,21 +265,25 @@ describe('committed world changes', () => {
   it('isolates broken effects and publishes each rotten transition once from either clock', () => {
     const session = scene();
     const apple = session.addEntity('apple', 0, -0.8);
-    const berry = session.addEntity('berry', 2, 0);
+    KINDS.ration = {
+      ...KINDS.berry,
+      lifetime: { clock: 'simulation', lifetimeSeconds: 180, rottenSeconds: 30 },
+    };
+    const ration = session.addEntity('ration', 2, 0);
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const stop = onWorldCommit(session.world, () => {
       throw new Error('broken effect');
     });
     const events: WorldCommit['events'][number][] = [];
     onWorldCommit(session.world, (commit) => events.push(...commit.events));
-    session.reconcileWallTime(epoch + 630_000);
-    session.reconcileWallTime(epoch + 630_001);
+    session.reconcileWallTime(appleRotsAtMs);
+    session.reconcileWallTime(appleRotsAtMs + 1);
     expect(events).toEqual([{ kind: 'freshnessChanged', entity: apple.id, to: 'rotten' }]);
     expect(error).toHaveBeenCalledOnce();
     stop();
     session.world.clock.simSeconds = 150 - 1 / 60;
-    session.frame(1 / 60, epoch + 630_001);
-    expect(events.at(-1)).toEqual({ kind: 'freshnessChanged', entity: berry.id, to: 'rotten' });
+    session.frame(1 / 60, appleRotsAtMs + 1);
+    expect(events.at(-1)).toEqual({ kind: 'freshnessChanged', entity: ration.id, to: 'rotten' });
     expect(error).toHaveBeenCalledOnce();
   });
 
@@ -287,12 +293,12 @@ describe('committed world changes', () => {
     const commits: WorldCommit[] = [];
     onWorldCommit(session.world, (commit) => commits.push(commit));
 
-    session.reconcileWallTime(epoch + 630_000);
-    session.reconcileWallTime(epoch + 630_000);
-    session.reconcileWallTime(epoch + 629_999);
-    session.reconcileWallTime(epoch + 629_999);
-    session.reconcileWallTime(epoch + 630_000);
-    session.reconcileWallTime(epoch + 720_000);
+    session.reconcileWallTime(appleRotsAtMs);
+    session.reconcileWallTime(appleRotsAtMs);
+    session.reconcileWallTime(appleRotsAtMs - 1);
+    session.reconcileWallTime(appleRotsAtMs - 1);
+    session.reconcileWallTime(appleRotsAtMs);
+    session.reconcileWallTime(appleExpiresAtMs);
     session.reconcileWallTime(epoch);
 
     expect(commits.map((commit) => commit.events)).toEqual([
@@ -320,7 +326,7 @@ describe('committed world changes', () => {
         actorBound: session.world.entities.get(session.actor.entity.id) === session.actor.entity,
       });
     });
-    applyBody(session, saved, undefined, epoch + 720_000);
+    applyBody(session, saved, undefined, appleExpiresAtMs);
     expect(seen).toHaveBeenCalledOnce();
     expect(seen.mock.calls[0][0].events).toEqual([{ kind: 'restored' }]);
     expect(session.world.entities.has(apple.id)).toBe(false);

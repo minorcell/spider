@@ -29,27 +29,38 @@ export function offlineWorkerSource(paths: string[], version: string): string {
   return `
 const PREFIX = 'spider-offline-' + encodeURIComponent(self.registration.scope) + ':';
 const NAME = PREFIX + '${version}';
+const SCOPE = new URL(self.registration.scope);
+const INDEX = new URL('index.html', SCOPE);
 const URLS = ${JSON.stringify(paths)}.map(path => new URL(path, self.registration.scope).href);
 const CORE = URLS.filter(url => /\\.(html|js|css|woff2?)$/.test(url) || url.startsWith(new URL('assets/', self.registration.scope).href));
 const OPTIONAL = URLS.filter(url => !CORE.includes(url));
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(NAME).then(async cache => {
-    await cache.addAll(CORE);
+    await cache.addAll(CORE.map(url => new Request(url, { cache: 'reload' })));
     await Promise.allSettled(OPTIONAL.map(url => cache.add(url)));
+    await self.skipWaiting();
   }));
 });
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith(PREFIX) && key !== NAME).map(key => caches.delete(key)))));
+  event.waitUntil(caches.keys().then(async keys => {
+    await Promise.all(keys.filter(key => key.startsWith(PREFIX) && key !== NAME).map(key => caches.delete(key)));
+    await self.clients.claim();
+  }));
 });
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  const scope = new URL(self.registration.scope);
-  if (url.origin !== scope.origin) return;
-  const target = event.request.mode === 'navigate' && url.pathname === scope.pathname
-    ? new URL('index.html', scope).href : url.href;
-  if (!URLS.includes(target)) return;
-  event.respondWith(caches.open(NAME).then(async cache => (await cache.match(target)) || fetch(event.request)));
+  if (url.origin !== SCOPE.origin) return;
+  if (event.request.mode === 'navigate' && (url.pathname === SCOPE.pathname || url.pathname === INDEX.pathname)) {
+    event.respondWith(fetch(event.request, { cache: 'no-cache' }).catch(async error => {
+      const cached = await (await caches.open(NAME)).match(INDEX.href);
+      if (cached) return cached;
+      throw error;
+    }));
+    return;
+  }
+  if (!URLS.includes(url.href)) return;
+  event.respondWith(caches.open(NAME).then(async cache => (await cache.match(url.href)) || fetch(event.request)));
 });
 `;
 }
