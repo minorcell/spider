@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { PHYSICS } from '@/src/shared/config';
 import { KINDS } from '@/src/shared/kinds';
+import { attachTether } from '@/src/shared/sim/tether';
 import { stepPhysics } from '@/src/shared/sim/physics';
 import { SimSession } from '@/src/shared/sim/session';
 import { addEntity } from '@/src/shared/world';
@@ -12,6 +13,7 @@ const far = { x: 100, z: 100, speed: 0 };
 function scene(): SimSession {
   KINDS.light = {
     rest: 0,
+    carryable: { anchor: { x: 0, y: 0, z: 0 } },
     physics: { solid: true, radius: 0.02, loose: true, rolls: true, mass: 1 },
   };
   KINDS.heavy = { ...KINDS.light, physics: { ...KINDS.light.physics!, mass: 2 } };
@@ -176,11 +178,11 @@ describe('continuous body contacts', () => {
     const { world } = scene();
     const pulled = addEntity(world, 'light', { x: -0.4, z: 0 }, 0);
     const target = addEntity(world, 'heavy', { x: 0.4, z: 0 }, 0);
-    world.tethers.set(pulled.id, 1);
-    stepPhysics(world, far, 0.2, {
-      position: { x: 100, y: pulled.y, z: 0 },
-      velocity: { x: 0, y: 0, z: 0 },
-    });
+    const source = world.entities.get(world.controlledId!)!;
+    Object.assign(source, { x: 100, y: pulled.y - 0.82, z: -1.66 });
+    attachTether(world, source.id, pulled.id);
+    world.tethers.get(pulled.id)!.length = 1;
+    stepPhysics(world, far, 0.2);
     expect(target.x).toBeGreaterThan(0.4);
     expect(target.x - pulled.x).toBeCloseTo(0.04, 6);
     expect(pulled.vx).toBeCloseTo(target.vx!, 6);

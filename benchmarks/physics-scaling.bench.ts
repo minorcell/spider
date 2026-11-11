@@ -1,6 +1,7 @@
+import { KINDS } from '@/src/shared/kinds';
 import { indexEntities } from '@/src/shared/world';
 import { describe, expect, test } from 'vitest';
-import { CARRY_LIMIT, PHYSICS } from '@/src/shared/config';
+import { PHYSICS } from '@/src/shared/config';
 import { stepPhysics } from '@/src/shared/sim/physics';
 import { SimSession } from '@/src/shared/sim/session';
 import { applyBody, captureBody } from '@/src/shared/sim/snapshot';
@@ -52,7 +53,7 @@ describe('loose-body scaling', () => {
 });
 
 describe('tethered cargo runtime', () => {
-  for (const count of [0, 1, CARRY_LIMIT]) {
+  for (const count of [0, 1, KINDS.spider.tether!.limit]) {
     test(`120 driven frames with ${count} tethered items`, async ({ bench }) => {
       const session = new SimSession(SEED);
       const apples = [...session.world.entities.values()].filter(

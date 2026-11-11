@@ -38,6 +38,7 @@ function world(over: Partial<WorldState> = {}): WorldState {
     entitySerials: new Map(),
     blocks: [],
     marks: [],
+    controlledId: 'spider-1',
     tethers: new Map(),
     populations: new Map(),
     ...over,
@@ -95,7 +96,9 @@ describe('toSense', () => {
       spider(),
       world({
         entities: indexEntities([grass, apple({ id: 'apple-back', stage: 2 })]),
-        tethers: new Map([['apple-back', 1.2]]),
+        tethers: new Map([
+          ['apple-back', { sourceId: 'spider-1', targetId: 'apple-back', length: 1.2 }],
+        ]),
       }),
     );
     expect(sense.cover).toBe('grass');
@@ -341,8 +344,8 @@ describe('toObservation', () => {
       world({
         entities: indexEntities([carried]),
         tethers: new Map([
-          ['missing', 1.2],
-          [carried.id, 1.2],
+          ['missing', { sourceId: 'spider-1', targetId: 'missing', length: 1.2 }],
+          [carried.id, { sourceId: 'spider-1', targetId: carried.id, length: 1.2 }],
         ]),
       }),
       4,

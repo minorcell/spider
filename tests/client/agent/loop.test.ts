@@ -43,7 +43,7 @@ function stream(parts: unknown[], usage: unknown = undefined, failUsage = false)
 }
 
 function fakeSession(): SimSession {
-  return { cancel: vi.fn() } as unknown as SimSession;
+  return { cancel: vi.fn(), actor: { entity: { kind: 'spider' } } } as unknown as SimSession;
 }
 
 const settings = {

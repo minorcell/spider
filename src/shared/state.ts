@@ -1,6 +1,6 @@
 import type { PopulationState } from '@/src/shared/islandContent';
 import type { ControlState } from '@/src/shared/control';
-import { carriedItems } from '@/src/shared/sim/tether';
+import { carriedItems, heldBy } from '@/src/shared/sim/tether';
 import { propertiesOf } from '@/src/shared/kinds';
 import {
   aheadAt,
@@ -101,6 +101,12 @@ export interface Block {
   height: number;
 }
 
+export interface TetherRelation {
+  sourceId: string;
+  targetId: string;
+  length: number;
+}
+
 export interface WorldState {
   seed: number;
   terrain: {
@@ -113,8 +119,8 @@ export interface WorldState {
   entitySerials: Map<string, number>;
   blocks: Block[];
   marks: PlaceMark[];
-  /** Rest length by target ID, in attachment order. */
-  tethers: Map<string, number>;
+  /** One incoming relation per target, in attachment order. */
+  tethers: Map<string, TetherRelation>;
   populations: Map<string, PopulationState>;
   physics?: {
     gravity: number;
@@ -331,7 +337,7 @@ export function toObservation(
   const eye = ground + EYE_HEIGHT + state.height;
   for (const entity of world.entities.values()) {
     if (entity.id === world.controlledId) continue;
-    if (world.tethers.has(entity.id)) continue;
+    if (heldBy(world, entity.id)) continue;
     const dx = entity.x - px;
     const dz = entity.z - pz;
     const distance = Math.hypot(dx, dz);
@@ -448,7 +454,7 @@ export function toNear(
   const eye = surfaceOf(world.terrain, px, pz) + EYE_HEIGHT + state.height;
   const near: NearEntity[] = [];
   for (const entity of world.entities.values()) {
-    if (entity.id === world.controlledId || world.tethers.has(entity.id) || !canAct(entity.kind))
+    if (entity.id === world.controlledId || heldBy(world, entity.id) || !canAct(entity.kind))
       continue;
     const dx = entity.x - px;
     const dz = entity.z - pz;

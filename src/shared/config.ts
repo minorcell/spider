@@ -23,8 +23,6 @@ export const DECK_Y = 0.78;
 
 export const CONTACT = 0.01;
 
-export const CARRY_LIMIT = 7;
-
 export const MARK_LIMIT = 16;
 
 export const MARK_NAME_MAX = 24;

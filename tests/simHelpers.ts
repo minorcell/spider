@@ -1,3 +1,4 @@
+import { addEntity } from '@/src/shared/world';
 import { STUCK_LIMIT } from '@/src/shared/sim/goals';
 import type { GoalOutcome, SimSession } from '@/src/shared/sim/session';
 import type { EntityState, WorldState } from '@/src/shared/state';
@@ -25,8 +26,13 @@ export function drive(
 }
 
 export function attachCargo(world: WorldState, ...items: EntityState[]): void {
+  if (!world.controlledId) world.controlledId = addEntity(world, 'spider', { x: 0, z: 0 }, 0).id;
   for (const item of items) {
     world.entities.set(item.id, item);
-    world.tethers.set(item.id, 1.2 + world.tethers.size * 0.45);
+    world.tethers.set(item.id, {
+      sourceId: world.controlledId,
+      targetId: item.id,
+      length: 1.2 + world.tethers.size * 0.45,
+    });
   }
 }

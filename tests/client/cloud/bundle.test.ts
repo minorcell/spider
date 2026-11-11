@@ -73,11 +73,17 @@ describe('cloud bundle', () => {
   it('preserves the silk length through the cloud save format', () => {
     const session = new SimSession(4);
     const cargo = session.addEntity('apple', 0, -1);
-    session.world.tethers.set(cargo.id, 3.75);
+    session.world.tethers.set(cargo.id, {
+      sourceId: session.actor.entity.id,
+      targetId: cargo.id,
+      length: 3.75,
+    });
     const bundle = { ...sample(), world: captureBody(session, null) };
     const parsed = parseBundle(bundleBytes(bundle));
     expect(parsed?.world.entities).toContainEqual(cargo);
-    expect(parsed?.world.tethers).toEqual([{ targetId: cargo.id, length: 3.75 }]);
+    expect(parsed?.world.tethers).toEqual([
+      { sourceId: session.actor.entity.id, targetId: cargo.id, length: 3.75 },
+    ]);
   });
 
   it('reads a lease and rejects a bad one', () => {

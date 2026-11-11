@@ -560,7 +560,9 @@ function changed(prev: SimBody, next: SimBody, populationSlack: number): boolean
   if (
     prev.tethers.some(
       (tether, i) =>
-        tether.targetId !== next.tethers[i].targetId || tether.length !== next.tethers[i].length,
+        tether.sourceId !== next.tethers[i].sourceId ||
+        tether.targetId !== next.tethers[i].targetId ||
+        tether.length !== next.tethers[i].length,
     )
   )
     return true;

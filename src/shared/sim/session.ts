@@ -37,7 +37,7 @@ import {
   VIEW_DISTANCE,
 } from '@/src/shared/world';
 import { insideLand, nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '@/src/shared/terrain';
-import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
+import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
 import {
   heightGoal,
   routeGoal,
@@ -50,12 +50,7 @@ import { planRoute } from '@/src/shared/route';
 import { applyBody, type SimBody } from '@/src/shared/sim/snapshot';
 import { bindWorld } from '@/src/shared/sim/bindWorld';
 import { fitsPlacement, stepPhysics } from '@/src/shared/sim/physics';
-import {
-  carriedItems,
-  tetherAnchor,
-  tetherLength,
-  type TetherMotion,
-} from '@/src/shared/sim/tether';
+import { carriedItems, attachTether, attachmentFailure, heldBy } from '@/src/shared/sim/tether';
 import type { Controller } from '@/src/shared/sim/controller';
 import { Spider } from '@/src/shared/sim/Spider';
 import { localDate } from '@/src/shared/dates';
@@ -313,7 +308,7 @@ export class SimSession {
 
   async approach(id: string, standoff = REACH - 0.3, fast = false): Promise<GoalOutcome> {
     const entity = this.world.entities.get(id);
-    if (!entity || this.world.tethers.has(id)) {
+    if (!entity || heldBy(this.world, id)) {
       return { ok: false, reason: 'not-found', id, detour: null };
     }
 
@@ -344,7 +339,7 @@ export class SimSession {
     const kind = kindOf(entity.kind);
     const meal = kind?.eat;
     if (!kind || !meal) return Promise.resolve({ ok: false, reason: 'not-edible', id: entity.id });
-    if (!this.world.tethers.has(entity.id)) {
+    if (!heldBy(this.world, entity.id)) {
       const reach = this.#reachable(entity);
       if (!reach.ok) return Promise.resolve(reach);
     }
@@ -377,7 +372,7 @@ export class SimSession {
           Math.floor(((elapsed + 1e-8) * slices) / meal.duration),
         );
         if (!finished && stage <= target.stage) return false;
-        if (!this.world.tethers.has(target.id)) {
+        if (!heldBy(this.world, target.id)) {
           const reach = this.#reachable(target);
           if (!reach.ok) {
             failure = reach;
@@ -397,19 +392,17 @@ export class SimSession {
   }
 
   pickUp(id?: string): Promise<GoalOutcome> {
-    if (this.world.tethers.size >= CARRY_LIMIT) {
-      return Promise.resolve({
-        ok: false,
-        reason: 'full',
-        carrying: [...this.world.tethers.keys()],
-      });
-    }
-    const entity = this.#nearest(id, (item) => kindOf(item.kind)?.carryable === true);
+    const entity = this.#nearest(id, (item) => kindOf(item.kind)?.carryable !== undefined);
     if (!entity || this.world.tethers.has(entity.id))
       return Promise.resolve({ ok: false, reason: id ? 'not-found' : 'nothing-to-carry', id });
-    if (!kindOf(entity.kind)?.carryable) {
-      return Promise.resolve({ ok: false, reason: 'not-carryable', id: entity.id });
-    }
+    const failure = attachmentFailure(this.world, this.actor.entity.id, entity.id);
+    if (failure)
+      return Promise.resolve({
+        ok: false,
+        reason: failure,
+        id: entity.id,
+        carrying: carriedItems(this.world).map((item) => item.id),
+      });
     const reach = this.#reachable(entity);
     if (!reach.ok) return Promise.resolve(reach);
 
@@ -428,9 +421,9 @@ export class SimSession {
           return { ok: false, reason: 'not-found', id: entity.id };
         const reached = this.#reachable(entity);
         if (!reached.ok) return reached;
-        const anchor = tetherAnchor(this.actor.position, this.actor.yaw);
-        this.world.tethers.set(entity.id, tetherLength(anchor, entity, this.world.tethers.size));
-        return { ok: true, ...result(), carrying: [...this.world.tethers.keys()] };
+        const attached = attachTether(this.world, this.actor.entity.id, entity.id);
+        if (!attached.ok) return { ok: false, reason: attached.reason, id: entity.id };
+        return { ok: true, ...result(), carrying: carriedItems(this.world).map((item) => item.id) };
       },
       cleanup: () => this.spider.setInteraction(null),
     });
@@ -446,7 +439,7 @@ export class SimSession {
       ok: true,
       action: 'release',
       target: item.id,
-      carrying: [...this.world.tethers.keys()],
+      carrying: carriedItems(this.world).map((item) => item.id),
     };
   }
 
@@ -475,7 +468,7 @@ export class SimSession {
       target: item.id,
       x: item.x,
       z: item.z,
-      carrying: [...this.world.tethers.keys()],
+      carrying: carriedItems(this.world).map((item) => item.id),
     };
   }
 
@@ -494,7 +487,7 @@ export class SimSession {
       target: item.id,
       x: item.x,
       z: item.z,
-      carrying: [...this.world.tethers.keys()],
+      carrying: carriedItems(this.world).map((item) => item.id),
     };
   }
 
@@ -663,10 +656,6 @@ export class SimSession {
     grow(this.world, dt, this.actor.position, time);
 
     const active = this.#active;
-    const previous =
-      dt > 0 && this.world.tethers.size > 0
-        ? tetherAnchor(this.actor.position, this.actor.yaw)
-        : undefined;
     const from = {
       x: this.actor.position.x,
       y: this.actor.position.y,
@@ -676,18 +665,6 @@ export class SimSession {
     const controls = active ? active.goal.controls() : IDLE_CONTROLS;
     this.actor.update(dt, controls);
     const position = this.actor.position;
-    let motion: TetherMotion | undefined;
-    if (previous) {
-      const anchor = tetherAnchor(position, this.actor.yaw);
-      motion = {
-        position: anchor,
-        velocity: {
-          x: (anchor.x - previous.x) / dt,
-          y: (anchor.y - previous.y) / dt,
-          z: (anchor.z - previous.z) / dt,
-        },
-      };
-    }
     const committed = stepPhysics(
       this.world,
       {
@@ -698,7 +675,6 @@ export class SimSession {
         from,
       },
       dt,
-      motion,
     );
     this.actor.commit(committed, from, stuckBefore, dt, controls);
     this.spider.present(dt, controls);

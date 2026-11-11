@@ -86,7 +86,7 @@ describe('registered items in the island', () => {
 
     const restored = new SimSession(8);
     restored.adopt(decode(captureBody(session, null)));
-    expect(restored.world.tethers.get(stone.id)).toBe(session.world.tethers.get(stone.id));
+    expect(restored.world.tethers.get(stone.id)).toEqual(session.world.tethers.get(stone.id));
     expect(restored.world.entities.get(stone.id)).toEqual(stone);
     expect(restored.release(stone.id).ok).toBe(true);
     expect(restored.world.entities.get(stone.id)?.vx).toBe(0.5);

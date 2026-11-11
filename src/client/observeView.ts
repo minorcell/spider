@@ -15,6 +15,7 @@ import { paintObserve, paintPin } from '@/src/ui/dress';
 import { aheadAt } from '@/src/shared/sense';
 import { surfaceOf } from '@/src/shared/terrain';
 import { toHeading, toObservation, type Observation, type WorldState } from '@/src/shared/state';
+import { heldBy } from '@/src/shared/sim/tether';
 import { viewDistance } from '@/src/shared/vision';
 
 import { REACH, REACH_Y } from '@/src/shared/world';
@@ -191,7 +192,7 @@ export class ObserveOverlay {
     let dimCount = 0;
     for (const entity of world.entities.values()) {
       if (entity.id === world.controlledId) continue;
-      if (world.tethers.has(entity.id)) continue;
+      if (heldBy(world, entity.id)) continue;
       const hit = seen.get(entity.id);
       const state = hit
         ? hit.inReach

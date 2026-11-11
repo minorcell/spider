@@ -2,7 +2,8 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import type { GoalOutcome, SimSession } from '@/src/shared/sim/session';
 import type { ActionHint, Observation, Sense } from '@/src/shared/state';
-import { CARRY_LIMIT, GAIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
+import { GAIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
+import { kindOf } from '@/src/shared/kinds';
 import { VIEW_DISTANCE } from '@/src/shared/world';
 import type { MemoryApi } from '@/src/client/journal/diary';
 import type { Landmark } from '@/src/shared/landmarks';
@@ -243,7 +244,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       },
     }),
     act: tool({
-      description: `吃、牵引、松手、放下、存进巢、喝水或睡觉。eat、pick_up、release、drop、store 要带 id，最多牵引 ${CARRY_LIMIT} 件。`,
+      description: `吃、牵引、松手、放下、存进巢、喝水或睡觉。eat、pick_up、release、drop、store 要带 id，最多牵引 ${kindOf(session.actor.entity.kind)?.tether?.limit ?? 0} 件。`,
       inputSchema: z.discriminatedUnion('verb', [
         call({
           verb: z.literal('eat').describe('吃附近或背上的食物。'),

@@ -1,4 +1,4 @@
-import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX, MOUNTS } from '@/src/shared/config';
+import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX, MOUNTS } from '@/src/shared/config';
 import type { ControlSpec, ControlState } from '@/src/shared/control';
 import { kindOf } from '@/src/shared/kinds';
 import { populationRules, type PopulationState } from '@/src/shared/islandContent';
@@ -7,11 +7,12 @@ import type {
   Footprint,
   PlaceMark,
   SpiderState,
+  TetherRelation,
   WorldState,
 } from '@/src/shared/state';
 import { expireEntities, indexEntities, propBlocks } from '@/src/shared/world';
 import { Terrain } from '@/src/shared/terrain';
-import { MIN_TETHER_LENGTH } from '@/src/shared/sim/tether';
+import { attachmentFailure } from '@/src/shared/sim/tether';
 import { bindWorld } from '@/src/shared/sim/bindWorld';
 import type { Spider } from '@/src/shared/sim/Spider';
 
@@ -31,7 +32,7 @@ export interface SimBody {
   entitySerials: Record<string, number>;
   entities: EntityState[];
   marks: PlaceMark[];
-  tethers: { targetId: string; length: number }[];
+  tethers: TetherRelation[];
   pose: Pick<SpiderState, 'chassisPitch' | 'chassisRoll' | 'headYaw' | 'feet'>;
   pending: { text: string; tool: string | null } | null;
 }
@@ -81,7 +82,7 @@ export function captureBody(session: Restorable, pending: SimBody['pending']): S
     entitySerials: Object.fromEntries(world.entitySerials),
     entities: structuredClone([...world.entities.values()]),
     marks: structuredClone(world.marks),
-    tethers: [...world.tethers].map(([targetId, length]) => ({ targetId, length })),
+    tethers: structuredClone([...world.tethers.values()]),
     pose: { chassisPitch, chassisRoll, headYaw, feet },
     pending: cleanPending(pending),
   };
@@ -104,7 +105,7 @@ export function applyBody(
     controlledId: actor.id,
     blocks: propBlocks(entities.values()),
     marks: decoded.marks,
-    tethers: new Map(decoded.tethers.map(({ targetId, length }) => [targetId, length])),
+    tethers: new Map(decoded.tethers.map((relation) => [relation.targetId, relation])),
     populations: new Map(Object.entries(decoded.populations)),
     entitySerials: new Map(Object.entries(decoded.entitySerials)),
     physics: session.world.physics,
@@ -200,20 +201,18 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
     entities.push(entity);
   }
   if (typeof raw.controlledId !== 'string' || !index.get(raw.controlledId)?.control) return null;
-  if (!Array.isArray(raw.tethers) || raw.tethers.length > CARRY_LIMIT) return null;
-  const tethers: SimBody['tethers'] = [];
-  const targets = new Set<string>();
+  if (!Array.isArray(raw.tethers) || raw.tethers.length > entities.length) return null;
+  const relations = { entities: index, tethers: new Map<string, TetherRelation>() };
   for (const value of raw.tethers) {
     if (!value || typeof value !== 'object') return null;
-    const { targetId, length } = value as { targetId?: unknown; length?: unknown };
-    if (typeof targetId !== 'string' || targetId === raw.controlledId || targets.has(targetId))
-      return null;
-    const target = index.get(targetId);
-    if (!target || !kindOf(target.kind)?.carryable) return null;
-    if (!isFiniteNumber(length) || length < MIN_TETHER_LENGTH || length > PLACE_M * 3) return null;
-    targets.add(targetId);
-    tethers.push({ targetId, length });
+    const { sourceId, targetId, length } = value as Partial<TetherRelation>;
+    if (typeof sourceId !== 'string' || typeof targetId !== 'string') return null;
+    if (attachmentFailure(relations, sourceId, targetId)) return null;
+    const spec = kindOf(index.get(sourceId)!.kind)!.tether!;
+    if (!isFiniteNumber(length) || length < spec.minLength || length > PLACE_M * 3) return null;
+    relations.tethers.set(targetId, { sourceId, targetId, length });
   }
+  const tethers = [...relations.tethers.values()];
   const serials = readEntitySerials(raw.entitySerials);
   const populations = readPopulations(raw.populations);
   const pose = readPose(raw.pose);

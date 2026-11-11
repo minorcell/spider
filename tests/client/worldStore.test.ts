@@ -1705,19 +1705,33 @@ it('saves changes to registered control and tether state, including actor handof
   flushWorld('poke');
   await writesDone();
   const items = [...session.world.entities.values()].filter((item) => item.kind === 'apple');
-  session.world.tethers.set(items[0].id, 2);
+  session.world.tethers.set(items[0].id, {
+    sourceId: session.actor.entity.id,
+    targetId: items[0].id,
+    length: 2,
+  });
   flushWorld('poke');
   await writesDone();
   const seq = (store.value as WorldRecord).seq;
   flushWorld('poke');
   await writesDone();
   expect((store.value as WorldRecord).seq).toBe(seq);
-  session.world.tethers.set(items[0].id, 3);
+  session.world.tethers.set(items[0].id, {
+    sourceId: session.actor.entity.id,
+    targetId: items[0].id,
+    length: 3,
+  });
   flushWorld('poke');
   await writesDone();
-  expect((store.value as WorldRecord).tethers).toEqual([{ targetId: items[0].id, length: 3 }]);
+  expect((store.value as WorldRecord).tethers).toEqual([
+    { sourceId: session.actor.entity.id, targetId: items[0].id, length: 3 },
+  ]);
   session.world.tethers.clear();
-  session.world.tethers.set(items[1].id, 3);
+  session.world.tethers.set(items[1].id, {
+    sourceId: session.actor.entity.id,
+    targetId: items[1].id,
+    length: 3,
+  });
   flushWorld('poke');
   await writesDone();
   expect((store.value as WorldRecord).tethers[0].targetId).toBe(items[1].id);
@@ -1729,6 +1743,14 @@ it('saves changes to registered control and tether state, including actor handof
       .control!.lamp,
   ).toBe(true);
   const next = session.addEntity('spider', 0, 0);
+  flushWorld('poke');
+  await writesDone();
+  const priorSeq = (store.value as WorldRecord).seq;
+  session.world.tethers.get(items[1].id)!.sourceId = next.id;
+  flushWorld('poke');
+  await writesDone();
+  expect((store.value as WorldRecord).seq).toBeGreaterThan(priorSeq);
+  expect((store.value as WorldRecord).tethers[0].sourceId).toBe(next.id);
   session.actor.bindEntity(next);
   session.world.controlledId = next.id;
   flushWorld('poke');

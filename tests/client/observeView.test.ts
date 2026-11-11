@@ -42,6 +42,7 @@ function world(over: Partial<WorldState> = {}): WorldState {
     entitySerials: new Map(),
     blocks: [],
     marks: [],
+    controlledId: 'spider-1',
     tethers: new Map(),
     populations: new Map(),
     ...over,
@@ -222,7 +223,9 @@ describe('ObserveOverlay', () => {
       fakeSpider(5, 0),
       world({
         entities: indexEntities([grass, entity({ id: 'apple-back', kind: 'apple', stage: 1 })]),
-        tethers: new Map([['apple-back', 1.2]]),
+        tethers: new Map([
+          ['apple-back', { sourceId: 'spider-1', targetId: 'apple-back', length: 1.2 }],
+        ]),
       }),
       view,
     );

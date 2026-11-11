@@ -1,7 +1,7 @@
 import { Quaternion, Vector3 } from 'three';
 import { groundSupport } from '@/src/shared/contact';
 import { CONTACT, PHYSICS } from '@/src/shared/config';
-import { pullTether, type TetherMotion } from '@/src/shared/sim/tether';
+import { pullTethers } from '@/src/shared/sim/tether';
 import { kindOf } from '@/src/shared/kinds';
 import {
   BODY_RADIUS,
@@ -111,19 +111,16 @@ export function stepPhysics(
   world: WorldState,
   body: Body,
   dt: number,
-  anchor?: TetherMotion,
 ): { x: number; z: number } | undefined {
   if (dt <= 0) return;
   const rules = world.physics ?? PHYSICS;
   const resting = Math.abs(body.speed) < 0.05;
   const movers: Mover[] = [];
+  const pulled = pullTethers(world, dt);
   for (const entity of world.entities.values()) {
     const loose = looseOf(entity);
     if (!loose) continue;
-    const length = world.tethers.get(entity.id);
     const mass = Math.max(1e-9, loose.mass);
-    const pulled =
-      anchor !== undefined && length !== undefined && pullTether(entity, length, anchor, mass, dt);
     const vx = entity.vx ?? 0;
     const vy = entity.vy ?? 0;
     const vz = entity.vz ?? 0;
@@ -154,7 +151,7 @@ export function stepPhysics(
       z0: entity.z,
       y0: entity.y,
       asleep,
-      pulled,
+      pulled: pulled.has(entity),
     });
   }
   if (movers.length === 0) return;

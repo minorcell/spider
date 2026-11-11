@@ -29,7 +29,7 @@ import { worldClock } from '@/src/shared/ecology';
 import { ObserveOverlay } from '@/src/client/observeView';
 import { buildProp, propDrape } from '@/src/client/props';
 import { createSound } from '@/src/client/sound';
-import { tetherAnchor } from '@/src/shared/sim/tether';
+import { carriedItems, tetherEndpoints } from '@/src/shared/sim/tether';
 
 const STEP_SECONDS = 1 / 60;
 const STEP_MS = STEP_SECONDS * 1000;
@@ -266,15 +266,16 @@ export class Stage {
       this.#scene.add(this.#island);
     }
 
+    const held = new Set(carriedItems(world).map((item) => item.id));
     if (this.#carried) {
-      for (const id of world.tethers.keys()) if (!this.#carried.has(id)) this.#sound.grasp();
+      for (const id of held) if (!this.#carried.has(id)) this.#sound.grasp();
       for (const id of this.#carried) {
-        if (!world.tethers.has(id) && world.entities.has(id)) this.#sound.place();
+        if (!held.has(id) && world.entities.has(id)) this.#sound.place();
       }
     }
     const carried = (this.#carried ??= new Set());
     carried.clear();
-    for (const id of world.tethers.keys()) carried.add(id);
+    for (const id of held) carried.add(id);
 
     const alive = this.#alive;
     alive.clear();
@@ -298,16 +299,17 @@ export class Stage {
 
   #syncSilk(world: WorldState): void {
     for (const [id, silk] of this.#silks) {
-      if (world.tethers.has(id) && world.entities.has(id)) continue;
+      const relation = world.tethers.get(id);
+      if (relation && tetherEndpoints(world, relation)) continue;
       this.#scene.remove(silk);
       silk.geometry.dispose();
       this.#silks.delete(id);
     }
     if (world.tethers.size === 0) return;
-    const anchor = tetherAnchor(this.#spider.root.position, this.#spider.yaw);
-    for (const [id, length] of world.tethers) {
-      const target = world.entities.get(id);
-      if (!target) continue;
+    for (const [id, relation] of world.tethers) {
+      const ends = tetherEndpoints(world, relation);
+      if (!ends) continue;
+      const { from: anchor, to: target } = ends;
       let silk = this.#silks.get(id);
       if (!silk) {
         const geometry = new BufferGeometry().setAttribute(
@@ -321,9 +323,9 @@ export class Stage {
         this.#scene.add(silk);
       }
       const dx = target.x - anchor.x;
-      const dy = target.y + (kindOf(target.kind)?.physics?.radius ?? 0) - anchor.y;
+      const dy = target.y - anchor.y;
       const dz = target.z - anchor.z;
-      const slack = Math.max(0, length - Math.hypot(dx, dy, dz));
+      const slack = Math.max(0, relation.length - Math.hypot(dx, dy, dz));
       const sag = Math.min(0.18, slack * 0.18);
       const points = silk.geometry.getAttribute('position');
       for (let i = 0; i <= SILK_SEGMENTS; i++) {
@@ -384,9 +386,7 @@ export class Stage {
     if (prop.position.x !== x || prop.position.y !== py || prop.position.z !== z) {
       prop.position.set(x, py, z);
     }
-    if (roll > 0) {
-      prop.quaternion.set(entity.qx ?? 0, entity.qy ?? 0, entity.qz ?? 0, entity.qw ?? 1);
-    }
+    prop.quaternion.set(entity.qx ?? 0, entity.qy ?? 0, entity.qz ?? 0, entity.qw ?? 1);
   }
 
   /** A quiet tick for words appearing beside the spider. */

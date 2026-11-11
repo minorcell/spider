@@ -3,7 +3,7 @@ import { nestSolidSurface } from '@/src/shared/nestCollision';
 import { ringBoxes } from '@/src/shared/shapes';
 import { GAIT } from '@/src/shared/config';
 import type { ControlSpec } from '@/src/shared/control';
-import type { Block, EntityState, Footprint, WorldState } from '@/src/shared/state';
+import type { Block, EntityState, Footprint, Vec3, WorldState } from '@/src/shared/state';
 
 export interface CoverVolume {
   x: number;
@@ -51,10 +51,20 @@ export interface BlockSpec {
 
 export type PropModel = string | { readonly color: number; readonly segments: number };
 
+export interface TetherSpec {
+  anchor: Vec3;
+  limit: number;
+  minLength: number;
+  spacing: number;
+  stiffness: number;
+  damping: number;
+}
+
 export interface KindSpec {
   control?: ControlSpec;
   properties?: readonly string[];
-  carryable?: true;
+  carryable?: { anchor: Vec3 };
+  tether?: TetherSpec;
   label?: string;
   model?: PropModel;
   /** Lifetime measured in simulation seconds. */
@@ -78,6 +88,14 @@ const EMPTY_PROPERTIES: readonly string[] = Object.freeze([]);
 export const KINDS: Record<string, KindSpec> = {
   spider: {
     label: '蜘蛛',
+    tether: {
+      anchor: { x: 0, y: 0.82, z: 1.66 },
+      limit: 7,
+      minLength: 1.2,
+      spacing: 0.45,
+      stiffness: 0.65,
+      damping: 0.11,
+    },
     rest: 0,
     physics: { solid: true, radius: 0.48, loose: false, rolls: false, mass: 1.2, volume: 2 },
     control: {
@@ -90,7 +108,7 @@ export const KINDS: Record<string, KindSpec> = {
     },
   },
   apple: {
-    carryable: true,
+    carryable: { anchor: { x: 0, y: 0.26, z: 0 } },
     label: '苹果',
     model: 'apple',
     eat: { duration: 3, stages: 2, removes: true },
@@ -98,7 +116,7 @@ export const KINDS: Record<string, KindSpec> = {
     physics: { solid: true, radius: 0.26, loose: true, rolls: true, mass: 0.059, volume: 0.074 },
   },
   pebble: {
-    carryable: true,
+    carryable: { anchor: { x: 0, y: 0.19, z: 0 } },
     label: '石子',
     model: { color: 0x8793a4, segments: 8 },
     rest: 0,

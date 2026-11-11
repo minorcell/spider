@@ -11,7 +11,7 @@ import type { EntityState } from '@/src/shared/state';
 import type { Controls } from '@/src/shared/types';
 import { block } from '@/tests/helpers';
 import { VIEW_DISTANCE } from '@/src/shared/world';
-import { carriedItems, pullTether, tetherAnchor } from '@/src/shared/sim/tether';
+import { carriedItems, tetherAnchor } from '@/src/shared/sim/tether';
 import { attachCargo, drive } from '@/tests/simHelpers';
 
 const routeControl = vi.hoisted(() => ({
@@ -1097,14 +1097,22 @@ it('applies gravity to slack cargo and tension to taut cargo', () => {
   const back = session.spider.root.position;
   const cargo = fakeEntity({ x: back.x, z: back.z + 1.66, y: back.y + 10 });
   attachCargo(session.world, cargo);
-  session.world.tethers.set(cargo.id, 10);
+  session.world.tethers.set(cargo.id, {
+    sourceId: session.actor.entity.id,
+    targetId: cargo.id,
+    length: 10,
+  });
   session.frame(0);
   expect(cargo.vx).toBeUndefined();
   expect(cargo.vz).toBeUndefined();
   session.frame(0.05);
   expect(cargo.y).toBeLessThan(back.y + 10);
   expect(cargo.vy).toBeLessThan(0);
-  session.world.tethers.set(cargo.id, 1.2);
+  session.world.tethers.set(cargo.id, {
+    sourceId: session.actor.entity.id,
+    targetId: cargo.id,
+    length: 1.2,
+  });
   cargo.x = back.x + 5;
   const oldX = cargo.x;
   session.frame(0.05);
@@ -1116,7 +1124,7 @@ it('blocks tethered cargo at a wall and keeps its motion when released', () => {
   const session = new SimSession(3);
   session.world.entities = indexEntities([session.actor.entity]);
   session.world.terrain = { height: () => 1 };
-  const anchor = tetherAnchor(session.spider.root.position, session.spider.yaw);
+  const anchor = tetherAnchor(session.actor.entity, KINDS.spider.tether!.anchor);
   const cargo = session.addEntity('apple', 3, anchor.z);
   const wall = block('wall', 0.9, 1, -5, 5);
   session.world.blocks = [wall];
@@ -1136,16 +1144,4 @@ it('blocks tethered cargo at a wall and keeps its motion when released', () => {
   session.frame(1 / 60);
   expect(cargo.x).toBeLessThan(beforeRelease.x);
   expect(session.release(cargo.id)).toMatchObject({ ok: false, reason: 'not-carrying' });
-});
-
-it('does not push a taut cargo moving rapidly toward the anchor', () => {
-  const cargo = fakeEntity({ x: 2, vx: -12, vy: 0, vz: 0 });
-  pullTether(
-    cargo,
-    1.2,
-    { position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 } },
-    1,
-    1 / 60,
-  );
-  expect(cargo.vx).toBe(-12);
 });

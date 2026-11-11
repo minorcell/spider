@@ -309,7 +309,11 @@ describe('entity snapshots', () => {
     source.world.entities.delete('home');
     const fruit = [...source.world.entities.values()].find((entity) => entity.kind === 'apple')!;
     Object.assign(fruit, { y: 5, vx: 2, vy: -1, vz: 3, qx: 0, qy: 0, qz: 0.6, qw: 0.8 });
-    source.world.tethers.set(fruit.id, 3.7);
+    source.world.tethers.set(fruit.id, {
+      sourceId: source.actor.entity.id,
+      targetId: fruit.id,
+      length: 3.7,
+    });
     const saved = captureBody(source, null);
     expect(saved).not.toHaveProperty('spider');
     expect(saved).not.toHaveProperty('carrying');
@@ -321,7 +325,11 @@ describe('entity snapshots', () => {
     applyBody(target, parsed.record);
     expect(target.world.entities).toEqual(source.world.entities);
     expect(target.world.entities.get(saved.controlledId)).toBe(target.actor.entity);
-    expect(target.world.tethers.get(fruit.id)).toBe(3.7);
+    expect(target.world.tethers.get(fruit.id)).toEqual({
+      sourceId: actor.id,
+      targetId: fruit.id,
+      length: 3.7,
+    });
     expect(target.actor.state).toEqual(actor.control);
     expect(target.spider.headYaw).toBe(0.2);
     expect(target.spider.root.position.toArray()).toEqual([3, 4, -2]);
@@ -410,7 +418,7 @@ describe('entity snapshots', () => {
     const base = good();
     const fruit = base.entities.find((item) => item.kind === 'apple')!;
     const berry = base.entities.find((item) => item.kind === 'berry')!;
-    const relation = { targetId: fruit.id, length: 2 };
+    const relation = { sourceId: base.controlledId, targetId: fruit.id, length: 2 };
     for (const tethers of [
       null,
       [null],

@@ -1,3 +1,4 @@
+import { initialControl } from '@/src/shared/control';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BufferGeometry, Group, Line } from 'three';
 import { KINDS } from '@/src/shared/kinds';
@@ -112,12 +113,19 @@ function makeWorld(entities: EntityState[] = [], tethered: EntityState[] = []): 
   return {
     seed: 1,
     terrain: { height: flat },
-    entities: indexEntities([...entities, ...tethered]),
+    entities: indexEntities([
+      entity({ id: 'spider-1', kind: 'spider', x: 0, y: 0, z: 0, control: initialControl() }),
+      ...entities,
+      ...tethered,
+    ]),
     entitySerials: new Map(),
     blocks: [],
     marks: [],
     populations: new Map(),
-    tethers: new Map(tethered.map((item) => [item.id, 3.5])),
+    controlledId: 'spider-1',
+    tethers: new Map(
+      tethered.map((item) => [item.id, { sourceId: 'spider-1', targetId: item.id, length: 3.5 }]),
+    ),
   };
 }
 
@@ -754,10 +762,11 @@ it('draws the registered models and updates their silk until release', () => {
   const stage = new Stage(makeHost(), spider);
   const stone = entity({ id: 'pebble-1', kind: 'pebble', x: 3, z: 2 });
   const berry = entity({ id: 'berry-1', kind: 'berry', x: 0, z: 3 });
+  KINDS.marker = { rest: 0, carryable: { anchor: { x: 0, y: 0, z: 0 } } };
   const marker = entity({ id: 'marker-1', kind: 'marker', x: 0, y: 0.5, z: 3 });
   const world = makeWorld([berry], [stone, marker]);
-  world.tethers.set(stone.id, 12);
-  world.tethers.set('missing', 2);
+  world.tethers.get(stone.id)!.length = 12;
+  world.tethers.set('missing', { sourceId: 'spider-1', targetId: 'missing', length: 2 });
   stage.bind(vi.fn(), () => world);
   stage.start();
   frame();
@@ -769,7 +778,7 @@ it('draws the registered models and updates their silk until release', () => {
   const plainEndpoint = scene.getObjectByName(marker.id) as Line;
   expect(plainEndpoint.geometry.getAttribute('position').getY(8)).toBeCloseTo(marker.y);
   const points = tether.geometry.getAttribute('position');
-  const anchor = tetherAnchor(spider.root.position, spider.yaw);
+  const anchor = tetherAnchor(world.entities.get('spider-1')!, KINDS.spider.tether!.anchor);
   expect(points.getX(0)).toBeCloseTo(anchor.x);
   expect(points.getY(0)).toBeCloseTo(anchor.y);
   expect(points.getZ(0)).toBeCloseTo(anchor.z);
@@ -792,6 +801,7 @@ it('draws the registered models and updates their silk until release', () => {
   expect(scene.children).not.toContain(tether);
   expect(dispose).toHaveBeenCalledOnce();
   stage.dispose();
+  delete KINDS.marker;
 });
 
 it('runs at most three fixed steps and clears hidden time on resume', () => {
@@ -837,6 +847,7 @@ it('draws the controlled rig once even when its kind also has a prop model', () 
   const count = scene.children.length;
   KINDS.spider.model = 'apple';
   try {
+    current.entities.delete(current.controlledId!);
     current.controlledId = spider.controller.entity.id;
     current.entities.set(current.controlledId, spider.controller.entity);
     frame();
@@ -844,5 +855,71 @@ it('draws the controlled rig once even when its kind also has a prop model', () 
     expect(scene.children.length).toBe(count);
   } finally {
     delete KINDS.spider.model;
+  }
+});
+
+it('draws silk from its registered owner and removes it when that endpoint disappears', () => {
+  const spider = new RealSpider();
+  const stage = new Stage(makeHost(), spider);
+  KINDS.post = {
+    rest: 0,
+    model: { color: 0x777777, segments: 8 },
+    tether: {
+      anchor: { x: 1, y: 2, z: 0 },
+      limit: 1,
+      minLength: 1,
+      spacing: 0,
+      stiffness: 1,
+      damping: 0.1,
+    },
+  };
+  try {
+    const source = entity({
+      id: 'post-1',
+      kind: 'post',
+      x: 5,
+      y: 1,
+      z: 3,
+      qx: 0,
+      qy: 0,
+      qz: Math.SQRT1_2,
+      qw: Math.SQRT1_2,
+    });
+    const cargo = entity({
+      id: 'pebble-1',
+      kind: 'pebble',
+      x: 6,
+      y: 1,
+      z: 3,
+      qx: 0.6,
+      qy: 0,
+      qz: 0,
+      qw: 0.8,
+    });
+    const world = makeWorld([source, cargo]);
+    world.tethers.set(cargo.id, { sourceId: source.id, targetId: cargo.id, length: 1 });
+    stage.bind(vi.fn(), () => world);
+    stage.start();
+    frame();
+    const scene = renderer().render.mock.calls.at(-1)![0] as Group;
+    const silk = scene.getObjectByName(cargo.id) as Line;
+    const points = silk.geometry.getAttribute('position');
+    expect(points.getX(0)).toBeCloseTo(3);
+    expect(points.getY(0)).toBeCloseTo(2);
+    expect(points.getZ(0)).toBeCloseTo(3);
+    expect(points.getY(8)).toBeCloseTo(cargo.y + 0.19);
+    spider.root.position.set(-10, 0, -10);
+    source.x += 1;
+    frame();
+    expect(points.getX(0)).toBeCloseTo(4);
+    expect(sound.grasp).not.toHaveBeenCalled();
+    world.entities.delete(source.id);
+    const dispose = vi.spyOn(silk.geometry, 'dispose');
+    frame();
+    expect(scene.children).not.toContain(silk);
+    expect(dispose).toHaveBeenCalledOnce();
+  } finally {
+    delete KINDS.post;
+    stage.dispose();
   }
 });

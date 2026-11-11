@@ -36,7 +36,7 @@ const observation: Observation = {
   entities: [],
 };
 
-let session: Record<string, ReturnType<typeof vi.fn>> & { lamp?: boolean };
+let session: ReturnType<typeof fakeSession> & { lamp?: boolean };
 
 const world = {
   clock: {
@@ -58,8 +58,9 @@ function execute(tool: { execute?: unknown }, input: unknown): Promise<unknown> 
   });
 }
 
-beforeEach(() => {
-  session = {
+function fakeSession() {
+  return {
+    actor: { entity: { kind: 'spider' } },
     landmarks: vi.fn(() => [{ name: '巢穴', x: 0, z: 0, ground: 0, note: '家' }]),
     observe: vi.fn(() => observation),
     worldInfo: vi.fn(() => world),
@@ -97,6 +98,10 @@ beforeEach(() => {
       },
     ]),
   };
+}
+
+beforeEach(() => {
+  session = fakeSession();
 });
 
 describe('spiderTools', () => {
@@ -518,4 +523,12 @@ describe('spiderTools', () => {
     const tools = spiderTools(session as unknown as SimSession);
     expect(tools.mark.description).toContain(String(MARK_LIMIT));
   });
+});
+
+it('describes the controlled kind’s registered capacity', () => {
+  expect(spiderTools(session as unknown as SimSession).act.description).toContain('7 件');
+  session.actor.entity.kind = 'berry';
+  expect(spiderTools(session as unknown as SimSession).act.description).toContain('0 件');
+  session.actor.entity.kind = 'unregistered';
+  expect(spiderTools(session as unknown as SimSession).act.description).toContain('0 件');
 });

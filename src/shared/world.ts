@@ -140,7 +140,9 @@ export function removeEntity(world: WorldState, entity: EntityState): void {
   }
   world.entities.delete(entity.id);
   if (world.controlledId === entity.id) delete world.controlledId;
-  world.tethers.delete(entity.id);
+  for (const [targetId, relation] of world.tethers) {
+    if (relation.sourceId === entity.id || targetId === entity.id) world.tethers.delete(targetId);
+  }
   world.blocks = world.blocks.filter((block) => (block.owner ?? block.id) !== entity.id);
 }
 
