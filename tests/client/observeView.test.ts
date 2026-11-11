@@ -38,7 +38,7 @@ function world(over: Partial<WorldState> = {}): WorldState {
     entities: [],
     blocks: [],
     marks: [],
-    carrying: [],
+    tethers: new Map(),
     ...over,
   };
 }
@@ -216,8 +216,8 @@ describe('ObserveOverlay', () => {
       camera(),
       fakeSpider(5, 0),
       world({
-        entities: [grass],
-        carrying: [entity({ id: 'apple-back', kind: 'apple', stage: 1 })],
+        entities: [grass, entity({ id: 'apple-back', kind: 'apple', stage: 1 })],
+        tethers: new Map([['apple-back', 1.2]]),
       }),
       view,
     );

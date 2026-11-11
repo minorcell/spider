@@ -1,3 +1,4 @@
+import { attachCargo } from '@/tests/simHelpers';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { Stage } from '@/src/client/stage';
 import { setLocalBusy } from '@/src/client/local/activity';
@@ -83,8 +84,8 @@ it('draws and steps the live session, preserving hold, inference pacing and clea
   expect(context.drawImage).not.toHaveBeenCalled();
   stage.follow(anchor);
   stage.bind(step, () => session.world, observe);
-  frame(16);
-  expect(step).toHaveBeenLastCalledWith(0.016);
+  frame(17);
+  expect(step).toHaveBeenLastCalledWith(1 / 60);
   expect(canvas.width).toBe(300);
   expect(canvas.height).toBe(200);
   expect(context.drawImage).toHaveBeenCalledOnce();
@@ -94,7 +95,7 @@ it('draws and steps the live session, preserving hold, inference pacing and clea
 
   const tiles = terrainPixels.fillRect.mock.calls.length;
   setLocalBusy(true);
-  frame(32);
+  frame(34);
   expect(step).toHaveBeenCalledTimes(2);
   expect(context.drawImage).toHaveBeenCalledOnce();
   stage.hold(true);
@@ -103,6 +104,7 @@ it('draws and steps the live session, preserving hold, inference pacing and clea
   expect(context.drawImage).toHaveBeenCalledTimes(2);
   expect(terrainPixels.fillRect).toHaveBeenCalledTimes(tiles);
   setLocalBusy(false);
+  vi.mocked(performance.now).mockReturnValue(120);
   stage.hold(false);
   const saved = captureBody(new SimSession(31), null);
   saved.marks = [{ name: '从存档回来', x: 2, z: 1 }];
@@ -110,7 +112,8 @@ it('draws and steps the live session, preserving hold, inference pacing and clea
   stage.retile();
   ResizeObserverStub.last?.trigger();
   frame(200);
-  expect(step).toHaveBeenLastCalledWith(0.05);
+  expect(step).toHaveBeenCalledTimes(5);
+  expect(step.mock.calls.every(([dt]) => dt === 1 / 60)).toBe(true);
   expect(terrainPixels.fillRect.mock.calls.length).toBeGreaterThan(tiles);
   expect(context.fillText).toHaveBeenCalledWith(
     '从存档回来',
@@ -125,6 +128,33 @@ it('draws and steps the live session, preserving hold, inference pacing and clea
   expect(ResizeObserverStub.last?.disconnect).toHaveBeenCalledOnce();
   expect(sound.dispose).toHaveBeenCalledOnce();
   expect(host.childElementCount).toBe(0);
+});
+
+it('drops hidden time and fractional steps across visibility changes', () => {
+  const session = new SimSession(7);
+  const { stage, step, observe } = stageFor(session);
+  const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+  stage.bind(step, () => session.world, observe);
+  stage.start();
+  frame(8);
+  frame(16);
+  expect(step).not.toHaveBeenCalled();
+  hidden.mockReturnValue(true);
+  vi.mocked(performance.now).mockReturnValue(16);
+  document.dispatchEvent(new Event('visibilitychange'));
+  frame(400);
+  expect(step).not.toHaveBeenCalled();
+  hidden.mockReturnValue(false);
+  vi.mocked(performance.now).mockReturnValue(1000);
+  document.dispatchEvent(new Event('visibilitychange'));
+  frame(1001);
+  expect(step).not.toHaveBeenCalled();
+  vi.mocked(performance.now).mockReturnValue(1001);
+  stage.hold(false);
+  frame(1017);
+  expect(step).toHaveBeenCalledExactlyOnceWith(1 / 60);
+  stage.dispose();
+  hidden.mockRestore();
 });
 
 it('projects the Agent observation onto the map and pans the same world', () => {
@@ -202,10 +232,10 @@ it('paints carrying and listens to item and gait changes in the real world', asy
   for (let i = 0; i < 100; i++) session.frame(0.025);
   expect(await pickingUp).toMatchObject({ ok: true });
   frame(32);
-  expect(session.world.carrying.map(({ id }) => id)).toEqual([fruit.id]);
+  expect([...session.world.tethers.keys()]).toEqual([fruit.id]);
   expect(sound.grasp).toHaveBeenCalledOnce();
   expect(context.stroke).toHaveBeenCalled();
-  session.world.carrying[0].stage++;
+  fruit.stage++;
   session.spider.legs[0].lifted = true;
   frame(48);
   session.spider.legs[0].lifted = false;
@@ -215,22 +245,21 @@ it('paints carrying and listens to item and gait changes in the real world', asy
   expect(sound.step).toHaveBeenCalledOnce();
   expect(sound.knock).toHaveBeenCalledOnce();
 
-  session.world.entities.push(session.world.carrying.pop()!);
-  session.spider.interaction = { target: session.spider.root.position, phase: 'drag' };
+  session.world.tethers.delete(fruit.id);
   frame(80);
   expect(sound.place).toHaveBeenCalledOnce();
-  session.world.entities.pop();
-  session.spider.interaction = null;
+  session.world.entities.splice(session.world.entities.indexOf(fruit), 1);
   frame(96);
   expect(sound.take).toHaveBeenCalledOnce();
   const a = { ...apple, id: 'a' };
   const b = { ...apple, id: 'b' };
-  session.world.carrying = [a];
+  attachCargo(session.world, a);
   frame(112);
-  session.world.carrying.push(b);
+  attachCargo(session.world, b);
   frame(128);
   expect(sound.grasp).toHaveBeenCalledTimes(3);
-  session.world.carrying.shift();
+  session.world.tethers.delete(a.id);
+  session.world.entities.splice(session.world.entities.indexOf(a), 1);
   frame(144);
   expect(sound.take).toHaveBeenCalledTimes(2);
   expect(sound.place).toHaveBeenCalledOnce();

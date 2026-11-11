@@ -36,7 +36,7 @@ function world(over: Partial<WorldState> = {}): WorldState {
     entities: [],
     blocks: [],
     marks: [],
-    carrying: [],
+    tethers: new Map(),
     ...over,
   };
 }
@@ -91,8 +91,8 @@ describe('toSense', () => {
     const sense = toSense(
       spider(),
       world({
-        entities: [grass],
-        carrying: [apple({ id: 'apple-back', stage: 2 })],
+        entities: [grass, apple({ id: 'apple-back', stage: 2 })],
+        tethers: new Map([['apple-back', 1.2]]),
       }),
     );
     expect(sense.cover).toBe('grass');
@@ -330,7 +330,19 @@ describe('toObservation', () => {
 
   it('lists what is carried, oldest first', () => {
     const carried = apple({ id: 'apple-2', stage: 2 });
-    const seen = toObservation(spider(), world({ carrying: [carried] }), 4, 16, 1.6);
+    const seen = toObservation(
+      spider(),
+      world({
+        entities: [carried],
+        tethers: new Map([
+          ['missing', 1.2],
+          [carried.id, 1.2],
+        ]),
+      }),
+      4,
+      16,
+      1.6,
+    );
     expect(seen.self.carrying).toEqual([
       { id: 'apple-2', kind: 'apple', stage: 2, properties: ['edible', 'carryable'] },
     ]);

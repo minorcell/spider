@@ -1,3 +1,4 @@
+import { carriedItems } from '@/src/shared/sim/tether';
 import { propertiesOf } from '@/src/shared/kinds';
 import {
   aheadAt,
@@ -104,7 +105,8 @@ export interface WorldState {
   entities: EntityState[];
   blocks: Block[];
   marks: PlaceMark[];
-  carrying: EntityState[];
+  /** Rest length by target ID, in attachment order. */
+  tethers: Map<string, number>;
   appleIn?: number;
   sprouts?: number;
   physics?: {
@@ -283,7 +285,7 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
           bearing: bearingFrom(shore.x - px, shore.z - pz, heading),
         }
       : null,
-    carrying: world.carrying.map((item) => ({
+    carrying: carriedItems(world).map((item) => ({
       id: item.id,
       kind: item.kind,
       stage: item.stage,
@@ -321,6 +323,7 @@ export function toObservation(
   const shore = waterDepth > 0 ? nearestShore(world.terrain, px, pz, WATER_SENSE) : null;
   const eye = ground + EYE_HEIGHT + state.height;
   for (const entity of world.entities) {
+    if (world.tethers.has(entity.id)) continue;
     const dx = entity.x - px;
     const dz = entity.z - pz;
     const distance = Math.hypot(dx, dz);
@@ -352,7 +355,7 @@ export function toObservation(
       inReach: distance <= reach && vertical <= reachY,
     });
   }
-  const carrying = world.carrying;
+  const carrying = carriedItems(world);
   const felt = senseBody(
     px,
     pz,
@@ -437,7 +440,7 @@ export function toNear(
   const eye = surfaceOf(world.terrain, px, pz) + EYE_HEIGHT + state.height;
   const near: NearEntity[] = [];
   for (const entity of world.entities) {
-    if (!canAct(entity.kind)) continue;
+    if (world.tethers.has(entity.id) || !canAct(entity.kind)) continue;
     const dx = entity.x - px;
     const dz = entity.z - pz;
     const distance = Math.hypot(dx, dz);

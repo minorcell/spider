@@ -3,7 +3,7 @@ import { Quaternion, Vector3 } from 'three';
 import { groundSupport } from '@/src/shared/contact';
 import { CONTACT, PHYSICS } from '@/src/shared/config';
 import { KINDS } from '@/src/shared/kinds';
-import { stepPhysics } from '@/src/shared/sim/physics';
+import { fitsPlacement, stepPhysics } from '@/src/shared/sim/physics';
 import type { Block, EntityState, WorldState } from '@/src/shared/state';
 
 const body = { x: 100, z: 100, speed: 0 };
@@ -24,13 +24,21 @@ function world(over: Partial<WorldState> = {}): WorldState {
     entities: [],
     blocks: [],
     marks: [],
-    carrying: [],
+    tethers: new Map(),
     physics: PHYSICS,
     ...over,
   };
 }
 
 const wall: Block = { id: 'wall', minX: 1, maxX: 2, minZ: -1, maxZ: 1, height: 1 };
+
+it('checks placement clearance for records without a registered collision radius', () => {
+  const cargo = item('unregistered-cargo');
+  const other = item('unregistered-scenery', { x: 0.3 });
+  const state = world({ entities: [cargo, other] });
+  expect(fitsPlacement(state, cargo, 0, 0)).toBe(false);
+  expect(fitsPlacement(state, cargo, -0.5, 0)).toBe(true);
+});
 
 describe('stepPhysics', () => {
   it('samples each slope neighbor once for an active grounded body', () => {

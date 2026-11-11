@@ -3,11 +3,19 @@ import type { Spider } from '@/src/shared/sim/Spider';
 import { IDLE_CONTROLS, type Controls } from '@/src/shared/types';
 import type { PlanPoint } from '@/src/shared/route';
 
+export interface GoalOutcome {
+  ok: boolean;
+  reason?: string;
+  [key: string]: unknown;
+}
+
 export interface Goal {
   readonly timeout: number;
   controls(): Controls;
   done(): boolean;
   result(): Record<string, unknown>;
+  commit?(): GoalOutcome;
+  cleanup?(): void;
 }
 
 export const STUCK_LIMIT = 0.35;

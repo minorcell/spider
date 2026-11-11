@@ -20,6 +20,12 @@ import {
 } from '@/src/shared/world';
 import { insideLand, Terrain } from '@/src/shared/terrain';
 import { waterAt } from '@/src/shared/water';
+import {
+  carriedItems,
+  MIN_TETHER_LENGTH,
+  tetherAnchor,
+  tetherLength,
+} from '@/src/shared/sim/tether';
 import { bindLegWorld } from '@/src/shared/sim/bindWorld';
 import type { Spider } from '@/src/shared/sim/Spider';
 
@@ -32,6 +38,10 @@ const MAX_TOOL = 32;
 const PLACE_M = 1_000_000;
 const PLACE_Y = 1_000;
 
+interface CarriedRecord extends EntityState {
+  tetherLength?: number;
+}
+
 export interface SimBody {
   scenery?: 1 | 2 | 3 | 4 | 5;
   seed: number;
@@ -39,7 +49,7 @@ export interface SimBody {
   sprouts: number;
   entities: EntityState[];
   marks: PlaceMark[];
-  carrying: EntityState[];
+  carrying: CarriedRecord[];
   spider: SpiderState;
   pending: { text: string; tool: string | null } | null;
 }
@@ -67,14 +77,16 @@ export interface Restorable {
 
 export function captureBody(session: Restorable, pending: SimBody['pending']): SimBody {
   const world = session.world;
+  const carrying: CarriedRecord[] = structuredClone(carriedItems(world));
+  for (const item of carrying) item.tetherLength = world.tethers.get(item.id);
   return {
     scenery: 5,
     seed: world.seed,
     appleIn: world.appleIn ?? APPLE_EVERY,
     sprouts: world.sprouts ?? 0,
-    entities: structuredClone(world.entities),
+    entities: structuredClone(world.entities.filter((item) => !world.tethers.has(item.id))),
     marks: structuredClone(world.marks),
-    carrying: structuredClone(world.carrying),
+    carrying,
     spider: session.spider.capture(),
     pending: cleanPending(pending),
   };
@@ -111,7 +123,14 @@ export function applyBody(
   }
   world.blocks = [...nestBlocks(), ...propBlocks(world.entities)];
   world.marks = structuredClone(body.marks);
-  world.carrying = structuredClone(body.carrying);
+  world.tethers.clear();
+  const anchor = tetherAnchor(body.spider.position, body.spider.yaw);
+  for (const [index, { tetherLength: length, ...item }] of structuredClone(
+    body.carrying,
+  ).entries()) {
+    world.entities.push(item);
+    world.tethers.set(item.id, length ?? tetherLength(anchor, item, index));
+  }
   if (body.scenery !== 2 && body.scenery !== 3 && body.scenery !== 4 && body.scenery !== 5)
     populateScenery(world, body.spider.position, MAX_ENTITIES);
   world.entities = world.entities.filter(
@@ -205,10 +224,10 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
   const count = raw.entities.length + raw.carrying.length;
   if (count < 1 || count > MAX_ENTITIES) return null;
   const entities = raw.entities.map(readEntity);
-  const carrying = raw.carrying.map(readEntity);
+  const carrying = raw.carrying.map(readCarried);
   if (entities.some((entity) => !entity) || carrying.some((entity) => !entity)) return null;
   const ground = entities as EntityState[];
-  const held = carrying as EntityState[];
+  const held = carrying as CarriedRecord[];
   const homes = ground.filter((entity) => entity.id === 'home' && entity.kind === 'nest');
   if (homes.length !== 1) return null;
   const ids = new Set<string>();
@@ -277,6 +296,15 @@ function readMarks(value: unknown): PlaceMark[] | null {
     marks.push(mark);
   }
   return marks;
+}
+
+function readCarried(value: unknown): CarriedRecord | null {
+  const item = readEntity(value);
+  if (!item || !KINDS[item.kind].properties.includes('carryable')) return null;
+  const { tetherLength: length } = value as { tetherLength?: unknown };
+  if (length === undefined) return item;
+  if (!isFiniteNumber(length) || length < MIN_TETHER_LENGTH || length > PLACE_M * 3) return null;
+  return { ...item, tetherLength: length };
 }
 
 function readEntity(value: unknown): EntityState | null {

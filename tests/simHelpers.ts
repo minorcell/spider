@@ -1,5 +1,6 @@
 import { STUCK_LIMIT } from '@/src/shared/sim/goals';
 import type { GoalOutcome, SimSession } from '@/src/shared/sim/session';
+import type { EntityState, WorldState } from '@/src/shared/state';
 import type { Controls } from '@/src/shared/types';
 
 export function drive(
@@ -21,4 +22,11 @@ export function drive(
     done: () => session.spider.time - startedAt >= seconds || held(),
     result: () => (held() ? { seconds, halt: session.spider.halt } : { seconds }),
   });
+}
+
+export function attachCargo(world: WorldState, ...items: EntityState[]): void {
+  for (const item of items) {
+    if (!world.entities.includes(item)) world.entities.push(item);
+    world.tethers.set(item.id, 1.2 + world.tethers.size * 0.45);
+  }
 }

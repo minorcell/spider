@@ -1,6 +1,7 @@
 import { Quaternion, Vector3 } from 'three';
 import { groundSupport } from '@/src/shared/contact';
 import { CONTACT, PHYSICS } from '@/src/shared/config';
+import { pullTether, type TetherMotion } from '@/src/shared/sim/tether';
 import { kindOf } from '@/src/shared/kinds';
 import { BODY_RADIUS, blockedAt } from '@/src/shared/sight';
 import { insideLand } from '@/src/shared/terrain';
@@ -35,6 +36,7 @@ interface Mover {
   z0: number;
   y0: number;
   asleep: boolean;
+  pulled: boolean;
 }
 
 const spinQ = new Quaternion();
@@ -72,7 +74,23 @@ function roll(entity: EntityState, radius: number, dx: number, dz: number): void
   entity.qw = spinQ.w;
 }
 
-export function stepPhysics(world: WorldState, body: Body, dt: number): void {
+export function fitsPlacement(world: WorldState, item: EntityState, x: number, z: number): boolean {
+  const radius = kindOf(item.kind)?.physics?.radius ?? 0.2;
+  if (blockedAt(x, z, world.blocks, radius)) return false;
+  if (!insideLand(world.terrain, x, z, Math.max(BODY_RADIUS, radius))) return false;
+  return world.entities.every((other) => {
+    if (other === item) return true;
+    const separation = radius + (kindOf(other.kind)?.physics?.radius ?? 0);
+    return Math.hypot(other.x - x, other.z - z) > Math.max(0.4, separation);
+  });
+}
+
+export function stepPhysics(
+  world: WorldState,
+  body: Body,
+  dt: number,
+  anchor?: TetherMotion,
+): void {
   if (dt <= 0) return;
   const rules = world.physics ?? PHYSICS;
   const resting = Math.abs(body.speed) < 0.05;
@@ -80,6 +98,10 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
   for (const entity of world.entities) {
     const loose = looseOf(entity);
     if (!loose) continue;
+    const length = world.tethers.get(entity.id);
+    const mass = Math.max(1e-9, loose.mass);
+    const pulled =
+      anchor !== undefined && length !== undefined && pullTether(entity, length, anchor, mass, dt);
     const vx = entity.vx ?? 0;
     const vy = entity.vy ?? 0;
     const vz = entity.vz ?? 0;
@@ -97,7 +119,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       entity,
       radius: loose.radius,
       rolls: loose.rolls,
-      mass: Math.max(1e-9, loose.mass),
+      mass,
       volume: Math.max(0, loose.volume),
       vx,
       vy,
@@ -108,6 +130,7 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
       z0: entity.z,
       y0: entity.y,
       asleep,
+      pulled,
     });
   }
   if (movers.length === 0) return;
@@ -136,7 +159,11 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
     const slope = Math.hypot(gx, gz);
     mover.slope = floating ? 0 : slope;
     const downhill = grounded ? rules.gravity * Math.max(0, 1 - buoyancy) : 0;
-    if ((!floating && slope > rules.sleepSlope) || Math.hypot(vx, vz) >= rules.sleepSpeed) {
+    if (
+      mover.pulled ||
+      (!floating && slope > rules.sleepSlope) ||
+      Math.hypot(vx, vz) >= rules.sleepSpeed
+    ) {
       vx -= gx * downhill * dt;
       vz -= gz * downhill * dt;
       const drag = Math.exp(-(rules.damping + WATER.drag * fraction) * dt);
@@ -229,7 +256,11 @@ export function stepPhysics(world: WorldState, body: Body, dt: number): void {
     if (mover.rolls) {
       roll(mover.entity, mover.radius, mover.entity.x - mover.x0, mover.entity.z - mover.z0);
     }
-    if (mover.slope <= rules.sleepSlope && Math.hypot(mover.vx, mover.vz) < rules.sleepSpeed) {
+    if (
+      !mover.pulled &&
+      mover.slope <= rules.sleepSlope &&
+      Math.hypot(mover.vx, mover.vz) < rules.sleepSpeed
+    ) {
       mover.entity.vx = 0;
       mover.entity.vz = 0;
       mover.vx = 0;

@@ -16,6 +16,9 @@ import { WORLD_RADIUS } from '@/src/shared/terrain';
 import { paintCanvas, paintObserve } from '@/src/ui/dress';
 
 const REFRESH_MS = 100;
+const STEP_SECONDS = 1 / 60;
+const STEP_MS = STEP_SECONDS * 1000;
+const MAX_STEPS = 3;
 
 type Point = { x: number; y: number };
 type Outline = ReturnType<typeof observeOutline>;
@@ -47,6 +50,7 @@ export class Stage {
   #anchor: ((point: Point | null) => void) | undefined;
   #frameId = 0;
   #last = 0;
+  #stepBank = 0;
   #lastPaint = -Infinity;
   #lastObserved = -Infinity;
   #observation: Observation | undefined;
@@ -91,6 +95,7 @@ export class Stage {
     this.#canvas.addEventListener('pointerup', this.#endPan, { signal });
     this.#canvas.addEventListener('pointercancel', this.#endPan, { signal });
     this.#canvas.addEventListener('wheel', this.#wheel, { signal, passive: false });
+    doc.addEventListener('visibilitychange', this.#resetStepClock, { signal });
     this.#observer = new ResizeObserver(() => this.#resize());
     this.#observer.observe(host);
     this.#resize();
@@ -103,7 +108,9 @@ export class Stage {
   }
 
   hold(on: boolean): void {
+    if (this.#held === on) return;
     this.#held = on;
+    this.#resetStepClock();
   }
 
   follow(onAnchor: (point: Point | null) => void): void {
@@ -128,7 +135,7 @@ export class Stage {
   }
 
   start(): void {
-    this.#last = performance.now();
+    this.#resetStepClock();
     this.#frameId = requestAnimationFrame(this.#frame);
   }
 
@@ -179,14 +186,28 @@ export class Stage {
     this.#bounds = this.#canvas.getBoundingClientRect();
   }
 
+  #resetStepClock = (): void => {
+    this.#last = performance.now();
+    this.#stepBank = 0;
+  };
+
   #frame = (now: number): void => {
     this.#frameId = requestAnimationFrame(this.#frame);
-    const dt = Math.min(0.05, Math.max(0, (now - this.#last) / 1000));
+    const elapsed = Math.max(0, now - this.#last);
     this.#last = now;
-    if (!this.#held) this.#step?.(dt);
     const world = this.#world?.();
     if (!world) return;
-    this.#feedback(world);
+    let steps = 0;
+    if (!this.#held && !this.#host.ownerDocument.hidden) {
+      this.#stepBank = Math.min(MAX_STEPS * STEP_MS, this.#stepBank + elapsed);
+      steps = Math.floor((this.#stepBank + 1e-7) / STEP_MS);
+      this.#stepBank = Math.max(0, this.#stepBank - steps * STEP_MS);
+      for (let i = 0; i < steps; i += 1) {
+        this.#step!(STEP_SECONDS);
+        this.#feedback(world);
+      }
+    }
+    if (steps === 0) this.#feedback(world);
 
     if (this.#inferenceBusy && now - this.#lastPaint < 1000 / 30) return;
     this.#lastPaint = now;
@@ -239,28 +260,22 @@ export class Stage {
     if (spider.halt !== 'clear' && this.#halt === 'clear') this.#sound.knock();
     this.#halt = spider.halt;
 
-    const carried = this.#carrying;
-    if (
-      !carried ||
-      carried.size !== world.carrying.length ||
-      world.carrying.some((item) => !carried.has(item.id))
-    ) {
-      if (carried) {
-        for (const item of world.carrying) if (!carried.has(item.id)) this.#sound.grasp();
-        for (const id of carried) {
-          if (world.entities.some((item) => item.id === id)) this.#sound.place();
-        }
+    if (this.#carrying) {
+      for (const id of world.tethers.keys()) if (!this.#carrying.has(id)) this.#sound.grasp();
+      for (const id of this.#carrying) {
+        if (!world.tethers.has(id) && world.entities.some((item) => item.id === id))
+          this.#sound.place();
       }
-      this.#carrying = new Set(world.carrying.map((item) => item.id));
     }
+    const carried = (this.#carrying ??= new Set());
+    carried.clear();
+    for (const id of world.tethers.keys()) carried.add(id);
 
     this.#seen.clear();
-    for (const list of [world.entities, world.carrying]) {
-      for (const item of list) {
-        this.#seen.add(item.id);
-        if (item.stage > (this.#stages.get(item.id) ?? item.stage)) this.#sound.bite();
-        this.#stages.set(item.id, item.stage);
-      }
+    for (const item of world.entities) {
+      this.#seen.add(item.id);
+      if (item.stage > (this.#stages.get(item.id) ?? item.stage)) this.#sound.bite();
+      this.#stages.set(item.id, item.stage);
     }
     for (const id of this.#stages.keys()) {
       if (this.#seen.has(id)) continue;

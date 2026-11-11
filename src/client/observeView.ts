@@ -212,6 +212,7 @@ export class ObserveOverlay {
     let inkCount = 0;
     let dimCount = 0;
     for (const entity of world.entities) {
+      if (world.tethers.has(entity.id)) continue;
       const hit = seen.get(entity.id);
       const state = hit
         ? hit.inReach

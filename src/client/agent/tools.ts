@@ -82,7 +82,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       case 'full':
         return {
           code: 'carry-full',
-          message: '牵引的物品已经达到上限。先用 act 的 drop 或 store 放下一件。',
+          message: '牵引的物品已经达到上限。先用 act 的 release、drop 或 store 放下一件。',
           next: 'act',
         };
       case 'no-water':
@@ -243,7 +243,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       },
     }),
     act: tool({
-      description: `吃、搬、放下、存进巢、喝水或睡觉。eat、pick_up、drop、store 要带 id，最多牵引 ${CARRY_LIMIT} 件。`,
+      description: `吃、牵引、松手、放下、存进巢、喝水或睡觉。eat、pick_up、release、drop、store 要带 id，最多牵引 ${CARRY_LIMIT} 件。`,
       inputSchema: z.discriminatedUnion('verb', [
         call({
           verb: z.literal('eat').describe('吃附近或背上的食物。'),
@@ -252,6 +252,10 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         call({
           verb: z.literal('pick_up').describe('搬起附近能搬的东西。'),
           id: z.string().describe('对象 id。'),
+        }),
+        call({
+          verb: z.literal('release').describe('在当前位置松开蛛丝，物品保留当前速度。'),
+          id: z.string().describe('正在牵引的物品 id。'),
         }),
         call({
           verb: z.literal('drop').describe('松开蛛丝，把东西放在面前。'),
@@ -271,6 +275,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       execute: async (input) => {
         if (input.verb === 'eat') return finish(await session.eat(input.id));
         if (input.verb === 'pick_up') return finish(await session.pickUp(input.id));
+        if (input.verb === 'release') return finish(session.release(input.id));
         if (input.verb === 'drop') return finish(session.drop(input.id));
         if (input.verb === 'store') return finish(session.store(input.id));
         if (input.verb === 'drink') return finish(session.drink());

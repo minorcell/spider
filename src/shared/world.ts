@@ -76,7 +76,7 @@ export function createWorld(
     entities,
     blocks: [...blocks, ...propBlocks(entities)],
     marks: [],
-    carrying: [],
+    tethers: new Map(),
     appleIn: APPLE_EVERY,
     sprouts: 0,
     physics: PHYSICS,
@@ -87,7 +87,9 @@ export function grow(world: WorldState, dt: number, avoid?: { x: number; z: numb
   if (world.appleIn == null || world.sprouts == null) return;
   const { kind, count, home } = applePopulation;
   let onGround = 0;
-  for (const entity of world.entities) if (entity.kind === kind) onGround += 1;
+  for (const entity of world.entities) {
+    if (entity.kind === kind && !world.tethers.has(entity.id)) onGround += 1;
+  }
   if (onGround >= count) {
     world.appleIn = APPLE_EVERY;
     return;
@@ -116,8 +118,8 @@ export function grow(world: WorldState, dt: number, avoid?: { x: number; z: numb
   }
 }
 
-export function nextPropId(world: Pick<WorldState, 'entities' | 'carrying'>, kind: string): string {
-  const taken = [...world.entities, ...world.carrying].filter((item) => item.kind === kind);
+export function nextPropId(world: Pick<WorldState, 'entities'>, kind: string): string {
+  const taken = world.entities.filter((item) => item.kind === kind);
   const next =
     taken.reduce((max, item) => {
       const suffix = Number(item.id.slice(kind.length + 1));
@@ -185,14 +187,11 @@ export function populateScenery(
   capacity: number,
 ): void {
   const rng = mulberry32(world.seed ^ 0x7363656e);
-  const placed = [...world.entities, ...world.carrying, avoid];
+  const placed = [...world.entities, avoid];
   for (const family of islandFamilies) {
     if (!family.repair) continue;
     const existing = world.entities.filter((entity) => entity.kind === family.kind).length;
-    const count = Math.min(
-      family.count - existing,
-      capacity - world.entities.length - world.carrying.length,
-    );
+    const count = Math.min(family.count - existing, capacity - world.entities.length);
     const added = scatter(
       rng,
       world.terrain,
@@ -291,7 +290,7 @@ export function settle(
     entities: [entity],
     blocks: [...blocks],
     marks: [],
-    carrying: [],
+    tethers: new Map(),
     physics: PHYSICS,
   };
   const far = { x: 1e6, z: 1e6, speed: 0 };

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { localDate } from '@/src/shared/dates';
 import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
 import { SimSession } from '@/src/shared/sim/session';
+import { tetherAnchor, tetherLength } from '@/src/shared/sim/tether';
 import { Terrain, TERRAIN } from '@/src/shared/terrain';
 import { APPLE_EVERY } from '@/src/shared/world';
 import {
@@ -42,6 +43,42 @@ function good(): WorldRecord {
     leaseUntil: 1_700_000_006_000,
   };
 }
+
+it('restores carried items into the world with their saved or inferred silk length', () => {
+  const record = good();
+  const fruit = record.entities.find((item) => item.kind === 'apple')!;
+  const first = { ...fruit, id: 'carried-1', stage: 1, vx: 1, y: fruit.y + 1 };
+  const second = { ...fruit, id: 'carried-2', tetherLength: 4.5 };
+  const input = { ...record, carrying: [first, second] };
+  const decoded = classify(input);
+  expect(decoded.status).toBe('ok');
+  if (decoded.status !== 'ok') throw new Error('invalid carry record');
+
+  const restored = session();
+  applyBody(restored, decoded.record);
+  const anchor = tetherAnchor(record.spider.position, record.spider.yaw);
+  expect([...restored.world.tethers]).toEqual([
+    [first.id, tetherLength(anchor, first, 0)],
+    [second.id, 4.5],
+  ]);
+  expect(restored.world.entities.filter((item) => item.id === first.id)).toEqual([first]);
+  const saved = captureBody(restored, null);
+  expect(saved.entities.some((item) => item.id === first.id || item.id === second.id)).toBe(false);
+  expect(saved.carrying).toEqual([
+    { ...first, tetherLength: tetherLength(anchor, first, 0) },
+    second,
+  ]);
+  expect(classify({ ...record, ...saved }).status).toBe('ok');
+  expect(classify({ ...record, carrying: [null] }).status).toBe('malformed');
+  expect(classify({ ...record, carrying: [{ ...second, kind: 'grass' }] }).status).toBe(
+    'malformed',
+  );
+  for (const length of [Number.NaN, 1, 3_000_001]) {
+    expect(classify({ ...record, carrying: [{ ...second, tetherLength: length }] }).status).toBe(
+      'malformed',
+    );
+  }
+});
 
 describe('snapshot', () => {
   it('reduces the former 32-tree world to 24 without changing other entities', () => {
@@ -166,7 +203,7 @@ describe('snapshot', () => {
     applyBody(second, parsed.record);
     expect(second.world.entities).toEqual(first.world.entities);
     expect(second.world.blocks).toEqual(first.world.blocks);
-    expect(second.world.carrying).toEqual(old.carrying);
+    expect(captureBody(second, null).carrying).toEqual(old.carrying);
     expect(second.world.marks).toEqual(old.marks);
   });
 

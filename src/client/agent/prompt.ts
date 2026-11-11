@@ -24,7 +24,7 @@ const WORLD_RULES = `性格通过措辞和符合任务的选择表现，行动�
 
 observe 的 terrain 是周围八个相对方向可见地面的摘要：bearing 是相对朝向，distance 是采样距离，rise 是相对脚下的高度差，by 是发现的通行限制；省略 by 表示没有发现限制。物体的 rise 是相对脚下的高度差，绝对高度约等于 self.ground 加 rise；省略 stage 表示 0，省略 properties 表示空。self.height 是身体升降设置。landmarks 是家园地标而非当前看到的物体；巢穴在中心，山顶是高处附近，后山是山顶背离巢穴的一侧。按其 x、z 用 go 前往，路线不保证畅通。找山顶、后山或巢穴时先参考地标，行动结果失败时换路，不要声称已经到达。
 
-act 的 verb 是 eat、pick_up、drop、store、drink 或 sleep。前四个必须带最近一次 near 或 observation.entities 里的 id。drink 在够得着的水边。sleep 在巢里。一次回复可以连续处理已经确认的多个目标；如果还要移动或重新观察，先结束当前回复，等下一次结果再决定。
+act 的 verb 是 eat、pick_up、release、drop、store、drink 或 sleep。物品动作要带 id，从 near 或 observation.entities 获取。正在牵引的物品 id 见 self.carrying。release 会在原地松开蛛丝。drink 在够得着的水边。sleep 在巢里。一次回复可以连续处理已经确认的多个目标；如果还要移动或重新观察，先结束当前回复，等下一次结果再决定。
 
 距离大约超过 2 个单位时，平移的 go 带上 fast。mark 用来保存、查看或删除少量有名字的地点，最多 ${MARK_LIMIT} 个；要回去就用地点的 x、z 调用 go。不要把坐标当名字。
 

@@ -1,3 +1,4 @@
+import { attachCargo } from '@/tests/simHelpers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { groundSupport } from '@/src/shared/contact';
 import { KINDS } from '@/src/shared/kinds';
@@ -326,20 +327,24 @@ describe('grow', () => {
 
   it('waits, then grows one apple, and stops at the original handful', () => {
     const world = bare();
-    world.carrying = [{ id: 'apple-9', kind: 'apple', x: 0, y: 0, z: 0, stage: 0 }];
+    attachCargo(world, { id: 'apple-9', kind: 'apple', x: 0, y: 0, z: 0, stage: 0 });
     grow(world, 10);
-    expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
+    expect(world.entities.filter((entity) => entity.kind === 'apple').map(({ id }) => id)).toEqual([
+      'apple-9',
+    ]);
     expect(world.appleIn).toBeCloseTo(APPLE_EVERY - 10);
 
     grow(world, APPLE_EVERY - 10);
-    const first = world.entities.filter((entity) => entity.kind === 'apple');
+    const first = world.entities.filter(
+      (entity) => entity.kind === 'apple' && !world.tethers.has(entity.id),
+    );
     expect(first.map((entity) => entity.id)).toEqual(['apple-10']);
     expect(first[0]?.stage).toBe(0);
 
     const again = bare();
-    again.carrying = [{ id: 'apple-9', kind: 'apple', x: 0, y: 0, z: 0, stage: 0 }];
+    attachCargo(again, { id: 'apple-9', kind: 'apple', x: 0, y: 0, z: 0, stage: 0 });
     grow(again, APPLE_EVERY);
-    expect(again.entities.find((entity) => entity.kind === 'apple')).toEqual(first[0]);
+    expect(again.entities.find((entity) => entity.id === 'apple-10')).toEqual(first[0]);
 
     const full = createWorld(11);
     const count = full.entities.filter((entity) => entity.kind === 'apple').length;

@@ -1,3 +1,4 @@
+import { tetherAnchor } from '@/src/shared/sim/tether';
 import type { Spider } from '@/src/shared/sim/Spider';
 import type { EntityState, Observation, WorldState } from '@/src/shared/state';
 import { insideLand, surfaceOf, TERRAIN } from '@/src/shared/terrain';
@@ -215,29 +216,20 @@ export class PixelIsland {
       rect(ctx, '#ac9065', at.x, at.y, width, height);
       rect(ctx, '#c4a87b', at.x, at.y, width, 1);
     }
-    for (const entity of world.entities) drawProp(ctx, view, entity);
     const position = spider.root.position;
     const at = project(view, position);
-    for (const entity of world.carrying) {
+    const spinneret = project(view, tetherAnchor(position, spider.yaw));
+    for (const entity of world.entities) {
+      if (!world.tethers.has(entity.id)) continue;
       const end = project(view, entity);
       ctx.beginPath();
-      ctx.moveTo(at.x, at.y);
-      ctx.lineTo(end.x, end.y);
-      ctx.strokeStyle = '#e6efc3';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      drawProp(ctx, view, entity);
-    }
-    const drag = spider.interaction;
-    if (drag?.phase === 'drag' && world.carrying.length === 0) {
-      const end = project(view, drag.target);
-      ctx.beginPath();
-      ctx.moveTo(at.x, at.y);
+      ctx.moveTo(spinneret.x, spinneret.y);
       ctx.lineTo(end.x, end.y);
       ctx.strokeStyle = '#e6efc3';
       ctx.lineWidth = 1;
       ctx.stroke();
     }
+    for (const entity of world.entities) drawProp(ctx, view, entity);
     if (spider.waterDepth > 0) {
       ctx.beginPath();
       ctx.ellipse(at.x, at.y, 1.65 * view.scale, 1.3 * view.scale, 0, 0, Math.PI * 2);

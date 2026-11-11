@@ -10,7 +10,8 @@ import type { EntityState } from '@/src/shared/state';
 import type { Controls } from '@/src/shared/types';
 import { block } from '@/tests/helpers';
 import { VIEW_DISTANCE } from '@/src/shared/world';
-import { drive } from '@/tests/simHelpers';
+import { carriedItems, pullTether, tetherAnchor } from '@/src/shared/sim/tether';
+import { attachCargo, drive } from '@/tests/simHelpers';
 
 const routeControl = vi.hoisted(() => ({
   plan: null as null | ((...args: unknown[]) => unknown),
@@ -190,7 +191,7 @@ describe('marks', () => {
     const rear = session.landmarks().find((landmark) => landmark.name === '后山')!;
     expect(await settle(session.moveTo(rear.x, rear.z, true), session)).toMatchObject({ ok: true });
     expect(session.drop(apple.id)).toMatchObject({ ok: true, target: apple.id });
-    expect(session.world.carrying).toHaveLength(0);
+    expect(carriedItems(session.world)).toHaveLength(0);
   });
   it('marks the place under the body and lists it from the current pose', () => {
     const session = new SimSession(5);
@@ -503,6 +504,19 @@ describe('approach', () => {
     });
   });
 
+  it('cannot approach a tethered target or finish approaching a removed target', async () => {
+    const session = new SimSession(6);
+    const apple = session.addEntity('apple', 0, -1.2);
+    attachCargo(session.world, apple);
+    await expect(session.approach(apple.id)).resolves.toMatchObject({ reason: 'not-found' });
+    session.release(apple.id);
+    vi.spyOn(session, 'moveTo').mockImplementation(async () => {
+      session.world.entities.splice(session.world.entities.indexOf(apple), 1);
+      return { ok: true };
+    });
+    await expect(session.approach(apple.id)).resolves.toMatchObject({ reason: 'not-found' });
+  });
+
   it('reports no path when no standing spot is reachable', async () => {
     const session = new SimSession(6);
     const far = session.addEntity('apple', 100, 0);
@@ -664,20 +678,22 @@ describe('eat', () => {
     expect(outcome).toMatchObject({ ok: true, removed: true, stage: 2 });
   });
 
-  it('eats from the back without reaching', async () => {
+  it('eats from the back and commits removal before the result is delivered', async () => {
     const session = new SimSession(7);
     const apple = fakeEntity({ id: 'apple-back' });
-    session.world.carrying.push(apple);
-    const outcome = await settle(session.eat(apple.id), session, 20, 60);
-    expect(outcome).toMatchObject({ ok: true, removed: true });
-    expect(session.world.carrying).not.toContain(apple);
+    attachCargo(session.world, apple);
+    const meal = session.eat(apple.id);
+    for (let i = 0; i < 180; i++) session.frame(1 / 60);
+    expect(session.world.tethers.has(apple.id)).toBe(false);
+    expect(session.world.entities).not.toContain(apple);
+    await expect(meal).resolves.toMatchObject({ ok: true, removed: true });
   });
 
   it('eats the nearest carried thing when no id is given', async () => {
     const session = new SimSession(7);
     session.world.entities = session.world.entities.filter((entity) => entity.kind !== 'apple');
     const apple = fakeEntity({ id: 'apple-back' });
-    session.world.carrying.push(apple);
+    attachCargo(session.world, apple);
     const outcome = await settle(session.eat(), session, 20, 60);
     expect(outcome).toMatchObject({ ok: true, target: apple.id, removed: true });
   });
@@ -698,7 +714,20 @@ describe('eat', () => {
     const promise = session.eat(apple.id);
     session.world.entities.splice(session.world.entities.indexOf(apple), 1);
     const outcome = await settle(promise, session, 20, 60);
-    expect(outcome).toMatchObject({ ok: true, removed: true });
+    expect(outcome).toMatchObject({ ok: false, reason: 'not-found', removed: false });
+  });
+
+  it('checks the target again before taking the next bite', async () => {
+    const session = new SimSession(7);
+    const apple = session.addEntity('apple', 0, -0.8);
+    const meal = session.eat(apple.id);
+    apple.z = -5;
+    await expect(settle(meal, session, 20, 60)).resolves.toMatchObject({
+      ok: false,
+      reason: 'out-of-reach',
+      removed: false,
+      stage: 0,
+    });
   });
 
   it('keeps a thing that does not disappear', async () => {
@@ -760,7 +789,8 @@ describe('water', () => {
 describe('carrying', () => {
   it('refuses to pick up more than the limit', async () => {
     const session = new SimSession(8);
-    session.world.carrying.push(
+    attachCargo(
+      session.world,
       fakeEntity({ id: 'a' }),
       fakeEntity({ id: 'b' }),
       fakeEntity({ id: 'c' }),
@@ -814,8 +844,22 @@ describe('carrying', () => {
     const apple = session.addEntity('apple', 0, -0.8);
     const outcome = await settle(session.pickUp(apple.id), session, 5, 20);
     expect(outcome).toMatchObject({ ok: true, action: 'pick-up', target: apple.id });
-    expect(session.world.carrying).toContain(apple);
-    expect(session.world.entities).not.toContain(apple);
+    expect(carriedItems(session.world)).toContain(apple);
+    expect(session.world.entities.filter((item) => item.id === apple.id)).toEqual([apple]);
+    await expect(session.pickUp(apple.id)).resolves.toMatchObject({ reason: 'not-found' });
+  });
+
+  it('does not attach the silk if the target moves out of reach during pickup', async () => {
+    const session = new SimSession(8);
+    const apple = session.addEntity('apple', 0, -0.8);
+    const pickup = session.pickUp(apple.id);
+    apple.z = -5;
+    await expect(settle(pickup, session, 5, 20)).resolves.toMatchObject({
+      ok: false,
+      reason: 'out-of-reach',
+    });
+    expect(session.world.tethers.has(apple.id)).toBe(false);
+    expect(session.spider.interaction).toBeNull();
   });
 
   it('handles a thing that vanished before the grab', async () => {
@@ -845,14 +889,18 @@ describe('carrying', () => {
 
   it('refuses to drop with no room', () => {
     const session = new SimSession(8);
-    session.world.carrying.push(fakeEntity({ id: 'apple-back' }));
+    const item = fakeEntity({ id: 'apple-back' });
+    attachCargo(session.world, item);
+    const before = { ...item };
     session.world.blocks.push(block('fill', -10, 10, -10, 10));
     expect(session.drop()).toMatchObject({ ok: false, reason: 'no-room' });
+    expect(session.world.tethers.has(item.id)).toBe(true);
+    expect(item).toEqual(before);
   });
 
   it('refuses to drop past the island edge', () => {
     const session = new SimSession(8);
-    session.world.carrying.push(fakeEntity({ id: 'apple-back' }));
+    attachCargo(session.world, fakeEntity({ id: 'apple-back' }));
     session.world.terrain = { height: () => 0, inside: () => false };
     expect(session.drop()).toMatchObject({ ok: false, reason: 'no-room' });
   });
@@ -860,19 +908,23 @@ describe('carrying', () => {
   it('drops the last carried thing in front', () => {
     const session = new SimSession(8);
     const item = fakeEntity({ id: 'apple-back' });
-    session.world.carrying.push(item);
+    attachCargo(session.world, item);
     const outcome = session.drop();
     expect(outcome).toMatchObject({ ok: true, action: 'drop', target: item.id });
-    expect(session.world.carrying).toEqual([]);
+    expect(carriedItems(session.world)).toEqual([]);
     expect(session.world.entities).toContain(item);
     expect(Number.isFinite(item.x)).toBe(true);
   });
 
   it('drops one named thing and keeps the rest on the back', () => {
     const session = new SimSession(8);
-    session.world.carrying.push(fakeEntity({ id: 'apple-1' }), fakeEntity({ id: 'apple-2' }));
-    const outcome = session.drop('apple-1');
-    expect(outcome).toMatchObject({ ok: true, target: 'apple-1', carrying: ['apple-2'] });
+    attachCargo(
+      session.world,
+      fakeEntity({ id: 'apple-back-1' }),
+      fakeEntity({ id: 'apple-back-2' }),
+    );
+    const outcome = session.drop('apple-back-1');
+    expect(outcome).toMatchObject({ ok: true, target: 'apple-back-1', carrying: ['apple-back-2'] });
   });
 
   it('picks the nearest of several carryables', async () => {
@@ -894,14 +946,14 @@ describe('carrying', () => {
 
   it('refuses to store away from home', () => {
     const session = new SimSession(9);
-    session.world.carrying.push(fakeEntity({ id: 'apple-back' }));
+    attachCargo(session.world, fakeEntity({ id: 'apple-back' }));
     session.spider.root.position.set(10, 0, 10);
     expect(session.store()).toMatchObject({ ok: false, reason: 'not-home' });
   });
 
   it('refuses to store with no room', () => {
     const session = new SimSession(9);
-    session.world.carrying.push(fakeEntity({ id: 'apple-back' }));
+    attachCargo(session.world, fakeEntity({ id: 'apple-back' }));
     session.world.blocks.push(block('fill', -3, 3, -3, 3));
     expect(session.store()).toMatchObject({ ok: false, reason: 'no-room' });
   });
@@ -909,7 +961,7 @@ describe('carrying', () => {
   it('keeps storing after the first row is full', () => {
     const session = new SimSession(9);
     for (let index = 0; index < 9; index += 1) {
-      session.world.carrying.push(fakeEntity({ id: `kept-${index}` }));
+      attachCargo(session.world, fakeEntity({ id: `kept-${index}` }));
       expect(session.store(`kept-${index}`).ok).toBe(true);
     }
     const stored = session.world.entities.filter((entity) => entity.id.startsWith('kept-'));
@@ -920,19 +972,23 @@ describe('carrying', () => {
   it('stores a carried thing in the nest', () => {
     const session = new SimSession(9);
     const item = fakeEntity({ id: 'apple-back' });
-    session.world.carrying.push(item);
+    attachCargo(session.world, item);
     expect(insideHome(session.spider.root.position.x, session.spider.root.position.z)).toBe(true);
     const outcome = session.store();
     expect(outcome).toMatchObject({ ok: true, action: 'store', target: item.id });
-    expect(session.world.carrying).toEqual([]);
+    expect(carriedItems(session.world)).toEqual([]);
     expect(session.world.entities).toContain(item);
   });
 
   it('stores one named thing and keeps the rest on the back', () => {
     const session = new SimSession(9);
-    session.world.carrying.push(fakeEntity({ id: 'apple-1' }), fakeEntity({ id: 'apple-2' }));
-    const outcome = session.store('apple-1');
-    expect(outcome).toMatchObject({ ok: true, target: 'apple-1', carrying: ['apple-2'] });
+    attachCargo(
+      session.world,
+      fakeEntity({ id: 'apple-back-1' }),
+      fakeEntity({ id: 'apple-back-2' }),
+    );
+    const outcome = session.store('apple-back-1');
+    expect(outcome).toMatchObject({ ok: true, target: 'apple-back-1', carrying: ['apple-back-2'] });
   });
 });
 
@@ -977,9 +1033,9 @@ describe('sleep and props', () => {
   it('ignores non-numeric suffixes and counts carried props', () => {
     const session = new SimSession(10);
     session.world.entities = [{ ...fakeEntity({ id: 'apple-x' }) }];
-    session.world.carrying = [fakeEntity({ id: 'apple-7' })];
+    attachCargo(session.world, fakeEntity({ id: 'apple-7' }));
     expect(session.addEntity('apple', 0, 0).id).toBe('apple-8');
-    session.world.carrying = [];
+    session.world.tethers.clear();
     session.world.entities = [{ ...fakeEntity({ id: 'apple-x' }) }];
     expect(session.addEntity('apple', 0, 0).id).toBe('apple-1');
   });
@@ -989,25 +1045,61 @@ describe('sleep and props', () => {
   });
 });
 
-it('leaves slack cargo still, pulls taut cargo, and preserves existing velocity', () => {
+it('applies gravity to slack cargo and tension to taut cargo', () => {
   const session = new SimSession(3);
   session.world.entities = [];
   const back = session.spider.root.position;
   const cargo = fakeEntity({ x: back.x, z: back.z + 1.66, y: back.y + 10 });
-  session.world.carrying = [cargo];
+  attachCargo(session.world, cargo);
+  session.world.tethers.set(cargo.id, 10);
   session.frame(0);
-  expect(cargo.vx).toBe(0);
-  expect(cargo.vz).toBe(0);
+  expect(cargo.vx).toBeUndefined();
+  expect(cargo.vz).toBeUndefined();
   session.frame(0.05);
   expect(cargo.y).toBeLessThan(back.y + 10);
   expect(cargo.vy).toBeLessThan(0);
+  session.world.tethers.set(cargo.id, 1.2);
   cargo.x = back.x + 5;
   const oldX = cargo.x;
   session.frame(0.05);
   expect(cargo.x).toBeLessThan(oldX);
   expect(cargo.vx).toBeLessThan(0);
-  cargo.y = -100;
-  session.frame(0.05);
-  expect(cargo.vy).toBe(0);
-  expect(cargo.y).toBeGreaterThan(-100);
+});
+
+it('blocks tethered cargo at a wall and keeps its motion when released', () => {
+  const session = new SimSession(3);
+  session.world.entities = [];
+  session.world.terrain = { height: () => 1 };
+  const anchor = tetherAnchor(session.spider.root.position, session.spider.yaw);
+  const cargo = session.addEntity('apple', 3, anchor.z);
+  const wall = block('wall', 0.9, 1, -5, 5);
+  session.world.blocks = [wall];
+  attachCargo(session.world, cargo);
+  for (let i = 0; i < 120; i++) {
+    session.frame(1 / 60);
+    expect(cargo.x).toBeGreaterThanOrEqual(wall.maxX + KINDS.apple.physics!.radius);
+  }
+  expect(cargo.x).toBeLessThan(1.35);
+  session.world.blocks = [];
+  for (let i = 0; i < 8; i++) session.frame(1 / 60);
+  expect(cargo.vx).toBeLessThan(0);
+  const beforeRelease = { ...cargo };
+  expect(session.release()).toMatchObject({ ok: true, target: cargo.id, carrying: [] });
+  expect(cargo).toEqual(beforeRelease);
+  expect(session.world.entities[0]).toBe(cargo);
+  session.frame(1 / 60);
+  expect(cargo.x).toBeLessThan(beforeRelease.x);
+  expect(session.release(cargo.id)).toMatchObject({ ok: false, reason: 'not-carrying' });
+});
+
+it('does not push a taut cargo moving rapidly toward the anchor', () => {
+  const cargo = fakeEntity({ x: 2, vx: -12, vy: 0, vz: 0 });
+  pullTether(
+    cargo,
+    1.2,
+    { position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 } },
+    1,
+    1 / 60,
+  );
+  expect(cargo.vx).toBe(-12);
 });

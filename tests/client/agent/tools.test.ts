@@ -28,7 +28,7 @@ const observation: Observation = {
     swimming: false,
     water: null,
     shore: null,
-    carrying: [],
+    tethers: new Map(),
     ahead: { open: 8, by: 'clear', id: null, kind: null },
     nearby: [],
     ways: [{ x: 0, z: -8, open: 8 }],
@@ -82,6 +82,7 @@ beforeEach(() => {
     pickUp: vi.fn(async () => outcome()),
     drink: vi.fn(() => outcome({ action: 'drink' })),
     drop: vi.fn(() => outcome()),
+    release: vi.fn(() => outcome()),
     store: vi.fn(() => outcome()),
     sleep: vi.fn(async () => outcome()),
     setHeight: vi.fn(async () => outcome()),
@@ -448,12 +449,14 @@ describe('spiderTools', () => {
     await execute(tools.act, { verb: 'eat', id: 'apple-1' });
     await execute(tools.act, { verb: 'pick_up', id: 'apple-1' });
     await execute(tools.act, { verb: 'drop', id: 'apple-1' });
+    await execute(tools.act, { verb: 'release', id: 'apple-1' });
     await execute(tools.act, { verb: 'store', id: 'apple-1' });
     await execute(tools.act, { verb: 'sleep' });
     await execute(tools.set_height, { level: 0.3 });
     expect(session.eat).toHaveBeenCalledWith('apple-1');
     expect(session.pickUp).toHaveBeenCalledWith('apple-1');
     expect(session.drop).toHaveBeenCalledWith('apple-1');
+    expect(session.release).toHaveBeenCalledWith('apple-1');
     expect(session.store).toHaveBeenCalledWith('apple-1');
     expect(session.sleep).toHaveBeenCalled();
     expect(session.setHeight).toHaveBeenCalledWith(0.3);
