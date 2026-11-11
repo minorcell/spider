@@ -1,8 +1,44 @@
 import { describe, expect, it } from 'vitest';
-import { blockAt, moveCircle, sweepCircle } from '@/src/shared/collision';
+import {
+  blockAt,
+  moveCircle,
+  sweepCircle,
+  sweepSpheres,
+  type SphereMotion,
+} from '@/src/shared/collision';
 import { block } from '@/tests/helpers';
 
 const box = block('box', -1, 1, -1, 1);
+
+describe('continuous sphere queries', () => {
+  const sphere: SphereMotion = { x: 0, y: 0, z: 0, dx: 0, dy: 0, dz: 0, radius: 0.1 };
+
+  it('uses relative 3D motion and reports the normal toward the second body', () => {
+    const a = { ...sphere, y: -1, dy: 1 };
+    const b = { ...sphere, y: 1, dy: -1 };
+    expect(sweepSpheres(a, b)).toMatchObject({ nx: 0, ny: 1, nz: 0 });
+    expect(sweepSpheres(a, b)!.time).toBeCloseTo(0.9);
+    expect(sweepSpheres(b, a)).toMatchObject({ nx: 0, ny: -1, nz: 0 });
+    expect(sweepSpheres(b, a)!.time).toBeCloseTo(0.9);
+  });
+
+  it('ignores separated trajectories, tangency, equal velocity and non-approaching motion', () => {
+    expect(sweepSpheres(sphere, { ...sphere, x: 1, dx: -0.1 })).toBeNull();
+    expect(sweepSpheres(sphere, { ...sphere, x: 1, y: 0.2, dx: -2 })).toBeNull();
+    expect(sweepSpheres(sphere, { ...sphere, x: 1, y: 1, dx: -2 })).toBeNull();
+    expect(sweepSpheres(sphere, { ...sphere, x: 1 })).toBeNull();
+    expect(sweepSpheres(sphere, { ...sphere, x: 1, dx: 2 })).toBeNull();
+    expect(
+      sweepSpheres({ ...sphere, radius: 0 }, { ...sphere, radius: 0, x: 1, dx: -2 }),
+    ).toBeNull();
+  });
+
+  it('leaves coincident or numerically tangential overlap to the overlap solver', () => {
+    expect(sweepSpheres(sphere, { ...sphere, x: 1e-10, dx: -1 })).toBeNull();
+    expect(sweepSpheres(sphere, { ...sphere, x: 0.1, dx: -1e-10, dz: 1 })).toBeNull();
+    expect(sweepSpheres(sphere, { ...sphere, x: 0.1, dx: -1 })).toMatchObject({ time: 0, nx: 1 });
+  });
+});
 
 describe('continuous spatial queries', () => {
   it.each([

@@ -149,7 +149,7 @@ export function sweepCircle(
 }
 
 /** Heightfields and irregular coasts use bounded samples, independent of body radius. */
-function surfaceLimit(
+export function surfaceLimit(
   x: number,
   z: number,
   dx: number,
@@ -222,4 +222,48 @@ export function moveCircle(
     result.halt = 'solid';
   }
   return result;
+}
+
+export interface SphereMotion {
+  x: number;
+  y: number;
+  z: number;
+  dx: number;
+  dy: number;
+  dz: number;
+  radius: number;
+}
+
+export interface SphereHit {
+  time: number;
+  /** Unit normal from the first body toward the second. */
+  nx: number;
+  ny: number;
+  nz: number;
+}
+
+/** Time of first approaching contact along two simultaneous linear trajectories. */
+export function sweepSpheres(a: SphereMotion, b: SphereMotion): SphereHit | null {
+  const px = b.x - a.x;
+  const py = b.y - a.y;
+  const pz = b.z - a.z;
+  const dx = b.dx - a.dx;
+  const dy = b.dy - a.dy;
+  const dz = b.dz - a.dz;
+  const radius = a.radius + b.radius;
+  const speed2 = dx * dx + dy * dy + dz * dz;
+  const approach = px * dx + py * dy + pz * dz;
+  if (radius <= 0 || speed2 <= EPSILON * EPSILON || approach >= 0) return null;
+  const gap = px * px + py * py + pz * pz - radius * radius;
+  const discriminant = approach * approach - speed2 * gap;
+  if (discriminant <= 0) return null;
+  const time = gap <= 0 ? 0 : gap / (-approach + Math.sqrt(discriminant));
+  if (time > 1) return null;
+  const nx = px + dx * time;
+  const ny = py + dy * time;
+  const nz = pz + dz * time;
+  const length = Math.hypot(nx, ny, nz);
+  // Coincident centers are handled by the overlap solver; there is no entry normal.
+  if (length <= EPSILON || (dx * nx + dy * ny + dz * nz) / length >= -EPSILON) return null;
+  return { time, nx: nx / length, ny: ny / length, nz: nz / length };
 }

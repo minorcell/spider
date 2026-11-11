@@ -652,7 +652,14 @@ export class SimSession {
       dt > 0 && this.world.tethers.size > 0
         ? tetherAnchor(this.spider.root.position, this.spider.yaw)
         : undefined;
-    this.spider.update(dt, active ? active.goal.controls() : IDLE_CONTROLS);
+    const from = {
+      x: this.spider.root.position.x,
+      y: this.spider.root.position.y,
+      z: this.spider.root.position.z,
+    };
+    const stuckBefore = this.spider.stuckFor;
+    const controls = active ? active.goal.controls() : IDLE_CONTROLS;
+    this.spider.update(dt, controls);
     const position = this.spider.root.position;
     let motion: TetherMotion | undefined;
     if (previous) {
@@ -666,16 +673,28 @@ export class SimSession {
         },
       };
     }
-    stepPhysics(
+    const committed = stepPhysics(
       this.world,
       {
         x: position.x,
         z: position.z,
         speed: this.spider.speed,
+        from,
       },
       dt,
       motion,
     );
+    if (committed && Math.hypot(committed.x - position.x, committed.z - position.z) > 1e-8) {
+      const proposed = Math.hypot(position.x - from.x, position.z - from.z);
+      const actual = Math.hypot(committed.x - from.x, committed.z - from.z);
+      const fraction = actual / proposed;
+      position.set(committed.x, from.y + (position.y - from.y) * fraction, committed.z);
+      this.spider.speed = 0;
+      this.spider.halt = 'solid';
+      this.spider.stuckFor =
+        Math.abs(controls.throttle) > 0.05 && actual < 1e-4 ? stuckBefore + dt : 0;
+      this.spider.update(0);
+    }
     if (!active) return;
 
     const reached = active.goal.done();
