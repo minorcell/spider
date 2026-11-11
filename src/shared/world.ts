@@ -2,6 +2,7 @@ import { grassOnDryGround, grassRadius } from '@/src/shared/grass';
 import { groundSupport } from '@/src/shared/contact';
 import { PHYSICS } from '@/src/shared/config';
 import { kindOf } from '@/src/shared/kinds';
+import { applePopulation, islandFamilies, type ScatterOptions } from '@/src/shared/islandContent';
 import { mulberry32 } from '@/src/shared/noise';
 import { blockedAt } from '@/src/shared/sight';
 import { stepPhysics } from '@/src/shared/sim/physics';
@@ -16,31 +17,16 @@ export const GRASS_VIEW = 4.5;
 
 export const REACH_Y = 1.6;
 
-const APPLES = 20;
-export const GRASS = 32;
-export const TREES = 24;
-const STONES = 10;
-const BOG_STONES = 5;
-const MIN_GAP = 3.4;
+export { GRASS, TREES } from '@/src/shared/islandContent';
 
-const TREE_GAP = 2.6;
-const STONE_GAP = 2.8;
-const BOG_GAP = 2.4;
-const TREE_RADIUS = [0.32, 0.56] as const;
-const STONE_RADIUS = [0.5, 1.15] as const;
-const BOG_RADIUS = [0.55, 0.95] as const;
+const MIN_GAP = 3.4;
 
 const WATER = TERRAIN.water;
 
 const BOG_DEPTH_MIN = 0.05;
 const BOG_DEPTH_MAX = 0.34;
 
-interface ScatterOptions {
-  readonly gap?: number;
-  readonly radius?: readonly [number, number];
-}
-
-export const APPLE_EVERY = 24;
+export const APPLE_EVERY = applePopulation.interval;
 
 const SPROUT_CLEAR = 2.2;
 
@@ -80,20 +66,9 @@ export function createWorld(
   const placed: { x: number; z: number }[] = [];
   const entities: EntityState[] = [
     { id: 'home', kind: 'nest', x: 0, y: 0.02, z: 0, stage: 0 },
-    ...scatter(rng, terrain, placed, blocks, 'grass', GRASS, 6.5, { gap: 5 }),
-    ...scatter(rng, terrain, placed, blocks, 'apple', APPLES, 6),
-    ...scatter(rng, terrain, placed, blocks, 'tree', TREES, 8.5, {
-      gap: TREE_GAP,
-      radius: TREE_RADIUS,
-    }),
-    ...scatter(rng, terrain, placed, blocks, 'stone', STONES, 6.2, {
-      gap: STONE_GAP,
-      radius: STONE_RADIUS,
-    }),
-    ...scatter(rng, terrain, placed, blocks, 'bog-stone', BOG_STONES, 7, {
-      gap: BOG_GAP,
-      radius: BOG_RADIUS,
-    }),
+    ...islandFamilies.flatMap((family) =>
+      scatter(rng, terrain, placed, blocks, family.kind, family.count, family.home, family),
+    ),
   ];
   return {
     seed: terrain.seed,
@@ -110,9 +85,10 @@ export function createWorld(
 
 export function grow(world: WorldState, dt: number, avoid?: { x: number; z: number }): void {
   if (world.appleIn == null || world.sprouts == null) return;
+  const { kind, count, home } = applePopulation;
   let onGround = 0;
-  for (const entity of world.entities) if (entity.kind === 'apple') onGround += 1;
-  if (onGround >= APPLES) {
+  for (const entity of world.entities) if (entity.kind === kind) onGround += 1;
+  if (onGround >= count) {
     world.appleIn = APPLE_EVERY;
     return;
   }
@@ -124,15 +100,15 @@ export function grow(world: WorldState, dt: number, avoid?: { x: number; z: numb
   const rng = mulberry32((world.seed ^ 0x51f15e) + salt);
   const placed = world.entities.map((entity) => ({ x: entity.x, z: entity.z }));
   for (let guard = 0; guard < SPROUT_TRIES; guard++) {
-    const spot = roll(rng, world.terrain, placed, world.blocks, 'apple', 6, avoid);
+    const spot = roll(rng, world.terrain, placed, world.blocks, kind, home, avoid);
     if (!spot) continue;
-    const settled = settle(world.terrain, world.blocks, 'apple', spot, placed, avoid);
+    const settled = settle(world.terrain, world.blocks, kind, spot, placed, avoid);
     if (!settled) continue;
     world.entities.push({
-      id: nextPropId(world, 'apple'),
-      kind: 'apple',
+      id: nextPropId(world, kind),
+      kind,
       x: settled.x,
-      y: restingY(world.terrain, 'apple', settled.x, settled.z),
+      y: restingY(world.terrain, kind, settled.x, settled.z),
       z: settled.z,
       stage: 0,
     });
@@ -210,13 +186,8 @@ export function populateScenery(
 ): void {
   const rng = mulberry32(world.seed ^ 0x7363656e);
   const placed = [...world.entities, ...world.carrying, avoid];
-  const families = [
-    { kind: 'grass', count: GRASS, home: 6.5, gap: 5, radius: undefined },
-    { kind: 'tree', count: TREES, home: 8.5, gap: TREE_GAP, radius: TREE_RADIUS },
-    { kind: 'stone', count: STONES, home: 6.2, gap: STONE_GAP, radius: STONE_RADIUS },
-    { kind: 'bog-stone', count: BOG_STONES, home: 7, gap: BOG_GAP, radius: BOG_RADIUS },
-  ];
-  for (const family of families) {
+  for (const family of islandFamilies) {
+    if (!family.repair) continue;
     const existing = world.entities.filter((entity) => entity.kind === family.kind).length;
     const count = Math.min(
       family.count - existing,

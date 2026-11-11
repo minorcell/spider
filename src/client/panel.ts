@@ -123,7 +123,7 @@ export function mountPanel(
   const showMap = (on: boolean): void => {
     map.setAttribute('aria-pressed', on ? 'true' : 'false');
     stage.setOverlook(on);
-    if (lookHint) lookHint.textContent = on ? '拖动平移　滚轮远近' : '拖动旋转视角　滚轮缩放';
+    if (lookHint) lookHint.textContent = on ? '拖动地图　滚轮缩放' : '拖动画面　滚轮缩放';
   };
 
   showMap(location.hash === '#observe' || location.hash === '#map');

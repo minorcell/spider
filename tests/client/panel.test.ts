@@ -221,7 +221,7 @@ describe('mountPanel chrome', () => {
     history.replaceState(null, '', '/#observe');
     mount();
     expect(stage.setOverlook).toHaveBeenCalledWith(true);
-    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动平移　滚轮远近');
+    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动地图　滚轮缩放');
     expect(document.querySelector('#observe-open')!.getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -237,11 +237,11 @@ describe('mountPanel chrome', () => {
     clickButton('#observe-open');
     expect(stage.setOverlook).toHaveBeenLastCalledWith(true);
     expect(location.hash).toBe('#observe');
-    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动平移　滚轮远近');
+    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动地图　滚轮缩放');
     clickButton('#observe-open');
     expect(stage.setOverlook).toHaveBeenLastCalledWith(false);
     expect(location.hash).toBe('');
-    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动旋转视角　滚轮缩放');
+    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动画面　滚轮缩放');
   });
 
   it('mounts without the optional hint', () => {

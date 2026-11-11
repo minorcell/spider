@@ -1,9 +1,19 @@
 import { PALETTE } from '@/src/shared/config';
 import { describe, expect, it, vi } from 'vitest';
-import { applyEcologyLighting, EcologySky } from '@/src/client/ecologyView';
+import { applyEcologyLighting, EcologySky, enableWorldShadows } from '@/src/client/ecologyView';
 import { buildIsland } from '@/src/client/groundView';
 import { worldClock } from '@/src/shared/ecology';
-import { Color, InstancedMesh, Matrix4, Mesh, Vector3 } from 'three';
+import { Color, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, Vector3 } from 'three';
+
+it('lets the model gallery receive and cast shadows on its Lambert surfaces', () => {
+  const root = new Group();
+  const paper = new Mesh(undefined, new MeshLambertMaterial());
+  const other = new Mesh();
+  root.add(paper, other);
+  enableWorldShadows(root);
+  expect(paper).toMatchObject({ castShadow: true, receiveShadow: true });
+  expect(other).toMatchObject({ castShadow: false, receiveShadow: false });
+});
 
 describe('applyEcologyLighting', () => {
   it('draws the original 159 cloud puffs in 28 independently culled batches', () => {

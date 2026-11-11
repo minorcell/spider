@@ -1,6 +1,3 @@
-import type { Group } from 'three';
-import { islandGroup } from '@/src/client/groundView';
-import { islandBuffers } from '@/src/shared/island';
 import { bakeTerrainGrid, Terrain } from '@/src/shared/terrain';
 import type { PreparedBuffers, WorldReply, WorldRequest } from '@/src/client/worker/worldProtocol';
 
@@ -18,7 +15,6 @@ interface Waiter {
 export interface PreparedWorld {
   seed: number;
   terrain: Terrain;
-  island: Group;
 }
 
 export class WorldClient {
@@ -79,7 +75,6 @@ export function assemble(data: PreparedBuffers): PreparedWorld {
   return {
     seed: data.seed,
     terrain: new Terrain(data.seed, data.grid),
-    island: islandGroup(data.island),
   };
 }
 
@@ -89,9 +84,7 @@ export function prepareLocal(seed: number): PreparedWorld {
 
 function localBuffers(seed: number): PreparedBuffers {
   const baked = seed >>> 0;
-  const grid = bakeTerrainGrid(baked);
-  const terrain = new Terrain(baked, grid);
-  return { seed: baked, grid, island: islandBuffers((x, z) => terrain.height(x, z)) };
+  return { seed: baked, grid: bakeTerrainGrid(baked) };
 }
 
 let opening: Promise<WorldClient | null> | null = null;
@@ -109,7 +102,7 @@ function openWorldWorker(): Promise<WorldClient | null> {
   return opening;
 }
 
-let cached: { seed: number; buffers: PreparedBuffers; terrain: Terrain } | null = null;
+let cached: PreparedWorld | null = null;
 
 async function loadBuffers(
   seed: number,
@@ -131,7 +124,7 @@ export async function prepareWorld(
   const baked = seed >>> 0;
   if (!cached || cached.seed !== baked) {
     const buffers = await loadBuffers(baked, open);
-    cached = { seed: buffers.seed, buffers, terrain: new Terrain(buffers.seed, buffers.grid) };
+    cached = assemble(buffers);
   }
-  return { seed: cached.seed, terrain: cached.terrain, island: islandGroup(cached.buffers.island) };
+  return cached;
 }

@@ -1,634 +1,273 @@
-import {
-  Group,
-  BufferGeometry,
-  AdditiveBlending,
-  CatmullRomCurve3,
-  Mesh,
-  MeshBasicMaterial,
-  TubeGeometry,
-  MathUtils,
-  PerspectiveCamera,
-  PCFShadowMap,
-  Scene,
-  Vector3,
-  type Object3D,
-} from 'three';
-import { WebGPURenderer } from 'three/webgpu';
-import { PALETTE } from '@/src/shared/config';
-import { kindOf } from '@/src/shared/kinds';
-import { WORLD_RADIUS } from '@/src/shared/terrain';
-import type { EntityState, WorldState } from '@/src/shared/state';
-import type { Spider } from '@/src/shared/sim/Spider';
-import { paintCanvas } from '@/src/ui/dress';
 import { FpsDisplay } from '@/src/client/fps';
 import { onLocalBusy } from '@/src/client/local/activity';
-import { buildIsland, tickWater } from '@/src/client/groundView';
-import { waterContact, waterSplashes } from '@/src/client/waterMotion';
-import { applyEcologyLighting, EcologySky, enableWorldShadows } from '@/src/client/ecologyView';
-import { Headlamp } from '@/src/client/headlamp';
-import { worldClock } from '@/src/shared/ecology';
-import { ObserveOverlay } from '@/src/client/observeView';
-import { buildProp, drapeGrass } from '@/src/client/props';
+import { describeObservation } from '@/src/client/observationText';
+import {
+  observeOutline,
+  PIXEL,
+  PixelIsland,
+  project,
+  type Projection,
+} from '@/src/client/pixelIsland';
 import { createSound } from '@/src/client/sound';
+import { worldClock } from '@/src/shared/ecology';
+import type { Spider } from '@/src/shared/sim/Spider';
+import type { Observation, WorldState } from '@/src/shared/state';
+import { WORLD_RADIUS } from '@/src/shared/terrain';
+import { paintCanvas, paintObserve } from '@/src/ui/dress';
 
-// Camera framing. Drag orbits, wheel dollies; both clamp at the same limits.
-const VIEW = {
-  fov: 32,
-  near: 0.08,
-  far: 200,
-  yaw: Math.PI + 0.62,
-  pitch: 0.32,
-  distance: 9.8,
-  minDistance: 6,
-  maxDistance: 30,
-  minPitch: 0.12,
-  maxPitch: 1.15,
-  dragYaw: 0.005,
-  dragPitch: 0.004,
-  zoom: 0.001,
-  ease: 6.5,
-  lookUp: 1.15,
-} as const;
+const REFRESH_MS = 100;
 
-const local = new Vector3();
-const look = new Vector3();
-const desired = new Vector3();
-const bubbleAt = new Vector3();
+type Point = { x: number; y: number };
+type Outline = ReturnType<typeof observeOutline>;
 
-/** Renderer and camera. It steps the one spider, then paints that same spider. */
+/** Browser host for the existing simulation. Canvas reads its state after each update. */
 export class Stage {
-  readonly #fps: FpsDisplay;
-  readonly #stopLocal: () => void;
-  #inferenceBusy = false;
-  #lastPaint = -Infinity;
   readonly #host: HTMLElement;
-  readonly #renderer: WebGPURenderer;
-  readonly #scene = new Scene();
-  readonly #camera: PerspectiveCamera;
   readonly #spider: Spider;
-  readonly #props = new Map<string, Group>();
-  #island: Group | null = null;
-  /** While set, a restored seed waits for the world worker instead of meshing here. */
-  #islandPending = false;
-  #islandRequest = 0;
-  #islandSource: ((seed: number) => Promise<Group>) | null = null;
-  /** Last drawn action stage, so a new bite can make a sound. */
-  readonly #stages = new Map<string, number>();
-  readonly #drapedGrass = new Map<
-    string,
-    { x: number; z: number; terrain: WorldState['terrain'] }
-  >();
-  #resizeObserver!: ResizeObserver;
-  #view = { left: 0, top: 0, width: 1, height: 1 };
+  readonly #canvas: HTMLCanvasElement;
+  readonly #island: PixelIsland;
+  readonly #fps: FpsDisplay;
   readonly #sound = createSound(window);
-  readonly #silk = new Mesh(
-    new TubeGeometry(new CatmullRomCurve3([new Vector3(), new Vector3()]), 8, 0.014, 6, false),
-    new MeshBasicMaterial({
-      color: 0xbffcff,
-      transparent: true,
-      opacity: 0.95,
-      blending: AdditiveBlending,
-      toneMapped: false,
-    }),
-  );
-  #heard = false;
-  readonly #wasLifted: boolean[] = [];
-  /** Ids on the back last frame. Null until the first sync, so birth is silent. */
-  #carried: Set<string> | null = null;
-  /** Reused so an idle frame does not allocate a set of ids. */
-  readonly #alive = new Set<string>();
-  #halt: 'clear' | 'solid' | 'steep' = 'clear';
-
-  #yaw: number = VIEW.yaw;
-  #pitch: number = VIEW.pitch;
-  #distance: number = VIEW.distance;
-  /** God view. Drag pans, the wheel changes height, and the sense overlay is on. */
-  #overlook = false;
-  readonly #observe: ObserveOverlay;
-  readonly #focus = new Vector3();
-  #dragging = false;
-  #pointerX = 0;
-  #pointerY = 0;
-  /** Advance the one simulation, then read its world for the props. */
-  #step: ((dt: number) => void) | null = null;
-  /** Cloud hold freezes the spider. The picture keeps drawing. */
+  readonly #stopLocal: () => void;
+  readonly #observer: ResizeObserver;
+  readonly #listeners = new AbortController();
+  readonly #layer: HTMLElement;
+  readonly #readout: HTMLElement;
+  #inferenceBusy = false;
   #held = false;
-  #world: (() => WorldState) | null = null;
-  /** Screen point just above the body, for the speech bubble. */
-  #onAnchor: ((point: { x: number; y: number } | null) => void) | null = null;
-  readonly #camPos = new Vector3();
-  readonly #lookPos = new Vector3();
-  #camReady = false;
-  #last = performance.now();
-  /** Ecology follows local wall time and only needs a once-per-second update. */
-  #ecologySecond = -1;
-  readonly #sky = new EcologySky();
-  readonly #lamp = new Headlamp();
+  #overlook = false;
+  #zoom = 1;
+  #pan = { x: 0, z: 0 };
+  #pointer: Point | undefined;
+  #view: Projection = { x: 0, z: 0, scale: 1, width: 1, height: 1 };
+  #bounds = { left: 0, top: 0, width: 1, height: 1 };
+  #step: ((dt: number) => void) | undefined;
+  #world: (() => WorldState) | undefined;
+  #observe: (() => Observation) | undefined;
+  #anchor: ((point: Point | null) => void) | undefined;
+  #frameId = 0;
+  #last = 0;
+  #lastPaint = -Infinity;
+  #lastObserved = -Infinity;
+  #observation: Observation | undefined;
+  #outline: Outline = [];
   #clock = worldClock();
+  #clockSecond = -1;
+  #lastFeet: boolean[] = [];
+  #halt: Spider['halt'] = 'clear';
+  #carrying: Set<string> | undefined;
+  readonly #stages = new Map<string, number>();
+  readonly #seen = new Set<string>();
 
   constructor(host: HTMLElement, spider: Spider) {
     this.#host = host;
     this.#spider = spider;
-
-    // WebGPURenderer defaults to a transparent canvas. The paper sky is opaque.
-    this.#renderer = new WebGPURenderer({
-      alpha: false,
-      antialias: true,
-      powerPreference: 'high-performance',
-    });
-    this.#renderer.shadowMap.enabled = true;
-    this.#renderer.shadowMap.type = PCFShadowMap;
-    // Draw at the screen's own pixels, capped at 2, so the ink stays sharp.
-    this.#renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    this.#renderer.setClearColor(PALETTE.paper, 1);
-    host.appendChild(this.#renderer.domElement);
-    paintCanvas(this.#renderer.domElement);
+    const doc = host.ownerDocument;
+    this.#canvas = doc.createElement('canvas');
+    this.#canvas.setAttribute('aria-label', '蛛岛像素场景');
+    paintCanvas(this.#canvas);
+    this.#canvas.style.imageRendering = 'pixelated';
+    this.#canvas.style.touchAction = 'none';
+    host.append(this.#canvas);
+    this.#island = new PixelIsland(this.#canvas);
     this.#fps = new FpsDisplay(host);
     this.#stopLocal = onLocalBusy((busy) => {
       this.#inferenceBusy = busy;
-      this.#renderer.setPixelRatio(Math.min(busy ? 1 : 2, window.devicePixelRatio || 1));
     });
 
-    this.#camera = new PerspectiveCamera(VIEW.fov, 1, VIEW.near, VIEW.far);
-    this.#observe = new ObserveOverlay(host);
-    enableWorldShadows(this.#spider.root);
-    enableWorldShadows(this.#spider.rig);
-    this.#scene.add(
-      this.#spider.root,
-      this.#spider.rig,
-      this.#observe.object,
-      this.#sky.object,
-      waterSplashes,
-    );
-    this.#silk.visible = true;
+    this.#layer = doc.createElement('div');
+    this.#layer.id = 'observe';
+    this.#layer.hidden = true;
+    this.#readout = doc.createElement('div');
+    this.#readout.id = 'observe-readout';
+    const pins = doc.createElement('div');
+    paintObserve(this.#layer, this.#readout, pins);
+    this.#readout.style.background = 'var(--ui-paper)';
+    this.#readout.style.padding = '4px 7px';
+    this.#layer.append(this.#readout, pins);
+    host.append(this.#layer);
 
-    this.#lamp.attach(this.#spider);
-
-    this.#bindEvents();
+    const signal = this.#listeners.signal;
+    this.#canvas.addEventListener('pointerdown', this.#beginPan, { signal });
+    this.#canvas.addEventListener('pointermove', this.#movePan, { signal });
+    this.#canvas.addEventListener('pointerup', this.#endPan, { signal });
+    this.#canvas.addEventListener('pointercancel', this.#endPan, { signal });
+    this.#canvas.addEventListener('wheel', this.#wheel, { signal, passive: false });
+    this.#observer = new ResizeObserver(() => this.#resize());
+    this.#observer.observe(host);
     this.#resize();
   }
 
-  /** The render loop steps this once, then draws the same spider. */
-  bind(step: (dt: number) => void, world: () => WorldState): void {
+  bind(step: (dt: number) => void, world: () => WorldState, observe: () => Observation): void {
     this.#step = step;
     this.#world = world;
+    this.#observe = observe;
   }
 
-  /** Freeze the simulation while another computer holds the spider or a choice is open. */
   hold(on: boolean): void {
     this.#held = on;
   }
 
-  /** Called after each paint with a point above the spider, in page pixels. */
-  follow(onAnchor: (point: { x: number; y: number } | null) => void): void {
-    this.#onAnchor = onAnchor;
+  follow(onAnchor: (point: Point | null) => void): void {
+    this.#anchor = onAnchor;
   }
 
-  /** Switch between the chase camera and the overhead observation view. */
   setOverlook(on: boolean): void {
     this.#overlook = on;
-    if (on) {
-      this.#focus.copy(this.#spider.root.position);
-      this.#distance = 34;
-    } else {
-      this.#distance = VIEW.distance;
-      this.#pitch = VIEW.pitch;
-    }
+    this.#layer.hidden = !on;
+    this.#pan = { x: 0, z: 0 };
+    this.#zoom = 1;
+    this.#lastObserved = -Infinity;
+    this.#observation = undefined;
+  }
+
+  retile(): void {
+    this.#stages.clear();
+    this.#carrying = undefined;
+    this.#lastFeet = [];
+    this.#halt = 'clear';
+    this.setOverlook(this.#overlook);
   }
 
   start(): void {
     this.#last = performance.now();
-    this.#renderer.setAnimationLoop(this.#frame);
+    this.#frameId = requestAnimationFrame(this.#frame);
   }
 
-  /** Use an island the world worker already built. */
-  placeIsland(group: Group): void {
-    this.#dropIsland();
-    enableWorldShadows(group);
-    this.#island = group;
-    this.#islandPending = false;
-    this.#scene.add(group);
-  }
-
-  /** A restored seed can be meshed off the page thread. */
-  setIslandSource(source: (seed: number) => Promise<Group>): void {
-    this.#islandSource = source;
-  }
-
-  /** The ground mesh is baked once. A restored seed needs a new island. */
-  retile(): void {
-    const seed = this.#world?.().seed;
-    if (this.#islandSource && seed != null) {
-      const request = ++this.#islandRequest;
-      this.#islandPending = true;
-      this.#dropIsland();
-      void this.#islandSource(seed).then(
-        (group) => {
-          if (request !== this.#islandRequest) return;
-          this.placeIsland(group);
-        },
-        () => {
-          if (request !== this.#islandRequest) return;
-          this.#islandPending = false;
-          this.#syncWorld();
-        },
-      );
-    } else {
-      this.#dropIsland();
-    }
-    for (const [id, prop] of this.#props) {
-      disposeGeometries(prop);
-      this.#scene.remove(prop);
-      this.#props.delete(id);
-      this.#stages.delete(id);
-    }
-    this.#drapedGrass.clear();
-    this.#carried = null;
-    this.#observe.reset();
-    this.#syncWorld();
-  }
-
-  #syncWorld(): void {
-    const world = this.#world?.();
-    if (!world) return;
-    if (!this.#island && !this.#islandPending) {
-      this.#island = buildIsland((x, z) => world.terrain.height(x, z));
-      enableWorldShadows(this.#island);
-      this.#scene.add(this.#island);
-    }
-
-    const held = world.carrying;
-    const carried = this.#carried;
-    if (!carried || carried.size !== held.length || held.some((item) => !carried.has(item.id))) {
-      if (carried) {
-        for (const item of held) if (!carried.has(item.id)) this.#sound.grasp();
-        for (const id of carried) {
-          if (held.some((item) => item.id === id)) continue;
-          if (world.entities.some((item) => item.id === id)) this.#sound.place();
-        }
-      }
-      this.#carried = new Set(held.map((item) => item.id));
-    }
-
-    const alive = this.#alive;
-    alive.clear();
-    for (const entity of world.entities) {
-      alive.add(entity.id);
-      this.#syncProp(entity, entity.x, entity.y, entity.z, world);
-    }
-
-    const back = this.#spider.root.position;
-    const yaw = this.#spider.yaw;
-    // carrying 中的苹果使用自己的物理坐标；蜘蛛只通过蛛丝施加拉力。
-    for (const item of held) {
-      alive.add(item.id);
-      this.#syncProp(item, item.x, item.y, item.z, world);
-    }
-
-    const interaction = this.#spider.interaction;
-    const target = held[0] ?? (interaction?.phase === 'drag' ? interaction.target : null);
-    if (target) {
-      if (!this.#silk.parent) {
-        this.#scene.add(this.#silk);
-      }
-      // spinneret 在腹部最后端，丝线从身体后方出发，而不是从肚子底部垂下。
-      // 腹部轮廓的最后尖端约在身体后方 1.7 个单位、甲壳高度附近。
-      // 端点略微嵌入模型，避免出现一小段悬空。
-      const abdomen = new Vector3(
-        back.x + Math.sin(yaw) * 1.62,
-        back.y + 0.82,
-        back.z + Math.cos(yaw) * 1.62,
-      );
-      const toSpiderX = back.x - target.x;
-      const toSpiderZ = back.z - target.z;
-      const toSpiderLength = Math.hypot(toSpiderX, toSpiderZ) || 1;
-      const appleRadius = 0.32;
-      const silkEnd = new Vector3(
-        target.x + (toSpiderX / toSpiderLength) * appleRadius,
-        target.y + 0.34,
-        target.z + (toSpiderZ / toSpiderLength) * appleRadius,
-      );
-      const points = [abdomen];
-      for (let i = 1; i < 10; i++) {
-        const t = i / 10;
-        points.push(
-          new Vector3(
-            abdomen.x + (silkEnd.x - abdomen.x) * t,
-            abdomen.y + (silkEnd.y - abdomen.y) * t - Math.sin(Math.PI * t) * 0.18,
-            abdomen.z + (silkEnd.z - abdomen.z) * t,
-          ),
-        );
-      }
-      points.push(silkEnd);
-      this.#silk.geometry.dispose();
-      this.#silk.geometry = new TubeGeometry(
-        new CatmullRomCurve3(points),
-        Math.max(8, points.length * 2),
-        0.014,
-        6,
-        false,
-      );
-      this.#silk.visible = true;
-    } else {
-      if (this.#silk.parent) {
-        this.#scene.remove(this.#silk);
-      }
-    }
-
-    for (const [id, prop] of this.#props) {
-      if (alive.has(id)) continue;
-      disposeGeometries(prop);
-      this.#scene.remove(prop);
-      this.#props.delete(id);
-      this.#stages.delete(id);
-      this.#drapedGrass.delete(id);
-      this.#sound.take();
-    }
-  }
-
-  /** Draw one entity, rebuilding it only when its bite stage changes. */
-  #syncProp(entity: EntityState, x: number, y: number, z: number, world: WorldState): void {
-    const previous = this.#stages.get(entity.id);
-    let prop = this.#props.get(entity.id);
-    if (prop && previous !== entity.stage) {
-      disposeGeometries(prop);
-      this.#scene.remove(prop);
-      this.#props.delete(entity.id);
-      this.#drapedGrass.delete(entity.id);
-      prop = undefined;
-      if (previous != null && entity.stage > previous) this.#sound.bite();
-    }
-    const spec = kindOf(entity.kind)?.physics;
-    const roll = spec?.rolls ? spec.radius : 0;
-    if (!prop) {
-      const built = buildProp(entity.kind, entity.stage, entity.footprint, entity.id);
-      if (!built) return;
-      if (roll > 0) {
-        // The mesh origin is its bottom. Spin around the center, so the
-        // contact point stays on the ground while the body turns.
-        const pivot = new Group();
-        built.position.y = -roll;
-        pivot.add(built);
-        prop = pivot;
-      } else {
-        prop = built;
-      }
-      enableWorldShadows(prop);
-      this.#props.set(entity.id, prop);
-      this.#scene.add(prop);
-    }
-    this.#stages.set(entity.id, entity.stage);
-    if (entity.kind === 'grass') {
-      const draped = this.#drapedGrass.get(entity.id);
-      if (!draped || draped.x !== x || draped.z !== z || draped.terrain !== world.terrain) {
-        drapeGrass(prop, x, z, (px, pz) => world.terrain.height(px, pz));
-        this.#drapedGrass.set(entity.id, { x, z, terrain: world.terrain });
-      }
-      return;
-    }
-    const py = y + roll;
-    if (prop.position.x !== x || prop.position.y !== py || prop.position.z !== z) {
-      prop.position.set(x, py, z);
-    }
-    if (roll > 0) {
-      prop.quaternion.set(entity.qx ?? 0, entity.qy ?? 0, entity.qz ?? 0, entity.qw ?? 1);
-    }
-  }
-
-  /** A quiet tick for words appearing beside the spider. */
   voice(): void {
     this.#sound.voice();
   }
 
   dispose(): void {
+    cancelAnimationFrame(this.#frameId);
+    this.#listeners.abort();
+    this.#observer.disconnect();
     this.#stopLocal();
-    this.#renderer.setAnimationLoop(null);
-    this.#resizeObserver.disconnect();
-    const el = this.#renderer.domElement;
-    el.removeEventListener('pointerdown', this.#onPointerDown);
-    el.removeEventListener('pointerup', this.#onPointerUp);
-    el.removeEventListener('pointermove', this.#onPointerMove);
-    el.removeEventListener('wheel', this.#onWheel);
-    disposeGeometries(this.#scene);
-    this.#sky.dispose();
-    this.#lamp.dispose();
-    this.#renderer.dispose();
     this.#sound.dispose();
-    el.remove();
+    this.#canvas.remove();
     this.#fps.element.remove();
+    this.#layer.remove();
   }
 
-  #bindEvents(): void {
-    const el = this.#renderer.domElement;
-    el.addEventListener('pointerdown', this.#onPointerDown);
-    el.addEventListener('pointerup', this.#onPointerUp);
-    el.addEventListener('pointermove', this.#onPointerMove);
-    el.addEventListener('wheel', this.#onWheel, { passive: false });
-
-    this.#resizeObserver = new ResizeObserver(() => this.#resize());
-    this.#resizeObserver.observe(this.#host);
-  }
-
-  #onPointerDown = (event: PointerEvent): void => {
-    this.#dragging = true;
-    this.#pointerX = event.clientX;
-    this.#pointerY = event.clientY;
-    this.#renderer.domElement.setPointerCapture(event.pointerId);
+  #beginPan = (event: PointerEvent): void => {
+    this.#pointer = { x: event.clientX, y: event.clientY };
+    this.#canvas.setPointerCapture(event.pointerId);
   };
 
-  #onPointerUp = (): void => {
-    this.#dragging = false;
+  #movePan = (event: PointerEvent): void => {
+    if (!this.#pointer) return;
+    const scale = this.#view.scale;
+    const dx =
+      ((event.clientX - this.#pointer.x) * this.#view.width) / Math.max(1, this.#bounds.width);
+    const dz =
+      ((event.clientY - this.#pointer.y) * this.#view.height) / Math.max(1, this.#bounds.height);
+    this.#pan.x = Math.max(-WORLD_RADIUS, Math.min(WORLD_RADIUS, this.#pan.x - dx / scale));
+    this.#pan.z = Math.max(-WORLD_RADIUS, Math.min(WORLD_RADIUS, this.#pan.z - dz / scale));
+    this.#pointer = { x: event.clientX, y: event.clientY };
   };
 
-  #onPointerMove = (event: PointerEvent): void => {
-    if (!this.#dragging) return;
-    const dx = event.clientX - this.#pointerX;
-    const dy = event.clientY - this.#pointerY;
-    this.#pointerX = event.clientX;
-    this.#pointerY = event.clientY;
-    if (this.#overlook) {
-      // 像拖地图一样：内容跟着指针走，镜头就朝反方向平移。
-      // 横竖都按同一个方向约定，斜着拖才不会一边跟手一边反着跑。
-      const span = this.#distance * 0.0015;
-      this.#focus.x = MathUtils.clamp(this.#focus.x - dx * span, -WORLD_RADIUS, WORLD_RADIUS);
-      this.#focus.z = MathUtils.clamp(this.#focus.z - dy * span, -WORLD_RADIUS, WORLD_RADIUS);
-      return;
-    }
-    this.#yaw -= dx * VIEW.dragYaw;
-    this.#pitch = MathUtils.clamp(this.#pitch + dy * VIEW.dragPitch, VIEW.minPitch, VIEW.maxPitch);
+  #endPan = (): void => {
+    this.#pointer = undefined;
   };
 
-  #onWheel = (event: WheelEvent): void => {
-    const min = this.#overlook ? 10 : VIEW.minDistance;
-    const max = this.#overlook ? 96 : VIEW.maxDistance;
-    this.#distance = MathUtils.clamp(this.#distance * (1 + event.deltaY * VIEW.zoom), min, max);
+  #wheel = (event: WheelEvent): void => {
+    this.#zoom = Math.max(0.65, Math.min(3, this.#zoom * Math.exp(-event.deltaY * 0.001)));
     event.preventDefault();
   };
 
-  // Orbit angles are an offset in the character frame, then applied with the
-  // same quaternion the body moves with. They are not a second heading.
-  #placeCamera(dt: number): void {
-    if (this.#overlook) {
-      const world = this.#world?.();
-      const ground = world?.terrain.height(this.#focus.x, this.#focus.z) ?? 0;
-      const sky = this.#distance;
-      const back = sky * 0.18;
-      desired.set(this.#focus.x, ground + sky, this.#focus.z + back);
-      look.set(this.#focus.x, ground, this.#focus.z);
-      // 三维地面有起伏：山脊挡在焦点和机位之间时，把机位抬到山脊上方，
-      // 而不是让俯视镜头穿进山体里。
-      if (world) {
-        for (let k = 1; k <= 8; k++) {
-          const t = k / 8;
-          const gx = look.x + (desired.x - look.x) * t;
-          const gz = look.z + (desired.z - look.z) * t;
-          const ridge = world.terrain.height(gx, gz) + 1.2;
-          desired.y = Math.max(desired.y, look.y + (ridge - look.y) / t);
-        }
-      }
-    } else {
-      const c = Math.cos(this.#pitch);
-      local.set(
-        Math.sin(this.#yaw) * c * this.#distance,
-        Math.sin(this.#pitch) * this.#distance,
-        Math.cos(this.#yaw) * c * this.#distance,
-      );
-      local.applyQuaternion(this.#spider.root.quaternion);
-      desired.copy(this.#spider.root.position).add(local);
-      look.copy(this.#spider.root.position);
-      look.y += VIEW.lookUp;
-      // 地形有起伏，镜头不能钻进山腹；沿视线把机位抬到山脊之上。
-      const world = this.#world?.();
-      if (world) {
-        for (let k = 1; k <= 6; k++) {
-          const t = k / 6;
-          const gx = look.x + (desired.x - look.x) * t;
-          const gz = look.z + (desired.z - look.z) * t;
-          const ground = world.terrain.height(gx, gz) + 1.2;
-          desired.y = Math.max(desired.y, look.y + (ground - look.y) / t);
-        }
-      }
-    }
-
-    if (!this.#camReady) {
-      this.#camPos.copy(desired);
-      this.#lookPos.copy(look);
-      this.#camReady = true;
-    } else {
-      // Position and look target ease together. Entering the overlook then
-      // turns and pulls back in one motion instead of snapping the heading.
-      const blend = 1 - Math.exp(-VIEW.ease * Math.max(dt, 0.001));
-      this.#camPos.lerp(desired, blend);
-      this.#lookPos.lerp(look, blend);
-    }
-    this.#camera.position.copy(this.#camPos);
-    this.#camera.lookAt(this.#lookPos);
-  }
-
   #resize(): void {
-    const w = this.#host.clientWidth;
-    const h = this.#host.clientHeight;
-    if (w < 2 || h < 2) return;
-    this.#renderer.setSize(w, h, false);
-    this.#camera.aspect = w / h;
-    this.#camera.updateProjectionMatrix();
-    const rect = this.#renderer.domElement.getBoundingClientRect();
-    this.#view = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
-  }
-
-  #dropIsland(): void {
-    if (!this.#island) return;
-    disposeGeometries(this.#island);
-    this.#scene.remove(this.#island);
-    this.#island = null;
+    this.#canvas.width = Math.max(1, Math.round(this.#host.clientWidth / PIXEL));
+    this.#canvas.height = Math.max(1, Math.round(this.#host.clientHeight / PIXEL));
+    this.#bounds = this.#canvas.getBoundingClientRect();
   }
 
   #frame = (now: number): void => {
-    const dt = Math.min(0.05, (now - this.#last) / 1000);
+    this.#frameId = requestAnimationFrame(this.#frame);
+    const dt = Math.min(0.05, Math.max(0, (now - this.#last) / 1000));
     this.#last = now;
     if (!this.#held) this.#step?.(dt);
-    const contact = waterContact(this.#spider, this.#wasLifted, this.#world?.() ?? null);
-    this.#feedback();
-    // Keep simulation and tool execution responsive while leaving GPU time for inference.
-    if (this.#inferenceBusy && now - this.#lastPaint < 1000 / 30) return;
-    const paintDt = Number.isFinite(this.#lastPaint)
-      ? Math.min(0.05, (now - this.#lastPaint) / 1000)
-      : dt;
-    this.#lastPaint = now;
-    this.#syncEcology();
-    tickWater(now * 0.001, contact);
-    this.#syncWorld();
-
-    this.#placeCamera(paintDt);
-    this.#sky.update(
-      this.#clock,
-      this.#overlook ? this.#focus : this.#spider.root.position,
-      this.#overlook,
-      paintDt,
-    );
-    this.#lamp.update(this.#clock, this.#spider.lamp);
     const world = this.#world?.();
-    if (world) this.#observe.sync(this.#overlook, this.#camera, this.#spider, world, this.#view);
-    this.#renderer.render(this.#scene, this.#camera);
+    if (!world) return;
+    this.#feedback(world);
+
+    if (this.#inferenceBusy && now - this.#lastPaint < 1000 / 30) return;
+    this.#lastPaint = now;
+    const second = Math.floor(Date.now() / 1000);
+    if (second !== this.#clockSecond) {
+      this.#clockSecond = second;
+      this.#clock = worldClock(new Date(second * 1000));
+    }
+    const position = this.#spider.root.position;
+    const width = this.#canvas.width;
+    const height = this.#canvas.height;
+    this.#view = {
+      x: this.#pan.x + (this.#overlook ? 0 : position.x),
+      z: this.#pan.z + (this.#overlook ? 0 : position.z),
+      width,
+      height,
+      scale: (Math.min(width, height) * this.#zoom) / (this.#overlook ? 105 : 20),
+    };
+    if (this.#overlook && now - this.#lastObserved >= REFRESH_MS) {
+      const observation = this.#observe!();
+      this.#observation = observation;
+      this.#outline = observeOutline(world, observation);
+      this.#readout.textContent = describeObservation(observation);
+      this.#lastObserved = now;
+    }
+    const darkness = (1 - this.#clock.daylight) * 0.3;
+    this.#island.draw(this.#view, world, this.#spider, darkness, this.#observation, this.#outline);
     this.#fps.tick(now);
-    this.#onAnchor?.(this.#aboveSpider());
+    this.#anchor?.(this.#aboveSpider());
   };
 
-  #syncEcology(): void {
-    const epochSecond = Math.floor(Date.now() / 1000);
-    if (epochSecond === this.#ecologySecond) return;
-    this.#ecologySecond = epochSecond;
-    this.#clock = applyEcologyLighting(this.#renderer, new Date(epochSecond * 1000));
-  }
-
-  /** One tick when any foot lands, and one when an apple disappears. */
-  #feedback(): void {
-    const legs = this.#spider.legs;
-    if (!this.#heard) {
-      for (let i = 0; i < legs.length; i++) this.#wasLifted[i] = legs[i].lifted;
-      this.#heard = true;
-      return;
-    }
-    let landed = false;
-    for (let i = 0; i < legs.length; i++) {
-      const lifted = legs[i].lifted;
-      if (this.#wasLifted[i] && !lifted) landed = true;
-      this.#wasLifted[i] = lifted;
-    }
-    if (landed) this.#sound.step(this.#spider.speed);
-    const halt = this.#spider.halt;
-    if (halt !== 'clear' && this.#halt === 'clear') this.#sound.knock();
-    this.#halt = halt;
-  }
-
-  /** A point above the shell, or null when it is behind the camera. */
-  #aboveSpider(): { x: number; y: number } | null {
-    bubbleAt.copy(this.#spider.root.position);
-    bubbleAt.y += 1.45;
-    bubbleAt.project(this.#camera);
-    if (bubbleAt.z > 1) return null;
+  #aboveSpider(): Point | null {
     const view = this.#view;
+    const point = project(view, this.#spider.root.position);
+    if (point.x < 0 || point.x > view.width || point.y < 0 || point.y > view.height) return null;
     return {
-      x: view.left + (bubbleAt.x * 0.5 + 0.5) * view.width,
-      y: view.top + (-bubbleAt.y * 0.5 + 0.5) * view.height,
+      x: this.#bounds.left + (point.x / view.width) * this.#bounds.width,
+      y: this.#bounds.top + ((point.y - 1.7 * view.scale) / view.height) * this.#bounds.height,
     };
   }
-}
 
-/** Release geometry owned by a scene subtree. Pooled splash geometry is kept. */
-function disposeGeometries(root: Object3D): void {
-  const geometries = new Set<BufferGeometry>();
-  root.traverse((node) => {
-    if (keepsGeometry(node)) return;
-    const geometry = (node as Object3D & { geometry?: BufferGeometry }).geometry;
-    if (geometry) geometries.add(geometry);
-  });
-  for (const geometry of geometries) geometry.dispose();
-}
+  #feedback(world: WorldState): void {
+    const spider = this.#spider;
+    let landed = false;
+    for (const [i, leg] of spider.legs.entries()) {
+      if (this.#lastFeet[i] && !leg.lifted) landed = true;
+      this.#lastFeet[i] = leg.lifted;
+    }
+    if (landed) this.#sound.step(spider.speed);
+    if (spider.halt !== 'clear' && this.#halt === 'clear') this.#sound.knock();
+    this.#halt = spider.halt;
 
-function keepsGeometry(node: Object3D): boolean {
-  for (let current: Object3D | null = node; current; current = current.parent) {
-    if (current.userData.retainGeometry === true) return true;
+    const carried = this.#carrying;
+    if (
+      !carried ||
+      carried.size !== world.carrying.length ||
+      world.carrying.some((item) => !carried.has(item.id))
+    ) {
+      if (carried) {
+        for (const item of world.carrying) if (!carried.has(item.id)) this.#sound.grasp();
+        for (const id of carried) {
+          if (world.entities.some((item) => item.id === id)) this.#sound.place();
+        }
+      }
+      this.#carrying = new Set(world.carrying.map((item) => item.id));
+    }
+
+    this.#seen.clear();
+    for (const list of [world.entities, world.carrying]) {
+      for (const item of list) {
+        this.#seen.add(item.id);
+        if (item.stage > (this.#stages.get(item.id) ?? item.stage)) this.#sound.bite();
+        this.#stages.set(item.id, item.stage);
+      }
+    }
+    for (const id of this.#stages.keys()) {
+      if (this.#seen.has(id)) continue;
+      this.#stages.delete(id);
+      this.#sound.take();
+    }
   }
-  return false;
 }

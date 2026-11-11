@@ -134,7 +134,7 @@ export function buildChrome(doc: Document): DocumentFragment {
   const fragment = doc.createDocumentFragment();
 
   const keys = h(doc, 'aside', { id: 'keys' });
-  keys.append(h(doc, 'p', { id: 'look-hint' }, '拖动旋转视角　滚轮缩放'));
+  keys.append(h(doc, 'p', { id: 'look-hint' }, '拖动画面　滚轮缩放'));
 
   const corner = h(doc, 'div', { id: 'corner' });
   const observe = button(doc, '观察', { id: 'observe-open', pressed: false });

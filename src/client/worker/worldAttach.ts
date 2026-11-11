@@ -1,21 +1,9 @@
 import { createWorldHandler, type WorldHandler } from '@/src/client/worker/worldHandler';
-import type { PreparedBuffers, WorldReply, WorldRequest } from '@/src/client/worker/worldProtocol';
+import type { WorldReply, WorldRequest } from '@/src/client/worker/worldProtocol';
 
 export interface WorldScope {
   onmessage: ((event: MessageEvent<WorldRequest>) => void) | null;
   postMessage(message: WorldReply, transfer?: Transferable[]): void;
-}
-
-function transfers(value: PreparedBuffers): Transferable[] {
-  const island = value.island;
-  return [
-    value.grid.buffer,
-    island.groundPosition.buffer,
-    island.groundColor.buffer,
-    island.groundIndex.buffer,
-    island.coverPosition.buffer,
-    island.coverColor.buffer,
-  ];
 }
 
 export function attachWorldWorker(
@@ -25,7 +13,7 @@ export function attachWorldWorker(
   scope.onmessage = (event) => {
     const request = event.data;
     void handle(request).then(
-      (value) => scope.postMessage({ id: request.id, ok: true, value }, transfers(value)),
+      (value) => scope.postMessage({ id: request.id, ok: true, value }, [value.grid.buffer]),
       (error: unknown) =>
         scope.postMessage({
           id: request.id,

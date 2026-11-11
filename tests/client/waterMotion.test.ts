@@ -116,6 +116,15 @@ describe('water motion', () => {
     expect(visibleRings()).toBe(1);
   });
 
+  it('stops creating wakes after leaving the water', () => {
+    const contact = waterContact(walker({ waterDepth: 0.4, legs: [] }), [], wet);
+    advance(10, contact);
+    const outside = waterContact(walker({ waterDepth: 0, speed: 2, legs: [] }), [], dry);
+    advance(20, outside);
+    expect(waterPush.value).toBe(0);
+    expect(visibleRings()).toBe(0);
+  });
+
   it('lets a droplet fall back onto the sheet and then fade', () => {
     const contact = waterContact(walker({ speed: 0, waterDepth: 0.3 }), [true], wet);
     tickWater(now, contact);

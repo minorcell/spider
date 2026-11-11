@@ -4,7 +4,7 @@ import { buildProp, drapeGrass } from '@/src/client/props';
 import { islandBuffers } from '@/src/shared/island';
 import { bakeTerrainGrid } from '@/src/shared/terrain';
 import { createWorld } from '@/src/shared/world';
-import { bakeWorkerIsland, SEED } from '@/tests/perf/scenarios';
+import { bakeWorkerTerrain, SEED } from '@/tests/perf/scenarios';
 
 const world = createWorld(SEED);
 const height = (x: number, z: number): number => world.terrain.height(x, z);
@@ -20,9 +20,9 @@ function dress(entities: typeof nests): void {
 }
 
 describe('boot', () => {
-  test('bake a worker island', async ({ bench }) => {
-    await bench('bake a worker island', () => {
-      return bakeWorkerIsland();
+  test('bake worker terrain', async ({ bench }) => {
+    await bench('bake worker terrain', () => {
+      return bakeWorkerTerrain();
     }).run();
   });
 
@@ -39,9 +39,9 @@ describe('boot', () => {
   });
 
   test('group the island', async ({ bench }) => {
-    const prepared = await bakeWorkerIsland();
+    const buffers = islandBuffers(height);
     await bench('group the island', () => {
-      islandGroup(prepared.island);
+      islandGroup(buffers);
     }).run();
   });
 

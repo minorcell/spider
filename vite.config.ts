@@ -31,7 +31,6 @@ export default defineConfig({
     cssMinify: true,
     chunkSizeWarningLimit: 900,
     rolldownOptions: {
-      input: { main: 'index.html', v2: 'v2/index.html' },
       output: {
         codeSplitting: {
           groups: [

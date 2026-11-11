@@ -5,6 +5,13 @@ import { buildIsland, groundGeometry, tickWater } from '@/src/client/groundView'
 import { TERRAIN } from '@/src/shared/terrain';
 
 describe('groundGeometry', () => {
+  it('tints steep surfaces differently from level ground at the same elevation', () => {
+    const flat = groundGeometry(() => 0, 4, 2).getAttribute('color');
+    const steep = groundGeometry((x) => x * 2, 4, 2).getAttribute('color');
+    const middle = 4;
+    expect(steep.getX(middle)).not.toBe(flat.getX(middle));
+  });
+
   it('displaces the plane onto the height field', () => {
     const height = (x: number, z: number): number => x * 0.1 + z * 0.2;
     const geo = groundGeometry(height, 4, 2);

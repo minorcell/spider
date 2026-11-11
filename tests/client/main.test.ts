@@ -4,8 +4,6 @@ const control = vi.hoisted(() => ({
   bind: vi.fn(),
   start: vi.fn(),
   dispose: vi.fn(),
-  placeIsland: vi.fn(),
-  setIslandSource: vi.fn(),
   hold: vi.fn(),
   retile: vi.fn(),
   stageArgs: [] as unknown[][],
@@ -55,8 +53,6 @@ vi.mock('@/src/client/stage', () => ({
     bind = control.bind;
     start = control.start;
     dispose = control.dispose;
-    placeIsland = control.placeIsland;
-    setIslandSource = control.setIslandSource;
     hold = control.hold;
     retile = control.retile;
 
@@ -86,6 +82,7 @@ vi.mock('@/src/shared/sim/session', () => ({
     world = { tag: 'world' };
     frame = vi.fn();
     cancel = vi.fn();
+    observe = vi.fn(() => ({ view: 12 }));
 
     constructor(...args: unknown[]) {
       control.sessionArgs.push(args);
@@ -100,8 +97,6 @@ beforeEach(() => {
   control.bind.mockReset();
   control.start.mockReset();
   control.dispose.mockReset();
-  control.placeIsland.mockReset();
-  control.setIslandSource.mockReset();
   control.hold.mockReset();
   control.retile.mockReset();
   control.stageArgs = [];
@@ -153,8 +148,6 @@ describe('main', () => {
     expect(control.stageArgs[0]).toEqual([host, session.spider]);
     expect(control.bind).toHaveBeenCalledTimes(1);
     expect(control.start).toHaveBeenCalledTimes(1);
-    expect(control.placeIsland).toHaveBeenCalledTimes(1);
-    expect(control.setIslandSource).toHaveBeenCalledTimes(1);
     expect(world.setWorldTerrainSource).toHaveBeenCalledTimes(1);
     expect(world.installWorldStore).toHaveBeenCalledTimes(1);
     expect(cloud.startCloud).toHaveBeenCalledTimes(1);
@@ -172,10 +165,15 @@ describe('main', () => {
       world.installWorldStore.mock.invocationCallOrder[0],
     );
 
-    const [step, readWorld] = control.bind.mock.calls[0] as [(dt: number) => void, () => unknown];
+    const [step, readWorld, observe] = control.bind.mock.calls[0] as [
+      (dt: number) => void,
+      () => unknown,
+      () => unknown,
+    ];
     step(0.016);
     expect((session.frame as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(0.016);
     expect(readWorld()).toBe(session.world);
+    expect(observe()).toEqual({ view: 12 });
 
     const hooks = cloud.startCloud.mock.calls[0][0] as {
       hold(on: boolean): void;
@@ -297,10 +295,5 @@ describe('main', () => {
     const next = await readTerrain(43);
     expect(next).not.toBe(terrain);
     expect(next.height(0, 0)).toBe(0);
-
-    const readIsland = control.setIslandSource.mock.calls[0][0] as (
-      seed: number,
-    ) => Promise<{ children: unknown[] }>;
-    await expect(readIsland(42)).resolves.toMatchObject({ children: { length: 3 } });
   });
 });

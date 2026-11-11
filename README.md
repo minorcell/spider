@@ -5,7 +5,7 @@
 <h1 align="center">蛛小八</h1>
 
 <p align="center">
-  住在蛛岛上的 3D 蜘蛛宠物，用自然语言与它互动。
+  住在蛛岛上的 像素风蜘蛛宠物，用自然语言与它互动。
 </p>
 
 <p align="center">
@@ -22,13 +22,13 @@
   <a href="https://codecov.io/gh/minorcell/spider"><img src="https://codecov.io/gh/minorcell/spider/branch/main/graph/badge.svg" alt="测试覆盖率" /></a>
 </p>
 
-蛛小八是一只住在蛛岛上的 3D 蜘蛛宠物，运行在浏览器中。接入语言模型后，你可以让它探索岛屿、寻找食物，或把物品搬回巢穴。模型根据蜘蛛感知到的环境选择行动，你可以在画面中观察它如何完成任务。
+蛛小八是一只住在蛛岛上的 像素风蜘蛛宠物，运行在浏览器中。接入语言模型后，你可以让它探索岛屿、寻找食物，或把物品搬回巢穴。模型根据蜘蛛感知到的环境选择行动，你可以在画面中观察它如何完成任务。
 
 <p align="center">
   <a href="./docs/images/spider-nest.webp"><img src="./docs/images/spider-nest.webp" width="49%" alt="游戏实景，蜘蛛停在由石块、枝条和蛛丝构成的巢穴中" /></a>
   <a href="./docs/images/night-action.webp"><img src="./docs/images/night-action.webp" width="49%" alt="夜间游戏实景，蜘蛛携带物品走在起伏的地面上" /></a>
   <br />
-  <sub>游戏实景 · 白天的巢穴 / 夜间活动 · 点击图片查看大图</sub>
+  <sub>改造前的 3D 画面 · 点击图片查看大图</sub>
 </p>
 
 ## 从一句话开始
@@ -71,7 +71,7 @@ Ollama 和在线模型的安装配置、跨域要求与常见问题见[模型接
 
 蛛小八的默认性格是好奇、亲近人，做成小事会有一点得意。人格提示词约定它的表达方式和行动偏好，环境事实与行动结果仍由模拟程序提供。人格设定和工具规则见[系统提示词](src/client/agent/prompt.ts)。
 
-这里的 Agent 指这个能够观察、选择并执行行动的循环。Agent harness 是支持它运行的程序，包括环境描述、工具、执行反馈、对话与记忆管理。移动、碰撞、寻路和物品交互由模拟程序处理，Three.js 负责把世界呈现在浏览器中。
+这里的 Agent 指这个能够观察、选择并执行行动的循环。Agent harness 是支持它运行的程序，包括环境描述、工具、执行反馈、对话与记忆管理。移动、碰撞、寻路和物品交互由模拟程序处理，Canvas 2D 读取世界和蜘蛛的实际状态，以俯视像素场景呈现在浏览器中。
 
 想了解具体实现，可以从这些文件开始阅读。
 
@@ -93,8 +93,6 @@ pnpm dev
 ```
 
 在浏览器中打开终端输出的地址，再按上面的步骤接入模型。
-
-在 `v2.0` 分支访问 `/v2/` 可以体验俯视像素场景。点地面或用 WASD 移动，点选物品后用 E 牵引、F 进食。物品和场景定义在 [island.ts](src/shared/v2/island.ts)，模拟和 Canvas 渲染分别位于 [src/shared/v2](src/shared/v2/) 和 [src/client/v2](src/client/v2/)。
 
 | 命令                | 用途                           |
 | ------------------- | ------------------------------ |

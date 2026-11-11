@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseInlineCalls } from '@/src/client/agent/inline';
 import { islandGroup } from '@/src/client/groundView';
+import { islandBuffers } from '@/src/shared/island';
 import {
   blankSession,
   planCompaction,
@@ -23,7 +24,7 @@ import { toObservation } from '@/src/shared/state';
 import { surfaceOf, Terrain } from '@/src/shared/terrain';
 import { createWorld, REACH, REACH_Y, VIEW_DISTANCE } from '@/src/shared/world';
 import {
-  bakeWorkerIsland,
+  bakeWorkerTerrain,
   dressIsland,
   planAroundNest,
   SEED,
@@ -137,21 +138,21 @@ describe('route around the nest', () => {
 });
 
 describe('worker boot', () => {
-  it('bakes a worker island in under 250 ms', () => {
-    expect(bestOf(3, () => void bakeWorkerIsland())).toBeLessThan(250);
+  it('bakes worker terrain in under 250 ms', () => {
+    expect(bestOf(3, () => void bakeWorkerTerrain())).toBeLessThan(250);
   });
 });
 
 describe('main-thread dress', () => {
-  it('dresses the island on the main thread in under 250 ms', async () => {
+  it('dresses the island on the main thread in under 250 ms', () => {
     const world = createWorld(SEED);
-    const prepared = await bakeWorkerIsland();
+    const buffers = islandBuffers((x, z) => world.terrain.height(x, z));
     expect(world.entities.some((entity) => entity.kind === 'nest')).toBe(true);
     expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(true);
     expect(world.entities.some((entity) => entity.kind === 'grass')).toBe(true);
     expect(
       bestOf(3, () => {
-        islandGroup(prepared.island);
+        islandGroup(buffers);
         dressIsland(world);
       }),
     ).toBeLessThan(250);

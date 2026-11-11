@@ -140,7 +140,7 @@ export function dressChrome(nodes: Chrome): void {
     opacity: '0.78',
   });
   const hint = nodes.keys.querySelector('p');
-  if (hint) paint(hint, { margin: '0' });
+  if (hint) paint(hint, { margin: '0', padding: '1px 5px', background: color.paper });
   paint(nodes.corner, {
     position: 'absolute',
     top: '18px',
