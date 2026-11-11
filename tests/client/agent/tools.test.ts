@@ -28,7 +28,7 @@ const observation: Observation = {
     swimming: false,
     water: null,
     shore: null,
-    tethers: new Map(),
+    carrying: [],
     ahead: { open: 8, by: 'clear', id: null, kind: null },
     nearby: [],
     ways: [{ x: 0, z: -8, open: 8 }],

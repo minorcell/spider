@@ -78,11 +78,12 @@ export function fitsPlacement(world: WorldState, item: EntityState, x: number, z
   const radius = kindOf(item.kind)?.physics?.radius ?? 0.2;
   if (blockedAt(x, z, world.blocks, radius)) return false;
   if (!insideLand(world.terrain, x, z, Math.max(BODY_RADIUS, radius))) return false;
-  return world.entities.every((other) => {
-    if (other === item) return true;
+  for (const other of world.entities.values()) {
+    if (other === item) continue;
     const separation = radius + (kindOf(other.kind)?.physics?.radius ?? 0);
-    return Math.hypot(other.x - x, other.z - z) > Math.max(0.4, separation);
-  });
+    if (Math.hypot(other.x - x, other.z - z) <= Math.max(0.4, separation)) return false;
+  }
+  return true;
 }
 
 export function stepPhysics(
@@ -95,7 +96,7 @@ export function stepPhysics(
   const rules = world.physics ?? PHYSICS;
   const resting = Math.abs(body.speed) < 0.05;
   const movers: Mover[] = [];
-  for (const entity of world.entities) {
+  for (const entity of world.entities.values()) {
     const loose = looseOf(entity);
     if (!loose) continue;
     const length = world.tethers.get(entity.id);

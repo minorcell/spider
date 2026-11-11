@@ -1,3 +1,4 @@
+import { indexEntities } from '@/src/shared/world';
 import { describe, expect, it } from 'vitest';
 import { Matrix4, Vector3 } from 'three';
 import { BONES, CONTACT, GAIT } from '@/src/shared/config';
@@ -462,7 +463,7 @@ describe('Spider', () => {
     bindLegWorld(spider, world);
     spider.bindGround((x, z) => world.terrain.height(x, z));
     for (let i = 0; i < 8; i++) spider.update(1 / 30);
-    const nest = world.entities.find((entity) => entity.kind === 'nest');
+    const nest = [...world.entities.values()].find((entity) => entity.kind === 'nest');
     expect(nest).toBeTruthy();
     for (const leg of spider.legs) {
       const support = Math.max(
@@ -478,8 +479,10 @@ describe('Spider', () => {
 
   it('ignores a missing nest and a body with no physics', () => {
     const world = createWorld(1);
-    world.entities = world.entities.filter((entity) => entity.kind !== 'nest');
-    world.entities.push({ id: 'odd', kind: 'nope', x: 3, y: 0, z: 3, stage: 0 });
+    world.entities = indexEntities(
+      [...world.entities.values()].filter((entity) => entity.kind !== 'nest'),
+    );
+    world.entities.set('odd', { id: 'odd', kind: 'nope', x: 3, y: 0, z: 3, stage: 0 });
     const spider = new Spider();
     bindLegWorld(spider, world);
     spider.bindGround(() => 0);
@@ -493,8 +496,8 @@ describe('Spider', () => {
     'plants a foot on a nest %s without stretching a bone',
     (kind) => {
       const world = createWorld(1);
-      const nest = world.entities.find((entity) => entity.kind === 'nest')!;
-      world.entities = [nest];
+      const nest = [...world.entities.values()].find((entity) => entity.kind === 'nest')!;
+      world.entities = indexEntities([nest]);
       const at = kind === 'pebble' ? NEST_DETAILS.pebbles[0].position : NEST_DETAILS.roots[0][4];
       const x = nest.x + at.x * NEST_SCALE_XZ;
       const z = nest.z + at.z * NEST_SCALE_XZ;

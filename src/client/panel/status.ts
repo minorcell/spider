@@ -247,10 +247,11 @@ export function bindStatus(options: {
     const self = session.sense(true);
     const observation = session.observe();
     const kinds: Record<string, number> = {};
-    for (const entity of world.entities) kinds[entity.kind] = (kinds[entity.kind] ?? 0) + 1;
+    for (const entity of world.entities.values())
+      kinds[entity.kind] = (kinds[entity.kind] ?? 0) + 1;
     worldTime.value.textContent = `${info.clock.localTime} · ${info.clock.phase}`;
     worldLight.value.textContent = `${Math.round(info.view * 100)}% / ${number(observation.view)}`;
-    worldEntities.value.textContent = `${world.entities.length} 个`;
+    worldEntities.value.textContent = `${world.entities.size} 个`;
     worldSeed.value.textContent = String(world.seed);
     worldDetails.querySelector('pre')!.textContent = json({
       物体分类: kinds,

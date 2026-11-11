@@ -1,3 +1,5 @@
+import { indexEntities } from '@/src/shared/world';
+import { applePopulation } from '@/src/shared/islandContent';
 import { attachCargo } from '@/tests/simHelpers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { groundSupport } from '@/src/shared/contact';
@@ -5,7 +7,6 @@ import { KINDS } from '@/src/shared/kinds';
 import { blockedAt } from '@/src/shared/sight';
 import { Terrain, TERRAIN } from '@/src/shared/terrain';
 import {
-  APPLE_EVERY,
   createWorld,
   grow,
   GRASS_VIEW,
@@ -149,11 +150,13 @@ describe('nestBlocks', () => {
   it('leaves existing scenery alone and respects the save capacity', () => {
     const world = createWorld(7);
     const before = structuredClone(world.entities);
-    populateScenery(world, { x: 0, z: 0 }, world.entities.length);
+    populateScenery(world, { x: 0, z: 0 }, world.entities.size);
     expect(world.entities).toEqual(before);
-    world.entities = world.entities.filter((entity) => entity.kind === 'nest');
+    world.entities = indexEntities(
+      [...world.entities.values()].filter((entity) => entity.kind === 'nest'),
+    );
     populateScenery(world, { x: 0, z: 0 }, 1);
-    expect(world.entities).toHaveLength(1);
+    expect(world.entities.size).toBe(1);
   });
 
   it('builds a ring of walls with a door at -Z', () => {
@@ -252,12 +255,12 @@ describe('createWorld', () => {
 
   it('places the nest home at the origin', () => {
     const world = createWorld(99);
-    expect(world.entities[0]).toMatchObject({ id: 'home', kind: 'nest', x: 0, z: 0 });
+    expect([...world.entities.values()][0]).toMatchObject({ id: 'home', kind: 'nest', x: 0, z: 0 });
   });
 
   it('scatters grass and apples inside the island', () => {
     const world = createWorld(99);
-    for (const entity of world.entities.slice(1)) {
+    for (const entity of [...world.entities.values()].slice(1)) {
       expect(Math.hypot(entity.x, entity.z)).toBeLessThanOrEqual(TERRAIN.island * 0.72);
       expect(entity.id.startsWith(`${entity.kind}-`)).toBe(true);
       expect(Number.isFinite(entity.y)).toBe(true);
@@ -268,14 +271,14 @@ describe('createWorld', () => {
     control.enabled = true;
     control.queue = [0.5, 0.5];
     const world = createWorld(7);
-    expect(world.entities).toHaveLength(1);
+    expect(world.entities.size).toBe(1);
   });
 
   it('rejects points past the outer ring', () => {
     control.enabled = true;
     control.queue = [0.99, 0.5, 0.01, 0.5];
     const world = createWorld(7);
-    expect(world.entities).toHaveLength(1);
+    expect(world.entities.size).toBe(1);
   });
 
   it('rejects ground that is too steep', () => {
@@ -284,7 +287,7 @@ describe('createWorld', () => {
     control.enabled = true;
     control.queue = [toRng(spot.x), toRng(spot.z)];
     const world = createWorld(seed);
-    expect(world.entities.filter((entity) => entity.kind !== 'nest')).toEqual([]);
+    expect([...world.entities.values()].filter((entity) => entity.kind !== 'nest')).toEqual([]);
   });
 
   it('keeps scattered props apart', () => {
@@ -292,7 +295,9 @@ describe('createWorld', () => {
     const spot = findFlat(seed, 6.5)!;
     control.enabled = true;
     control.queue = [toRng(spot.x), toRng(spot.z), toRng(spot.x), toRng(spot.z)];
-    const grass = createWorld(seed).entities.filter((entity) => entity.kind === 'grass');
+    const grass = [...createWorld(seed).entities.values()].filter(
+      (entity) => entity.kind === 'grass',
+    );
     expect(grass).toHaveLength(1);
   });
 
@@ -301,7 +306,9 @@ describe('createWorld', () => {
     const spot = findFlat(seed, 6.5)!;
     control.enabled = true;
     control.queue = [toRng(spot.x), toRng(spot.z)];
-    const grass = createWorld(seed).entities.find((entity) => entity.kind === 'grass');
+    const grass = [...createWorld(seed).entities.values()].find(
+      (entity) => entity.kind === 'grass',
+    );
     expect(grass?.footprint?.kind).toBe('circle');
     expect(grass?.footprint).toMatchObject({ r: expect.any(Number) });
   });
@@ -309,33 +316,32 @@ describe('createWorld', () => {
 
 function bare(seed = 11) {
   const world = createWorld(seed);
-  world.entities = world.entities.filter((entity) => entity.kind !== 'apple');
+  world.entities = indexEntities(
+    [...world.entities.values()].filter((entity) => entity.kind !== 'apple'),
+  );
   return world;
 }
 
 describe('grow', () => {
   it('leaves a hand-built world alone', () => {
     const world = createWorld(1);
-    world.appleIn = undefined;
+    world.populations.clear();
+    const before = world.entities.size;
     grow(world, 100);
-    world.appleIn = 0;
-    world.sprouts = undefined;
-    const before = world.entities.length;
-    grow(world, 100);
-    expect(world.entities).toHaveLength(before);
+    expect(world.entities.size).toBe(before);
   });
 
   it('waits, then grows one apple, and stops at the original handful', () => {
     const world = bare();
     attachCargo(world, { id: 'apple-9', kind: 'apple', x: 0, y: 0, z: 0, stage: 0 });
     grow(world, 10);
-    expect(world.entities.filter((entity) => entity.kind === 'apple').map(({ id }) => id)).toEqual([
-      'apple-9',
-    ]);
-    expect(world.appleIn).toBeCloseTo(APPLE_EVERY - 10);
+    expect(
+      [...world.entities.values()].filter((entity) => entity.kind === 'apple').map(({ id }) => id),
+    ).toEqual(['apple-9']);
+    expect(world.populations.get('apple')!.remaining).toBeCloseTo(applePopulation.interval - 10);
 
-    grow(world, APPLE_EVERY - 10);
-    const first = world.entities.filter(
+    grow(world, applePopulation.interval - 10);
+    const first = [...world.entities.values()].filter(
       (entity) => entity.kind === 'apple' && !world.tethers.has(entity.id),
     );
     expect(first.map((entity) => entity.id)).toEqual(['apple-10']);
@@ -343,58 +349,66 @@ describe('grow', () => {
 
     const again = bare();
     attachCargo(again, { id: 'apple-9', kind: 'apple', x: 0, y: 0, z: 0, stage: 0 });
-    grow(again, APPLE_EVERY);
-    expect(again.entities.find((entity) => entity.id === 'apple-10')).toEqual(first[0]);
+    grow(again, applePopulation.interval);
+    expect([...again.entities.values()].find((entity) => entity.id === 'apple-10')).toEqual(
+      first[0],
+    );
 
     const full = createWorld(11);
-    const count = full.entities.filter((entity) => entity.kind === 'apple').length;
-    full.appleIn = 1;
+    const count = [...full.entities.values()].filter((entity) => entity.kind === 'apple').length;
+    full.populations.get('apple')!.remaining = 1;
     grow(full, 100);
-    expect(full.appleIn).toBe(APPLE_EVERY);
-    expect(full.entities.filter((entity) => entity.kind === 'apple')).toHaveLength(count);
+    expect(full.populations.get('apple')!.remaining).toBe(applePopulation.interval);
+    expect([...full.entities.values()].filter((entity) => entity.kind === 'apple')).toHaveLength(
+      count,
+    );
   });
 
   it('does not grow into the spider, and gives up when nowhere is open', () => {
     const seed = seedWith(findFlat, 6);
     const spot = findFlat(seed, 6)!;
     const world = bare(seed);
-    world.entities = world.entities.filter((entity) => entity.kind === 'nest');
+    world.entities = indexEntities(
+      [...world.entities.values()].filter((entity) => entity.kind === 'nest'),
+    );
     world.blocks = nestBlocks();
-    world.appleIn = 0;
+    world.populations.get('apple')!.remaining = 0;
     const rolls = Array.from({ length: 80 }, (_, index) =>
       index % 2 === 0 ? toRng(spot.x) : toRng(spot.z),
     );
     control.enabled = true;
     control.queue = [...rolls];
     grow(world, 0, spot);
-    expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
-    expect(world.sprouts).toBe(1);
+    expect([...world.entities.values()].some((entity) => entity.kind === 'apple')).toBe(false);
+    expect(world.populations.get('apple')!.attempts).toBe(1);
 
-    world.appleIn = 0;
-    world.sprouts = 0;
+    world.populations.get('apple')!.remaining = 0;
+    world.populations.get('apple')!.attempts = 0;
     control.queue = [...rolls];
     grow(world, 0, { x: 0, z: 0 });
-    const apple = world.entities.find((entity) => entity.kind === 'apple');
+    const apple = [...world.entities.values()].find((entity) => entity.kind === 'apple');
     expect(apple).toBeTruthy();
     expect(Math.hypot(apple!.x - quantized(spot.x), apple!.z - quantized(spot.z))).toBeLessThan(6);
 
     control.enabled = false;
     const stuck = bare(seed);
-    stuck.appleIn = 0;
+    stuck.populations.get('apple')!.remaining = 0;
     control.enabled = true;
     control.queue = [];
     grow(stuck, 0);
-    expect(stuck.entities.some((entity) => entity.kind === 'apple')).toBe(false);
-    expect(stuck.sprouts).toBe(1);
-    expect(stuck.appleIn).toBe(APPLE_EVERY);
+    expect([...stuck.entities.values()].some((entity) => entity.kind === 'apple')).toBe(false);
+    expect(stuck.populations.get('apple')!.attempts).toBe(1);
+    expect(stuck.populations.get('apple')!.remaining).toBe(applePopulation.interval);
   });
 
   it('skips a sprout inside a wall and one that cannot settle beside it', () => {
     const seed = seedWith(findFlat, 6);
     const spot = findFlat(seed, 6)!;
     const world = bare(seed);
-    world.entities = world.entities.filter((entity) => entity.kind === 'nest');
-    world.appleIn = 0;
+    world.entities = indexEntities(
+      [...world.entities.values()].filter((entity) => entity.kind === 'nest'),
+    );
+    world.populations.get('apple')!.remaining = 0;
     const x = quantized(spot.x);
     const z = quantized(spot.z);
     world.blocks = [
@@ -403,10 +417,10 @@ describe('grow', () => {
     control.enabled = true;
     control.queue = [toRng(x), toRng(z)];
     grow(world, 0);
-    expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
+    expect([...world.entities.values()].some((entity) => entity.kind === 'apple')).toBe(false);
 
-    world.appleIn = 0;
-    world.sprouts = 0;
+    world.populations.get('apple')!.remaining = 0;
+    world.populations.get('apple')!.attempts = 0;
     world.blocks = [];
     world.terrain = {
       height(px: number, pz: number): number {
@@ -416,6 +430,6 @@ describe('grow', () => {
     };
     control.queue = [toRng(x), toRng(z)];
     grow(world, 0);
-    expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
+    expect([...world.entities.values()].some((entity) => entity.kind === 'apple')).toBe(false);
   });
 });

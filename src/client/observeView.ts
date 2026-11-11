@@ -205,13 +205,13 @@ export class ObserveOverlay {
     world: WorldState,
     ground: (x: number, z: number) => number,
   ): void {
-    ensureTickCapacity(this.#marks, world.entities.length);
-    ensureTickCapacity(this.#dim, world.entities.length);
+    ensureTickCapacity(this.#marks, world.entities.size);
+    ensureTickCapacity(this.#dim, world.entities.size);
     const seen = new Map(observation.entities.map((entity) => [entity.id, entity]));
     const live = new Set<string>();
     let inkCount = 0;
     let dimCount = 0;
-    for (const entity of world.entities) {
+    for (const entity of world.entities.values()) {
       if (world.tethers.has(entity.id)) continue;
       const hit = seen.get(entity.id);
       const state = hit

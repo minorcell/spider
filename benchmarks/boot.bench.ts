@@ -8,9 +8,9 @@ import { bakeWorkerTerrain, SEED } from '@/tests/perf/scenarios';
 
 const world = createWorld(SEED);
 const height = (x: number, z: number): number => world.terrain.height(x, z);
-const nests = world.entities.filter((entity) => entity.kind === 'nest');
-const apples = world.entities.filter((entity) => entity.kind === 'apple');
-const grasses = world.entities.filter((entity) => entity.kind === 'grass');
+const nests = [...world.entities.values()].filter((entity) => entity.kind === 'nest');
+const apples = [...world.entities.values()].filter((entity) => entity.kind === 'apple');
+const grasses = [...world.entities.values()].filter((entity) => entity.kind === 'grass');
 
 function dress(entities: typeof nests): void {
   for (const entity of entities) {

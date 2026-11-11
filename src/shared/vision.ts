@@ -16,6 +16,6 @@ export function viewDistance(
 ): number {
   const eye = surfaceOf(world.terrain, x, z) + EYE_HEIGHT + height;
   const light = VIEW_DISTANCE * visualRange(worldClock(now), lamp);
-  const grass = grassHere(x, z, world.entities, eye) ? GRASS_VIEW : VIEW_DISTANCE;
+  const grass = grassHere(x, z, world.entities.values(), eye) ? GRASS_VIEW : VIEW_DISTANCE;
   return Math.min(VIEW_DISTANCE, Math.max(0, requested), light, grass);
 }

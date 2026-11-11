@@ -1,6 +1,6 @@
 import type { MemoryPage } from '@/src/client/storage/db';
 import { localDate } from '@/src/shared/dates';
-import { classify, type SimBody, type WorldRecord } from '@/src/shared/sim/snapshot';
+import { bodyOfRecord, classify, type SimBody } from '@/src/shared/sim/snapshot';
 import { canonicalBytes } from '@/src/client/cloud/bytes';
 
 export interface CloudBundle {
@@ -15,19 +15,7 @@ export interface CloudLease {
   until: number;
 }
 
-export function worldOf(record: WorldRecord): SimBody {
-  return {
-    scenery: record.scenery,
-    seed: record.seed,
-    appleIn: record.appleIn,
-    sprouts: record.sprouts,
-    entities: record.entities,
-    marks: record.marks,
-    carrying: record.carrying,
-    spider: record.spider,
-    pending: record.pending,
-  };
-}
+export { bodyOfRecord as worldOf };
 
 export function bundleBytes(bundle: CloudBundle): Uint8Array {
   return canonicalBytes(bundle);
@@ -80,7 +68,7 @@ function worldOfRecord(world: SimBody): SimBody | null {
     seq: 1,
     leaseUntil: 1,
   });
-  return record.status === 'ok' ? worldOf(record.record) : null;
+  return record.status === 'ok' ? bodyOfRecord(record.record) : null;
 }
 
 function memoryOf(value: unknown): MemoryPage | null {

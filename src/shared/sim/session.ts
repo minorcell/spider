@@ -13,7 +13,7 @@ import {
   type WorldInfo,
   type WorldState,
 } from '@/src/shared/state';
-import { kindOf, propertiesOf, slicesOf } from '@/src/shared/kinds';
+import { kindOf, slicesOf } from '@/src/shared/kinds';
 import { IDLE_CONTROLS } from '@/src/shared/types';
 import {
   blockedAt,
@@ -25,9 +25,11 @@ import {
   SIGHT_TOP,
 } from '@/src/shared/sight';
 import {
+  addEntity,
   createWorld,
+  expireEntities,
   grow,
-  nextPropId,
+  removeEntity,
   REACH,
   REACH_Y,
   restingY,
@@ -308,7 +310,7 @@ export class SimSession {
   }
 
   async approach(id: string, standoff = REACH - 0.3, fast = false): Promise<GoalOutcome> {
-    const entity = this.world.entities.find((item) => item.id === id);
+    const entity = this.world.entities.get(id);
     if (!entity || this.world.tethers.has(id)) {
       return { ok: false, reason: 'not-found', id, detour: null };
     }
@@ -319,7 +321,8 @@ export class SimSession {
       if (!spot) return { ok: false, reason: 'no-path', id, detour: null };
       const moved = await this.moveTo(spot.x, spot.z, fast);
       if (!moved.ok) return { ...moved, id };
-      if (!this.world.entities.includes(entity)) return { ok: false, reason: 'not-found', id };
+      if (this.world.entities.get(entity.id) !== entity)
+        return { ok: false, reason: 'not-found', id };
       const face = await this.#face(entity.x, entity.z);
       if (!face.ok) return { ...face, id, detour: moved.detour ?? null };
       return { ok: true, reason: 'reached', id, detour: moved.detour ?? null };
@@ -330,23 +333,19 @@ export class SimSession {
   }
 
   eat(id?: string): Promise<GoalOutcome> {
-    let entity = this.#nearest(id, (item) => propertiesOf(item.kind).includes('edible'));
+    let entity = this.#nearest(id, (item) => kindOf(item.kind)?.eat !== undefined);
     if (!entity && !id)
       entity =
-        carriedItems(this.world).find((item) => propertiesOf(item.kind).includes('edible')) ?? null;
+        carriedItems(this.world).find((item) => kindOf(item.kind)?.eat !== undefined) ?? null;
     if (!entity)
       return Promise.resolve({ ok: false, reason: id ? 'not-found' : 'nothing-to-eat', id });
-    if (!propertiesOf(entity.kind).includes('edible')) {
-      return Promise.resolve({ ok: false, reason: 'not-edible', id: entity.id });
-    }
+    const kind = kindOf(entity.kind);
+    const meal = kind?.eat;
+    if (!kind || !meal) return Promise.resolve({ ok: false, reason: 'not-edible', id: entity.id });
     if (!this.world.tethers.has(entity.id)) {
       const reach = this.#reachable(entity);
       if (!reach.ok) return Promise.resolve(reach);
     }
-
-    const kind = kindOf(entity.kind);
-    const meal = kind?.eat;
-    if (!kind || !meal) return Promise.resolve({ ok: false, reason: 'not-edible', id: entity.id });
 
     const target = entity;
     const startedAt = this.spider.time;
@@ -365,7 +364,7 @@ export class SimSession {
       timeout: remaining + 1,
       controls: () => IDLE_CONTROLS,
       done: () => {
-        if (!this.world.entities.includes(target)) {
+        if (this.world.entities.get(target.id) !== target) {
           failure = { ok: false, reason: 'not-found', id: target.id };
           return true;
         }
@@ -389,7 +388,7 @@ export class SimSession {
       result,
       commit: () => {
         if (failure) return { ...result(), ...failure };
-        if (meal.removes) this.#remove(target);
+        if (meal.removes) removeEntity(this.world, target);
         return { ...result(), ok: true, reason: 'reached', removed: meal.removes };
       },
     });
@@ -403,10 +402,10 @@ export class SimSession {
         carrying: [...this.world.tethers.keys()],
       });
     }
-    const entity = this.#nearest(id, (item) => propertiesOf(item.kind).includes('carryable'));
+    const entity = this.#nearest(id, (item) => kindOf(item.kind)?.carryable === true);
     if (!entity || this.world.tethers.has(entity.id))
       return Promise.resolve({ ok: false, reason: id ? 'not-found' : 'nothing-to-carry', id });
-    if (!propertiesOf(entity.kind).includes('carryable')) {
+    if (!kindOf(entity.kind)?.carryable) {
       return Promise.resolve({ ok: false, reason: 'not-carryable', id: entity.id });
     }
     const reach = this.#reachable(entity);
@@ -423,7 +422,7 @@ export class SimSession {
       done: () => this.spider.time - startedAt >= 0.35,
       result,
       commit: () => {
-        if (!this.world.entities.includes(entity))
+        if (this.world.entities.get(entity.id) !== entity)
           return { ok: false, reason: 'not-found', id: entity.id };
         const reached = this.#reachable(entity);
         if (!reached.ok) return reached;
@@ -519,17 +518,8 @@ export class SimSession {
     });
   }
 
-  addEntity(kind: string, x: number, z: number): WorldState['entities'][number] {
-    const entity = {
-      id: nextPropId(this.world, kind),
-      kind,
-      x,
-      y: restingY(this.world.terrain, kind, x, z),
-      z,
-      stage: 0,
-    };
-    this.world.entities.push(entity);
-    return entity;
+  addEntity(kind: string, x: number, z: number): EntityState {
+    return addEntity(this.world, kind, { x, z }, this.spider.time);
   }
 
   #face(x: number, z: number): Promise<GoalOutcome> {
@@ -573,13 +563,17 @@ export class SimSession {
 
   #nearest(id: string | undefined, want: (entity: EntityState) => boolean): EntityState | null {
     const { x, z } = this.spider.root.position;
-    const pool = this.world.entities.filter((item) =>
-      id ? item.id === id : !this.world.tethers.has(item.id) && want(item),
-    );
-    if (pool.length === 0) return null;
-    return pool.reduce((best, item) =>
-      Math.hypot(item.x - x, item.z - z) < Math.hypot(best.x - x, best.z - z) ? item : best,
-    );
+    if (id) return this.world.entities.get(id) ?? null;
+    let nearest: EntityState | null = null;
+    let distance = Infinity;
+    for (const item of this.world.entities.values()) {
+      if (this.world.tethers.has(item.id) || !want(item)) continue;
+      const candidate = Math.hypot(item.x - x, item.z - z);
+      if (candidate >= distance) continue;
+      nearest = item;
+      distance = candidate;
+    }
+    return nearest;
   }
 
   #reachable(entity: EntityState): GoalOutcome {
@@ -651,13 +645,10 @@ export class SimSession {
     this.world.tethers.delete(item.id);
   }
 
-  #remove(entity: EntityState): void {
-    this.world.tethers.delete(entity.id);
-    this.world.entities = this.world.entities.filter((item) => item !== entity);
-  }
-
   #step(dt: number): void {
-    grow(this.world, dt, { x: this.spider.root.position.x, z: this.spider.root.position.z });
+    const time = this.spider.time + dt;
+    expireEntities(this.world, time);
+    grow(this.world, dt, this.spider.root.position, time);
 
     const active = this.#active;
     const previous =

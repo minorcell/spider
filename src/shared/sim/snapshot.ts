@@ -1,6 +1,12 @@
 import { grassOnDryGround, grassRadius } from '@/src/shared/grass';
 import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX, MOUNTS } from '@/src/shared/config';
-import { KINDS } from '@/src/shared/kinds';
+import { kindOf } from '@/src/shared/kinds';
+import {
+  applePopulation,
+  initialPopulations,
+  populationRules,
+  type PopulationState,
+} from '@/src/shared/islandContent';
 import type {
   EntityState,
   Footprint,
@@ -10,8 +16,9 @@ import type {
 } from '@/src/shared/state';
 import { blockedAt, BODY_RADIUS } from '@/src/shared/sight';
 import {
-  APPLE_EVERY,
+  expireEntities,
   GRASS,
+  indexEntities,
   TREES,
   nestBlocks,
   populateScenery,
@@ -47,6 +54,8 @@ export interface SimBody {
   seed: number;
   appleIn: number;
   sprouts: number;
+  populations?: Record<string, PopulationState>;
+  entitySerials?: Record<string, number>;
   entities: EntityState[];
   marks: PlaceMark[];
   carrying: CarriedRecord[];
@@ -75,16 +84,28 @@ export interface Restorable {
   readonly spider: Spider;
 }
 
+export function bodyOfRecord(record: WorldRecord): SimBody {
+  const { id, format, savedAt, day, owner, seq, leaseUntil, ...body } = record;
+  return body;
+}
+
 export function captureBody(session: Restorable, pending: SimBody['pending']): SimBody {
   const world = session.world;
+  const { id: legacyId, interval } = applePopulation;
+  const legacy = world.populations.get(legacyId);
+  const populations = Object.fromEntries([...world.populations].filter(([id]) => id !== legacyId));
   const carrying: CarriedRecord[] = structuredClone(carriedItems(world));
   for (const item of carrying) item.tetherLength = world.tethers.get(item.id);
   return {
     scenery: 5,
     seed: world.seed,
-    appleIn: world.appleIn ?? APPLE_EVERY,
-    sprouts: world.sprouts ?? 0,
-    entities: structuredClone(world.entities.filter((item) => !world.tethers.has(item.id))),
+    appleIn: legacy?.remaining ?? interval,
+    sprouts: legacy?.attempts ?? 0,
+    ...(world.entitySerials.size ? { entitySerials: Object.fromEntries(world.entitySerials) } : {}),
+    ...(Object.keys(populations).length > 0 ? { populations: structuredClone(populations) } : {}),
+    entities: structuredClone(
+      [...world.entities.values()].filter((item) => !world.tethers.has(item.id)),
+    ),
     marks: structuredClone(world.marks),
     carrying,
     spider: session.spider.capture(),
@@ -101,50 +122,56 @@ export function applyBody(
   const world = session.world;
   world.terrain = terrain;
   world.seed = terrain.seed;
-  world.entities = structuredClone(body.entities).map((entity) =>
+  let ground = structuredClone(body.entities).map((entity) =>
     entity.kind === 'nest'
       ? entity
       : { ...entity, y: restingY(terrain, entity.kind, entity.x, entity.z, entity.footprint) },
   );
   if (body.scenery === 2) {
     let patches = 0;
-    world.entities = world.entities.filter(
-      (entity) => entity.kind !== 'grass' || ++patches <= GRASS,
-    );
+    ground = ground.filter((entity) => entity.kind !== 'grass' || ++patches <= GRASS);
   }
   if (body.scenery !== 4 && body.scenery !== 5) {
-    for (const entity of world.entities) {
+    for (const entity of ground) {
       if (entity.kind === 'grass') entity.footprint = { kind: 'circle', r: grassRadius(entity.id) };
     }
   }
   if (body.scenery !== 5) {
     let trees = 0;
-    world.entities = world.entities.filter((entity) => entity.kind !== 'tree' || ++trees <= TREES);
+    ground = ground.filter((entity) => entity.kind !== 'tree' || ++trees <= TREES);
   }
-  world.blocks = [...nestBlocks(), ...propBlocks(world.entities)];
+  world.entities = indexEntities(ground);
+  world.entitySerials = new Map(Object.entries(body.entitySerials ?? {}));
+  world.blocks = [...nestBlocks(), ...propBlocks(ground)];
   world.marks = structuredClone(body.marks);
   world.tethers.clear();
   const anchor = tetherAnchor(body.spider.position, body.spider.yaw);
   for (const [index, { tetherLength: length, ...item }] of structuredClone(
     body.carrying,
   ).entries()) {
-    world.entities.push(item);
+    world.entities.set(item.id, item);
     world.tethers.set(item.id, length ?? tetherLength(anchor, item, index));
   }
   if (body.scenery !== 2 && body.scenery !== 3 && body.scenery !== 4 && body.scenery !== 5)
     populateScenery(world, body.spider.position, MAX_ENTITIES);
-  world.entities = world.entities.filter(
-    (entity) =>
-      entity.kind !== 'grass' ||
-      grassOnDryGround(
+  for (const entity of world.entities.values()) {
+    if (
+      entity.kind === 'grass' &&
+      !grassOnDryGround(
         (x, z) => terrain.height(x, z),
         entity.x,
         entity.z,
         entity.footprint?.kind === 'circle' ? entity.footprint.r : 1.7,
-      ),
-  );
-  world.appleIn = body.appleIn;
-  world.sprouts = body.sprouts;
+      )
+    )
+      world.entities.delete(entity.id);
+  }
+  world.populations = initialPopulations();
+  world.populations.set(applePopulation.id, { remaining: body.appleIn, attempts: body.sprouts });
+  for (const [id, state] of Object.entries(body.populations ?? {})) {
+    world.populations.set(id, { ...state });
+  }
+  expireEntities(world, body.spider.time);
   bindLegWorld(session.spider, world);
   session.spider.bindGround((x, z) => world.terrain.height(x, z));
   session.spider.bindWater((x, z) => waterAt(world.terrain, x, z));
@@ -216,7 +243,8 @@ export function classify(input: unknown, _today?: string): Classify {
 
 function bodyOf(raw: Record<string, unknown>): SimBody | null {
   if (!isFiniteNumber(raw.seed)) return null;
-  if (!isFiniteNumber(raw.appleIn) || raw.appleIn < 0 || raw.appleIn > APPLE_EVERY) return null;
+  if (!isFiniteNumber(raw.appleIn) || raw.appleIn < 0 || raw.appleIn > applePopulation.interval)
+    return null;
   if (!isFiniteNumber(raw.sprouts) || !Number.isInteger(raw.sprouts)) return null;
   if (raw.sprouts < 0 || raw.sprouts > MAX_SPROUTS) return null;
   if (!Array.isArray(raw.entities) || !Array.isArray(raw.carrying)) return null;
@@ -235,6 +263,10 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
     if (ids.has(entity.id)) return null;
     ids.add(entity.id);
   }
+  const serials = readEntitySerials(raw.entitySerials);
+  if (serials === null) return null;
+  const populations = readPopulations(raw.populations);
+  if (populations === null) return null;
   const spider = readSpider(raw.spider);
   if (!spider) return null;
   const pending = readPending(raw.pending);
@@ -252,12 +284,47 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
     seed: raw.seed >>> 0,
     appleIn: raw.appleIn as number,
     sprouts: raw.sprouts as number,
+    ...(populations ? { populations } : {}),
+    ...(serials ? { entitySerials: serials } : {}),
     entities: ground,
     marks,
     carrying: held,
     spider,
     pending,
   };
+}
+
+function readEntitySerials(value: unknown): SimBody['entitySerials'] | null {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries: [string, number][] = [];
+  for (const [kind, serial] of Object.entries(value)) {
+    if (!kindOf(kind) || !isFiniteNumber(serial) || !Number.isSafeInteger(serial) || serial < 1)
+      return null;
+    entries.push([kind, serial]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function readPopulations(value: unknown): SimBody['populations'] | null {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries: [string, PopulationState][] = [];
+  for (const [id, state] of Object.entries(value)) {
+    const rule = populationRules.find((candidate) => candidate.id === id);
+    if (!rule || rule === applePopulation || !state || typeof state !== 'object') return null;
+    const { remaining, attempts } = state as Partial<PopulationState>;
+    if (!isFiniteNumber(remaining) || remaining < 0 || remaining > rule.interval) return null;
+    if (
+      !isFiniteNumber(attempts) ||
+      !Number.isInteger(attempts) ||
+      attempts < 0 ||
+      attempts > MAX_SPROUTS
+    )
+      return null;
+    entries.push([id, { remaining, attempts }]);
+  }
+  return Object.fromEntries(entries);
 }
 
 function readMarks(value: unknown): PlaceMark[] | null {
@@ -300,7 +367,7 @@ function readMarks(value: unknown): PlaceMark[] | null {
 
 function readCarried(value: unknown): CarriedRecord | null {
   const item = readEntity(value);
-  if (!item || !KINDS[item.kind].properties.includes('carryable')) return null;
+  if (!item || !kindOf(item.kind)?.carryable) return null;
   const { tetherLength: length } = value as { tetherLength?: unknown };
   if (length === undefined) return item;
   if (!isFiniteNumber(length) || length < MIN_TETHER_LENGTH || length > PLACE_M * 3) return null;
@@ -310,13 +377,15 @@ function readCarried(value: unknown): CarriedRecord | null {
 function readEntity(value: unknown): EntityState | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
-  if (typeof raw.kind !== 'string' || !Object.hasOwn(KINDS, raw.kind)) return null;
+  if (typeof raw.kind !== 'string') return null;
+  const kind = kindOf(raw.kind);
+  if (!kind) return null;
   if (typeof raw.id !== 'string' || !/^[\w.-]{1,64}$/.test(raw.id)) return null;
   if (
     !placed(raw.x, raw.y, raw.z) ||
     !isFiniteNumber(raw.stage) ||
     raw.stage < 0 ||
-    raw.stage > 8
+    raw.stage > Math.max(8, kind.eat?.stages ?? 0)
   ) {
     return null;
   }
@@ -333,6 +402,12 @@ function readEntity(value: unknown): EntityState | null {
     z: raw.z as number,
     stage: raw.stage as number,
   };
+  const expiry = optionalNumber(raw.expiresAt);
+  if (expiry === null) return null;
+  if (expiry !== undefined) {
+    if (expiry < 0 || kind.lifetime === undefined) return null;
+    entity.expiresAt = expiry;
+  }
   if (raw.footprint) entity.footprint = raw.footprint as Footprint;
   if (vx !== undefined) entity.vx = vx;
   if (vy !== undefined) entity.vy = vy;

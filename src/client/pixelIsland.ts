@@ -3,7 +3,7 @@ import type { Spider } from '@/src/shared/sim/Spider';
 import type { EntityState, Observation, WorldState } from '@/src/shared/state';
 import { insideLand, surfaceOf, TERRAIN } from '@/src/shared/terrain';
 import { EYE_HEIGHT, sightOutline } from '@/src/shared/sight';
-import { kindOf } from '@/src/shared/kinds';
+import { kindOf, STONE_PIXELS } from '@/src/shared/kinds';
 import { REACH } from '@/src/shared/world';
 
 export const PIXEL = 3;
@@ -13,22 +13,6 @@ const TEXELS = 2;
 const SEA = '#21464c';
 const LAND = ['#78845a', '#808759', '#4e744d', '#486c48', '#5e7e57', '#708958'];
 const WATER = ['#28616c', '#2e7178', '#3b807d'];
-
-interface Appearance {
-  readonly base: string;
-  readonly top: string;
-  readonly shade: string;
-  readonly shape: 'stone' | 'fruit' | 'tree' | 'grass';
-}
-
-const STONE: Appearance = { base: '#74817a', top: '#a0ac93', shade: '#43534c', shape: 'stone' };
-const PALETTES: Readonly<Record<string, Appearance>> = {
-  apple: { base: '#cb6550', top: '#f2a27c', shade: '#7c433b', shape: 'fruit' },
-  stone: STONE,
-  'bog-stone': { base: '#657b6b', top: '#98a47c', shade: '#40594c', shape: 'stone' },
-  tree: { base: '#3c6447', top: '#719554', shade: '#2a4e39', shape: 'tree' },
-  grass: { base: '#688651', top: '#9aaa67', shade: '#456b48', shape: 'grass' },
-};
 
 export interface Projection {
   readonly x: number;
@@ -95,12 +79,12 @@ function ground(ctx: CanvasRenderingContext2D, terrain: WorldState['terrain']): 
 }
 
 function drawProp(ctx: CanvasRenderingContext2D, view: Projection, entity: EntityState): void {
-  // The visible nest wall comes from the same blocks the simulation collides with.
-  if (entity.kind === 'nest') return;
+  const spec = kindOf(entity.kind);
+  const model = spec?.pixels ?? STONE_PIXELS;
+  if (model === false) return;
   const at = project(view, entity);
   if (at.x < -16 || at.y < -16 || at.x > view.width + 16 || at.y > view.height + 16) return;
-  const model = PALETTES[entity.kind] ?? STONE;
-  const body = kindOf(entity.kind)?.physics;
+  const body = spec?.physics;
   const footprint = entity.footprint;
   const radius = footprint?.kind === 'circle' ? footprint.r : body?.radius || 0.42;
   const r = Math.max(1, Math.round(radius * view.scale));
@@ -219,7 +203,7 @@ export class PixelIsland {
     const position = spider.root.position;
     const at = project(view, position);
     const spinneret = project(view, tetherAnchor(position, spider.yaw));
-    for (const entity of world.entities) {
+    for (const entity of world.entities.values()) {
       if (!world.tethers.has(entity.id)) continue;
       const end = project(view, entity);
       ctx.beginPath();
@@ -229,7 +213,7 @@ export class PixelIsland {
       ctx.lineWidth = 1;
       ctx.stroke();
     }
-    for (const entity of world.entities) drawProp(ctx, view, entity);
+    for (const entity of world.entities.values()) drawProp(ctx, view, entity);
     if (spider.waterDepth > 0) {
       ctx.beginPath();
       ctx.ellipse(at.x, at.y, 1.65 * view.scale, 1.3 * view.scale, 0, 0, Math.PI * 2);

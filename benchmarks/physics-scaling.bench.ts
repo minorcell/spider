@@ -1,3 +1,4 @@
+import { indexEntities } from '@/src/shared/world';
 import { describe, expect, test } from 'vitest';
 import { CARRY_LIMIT, PHYSICS } from '@/src/shared/config';
 import { stepPhysics } from '@/src/shared/sim/physics';
@@ -22,8 +23,10 @@ describe('loose-body scaling', () => {
       const world: WorldState = {
         seed: SEED,
         terrain: { height: () => 0, inside: () => true },
-        entities: [],
+        entities: new Map(),
+        entitySerials: new Map(),
         tethers: new Map(),
+        populations: new Map(),
         blocks: [],
         marks: [],
         physics: PHYSICS,
@@ -31,15 +34,15 @@ describe('loose-body scaling', () => {
       const run = () => {
         for (let i = 0; i < 120; i++) stepPhysics(world, { x: 0, z: -i / 60, speed: 1 }, 1 / 60);
       };
-      world.entities = structuredClone(entities);
+      world.entities = indexEntities(structuredClone(entities));
       run();
-      expect(world.entities).toHaveLength(count);
-      expect(world.entities.every((entity) => Number.isFinite(entity.y))).toBe(true);
+      expect(world.entities.size).toBe(count);
+      expect([...world.entities.values()].every((entity) => Number.isFinite(entity.y))).toBe(true);
       await bench(
         `120 steps with ${count} loose bodies`,
         {
           beforeEach: () => {
-            world.entities = structuredClone(entities);
+            world.entities = indexEntities(structuredClone(entities));
           },
         },
         run,
@@ -52,7 +55,9 @@ describe('tethered cargo runtime', () => {
   for (const count of [0, 1, CARRY_LIMIT]) {
     test(`120 driven frames with ${count} tethered items`, async ({ bench }) => {
       const session = new SimSession(SEED);
-      const apples = session.world.entities.filter((entity) => entity.kind === 'apple');
+      const apples = [...session.world.entities.values()].filter(
+        (entity) => entity.kind === 'apple',
+      );
       const cargo = apples.slice(0, count).map((item, i) => ({
         ...item,
         id: `cargo-${i}`,

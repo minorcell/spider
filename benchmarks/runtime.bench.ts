@@ -28,7 +28,9 @@ describe('runtime hot paths', () => {
   });
 
   test('120 loose-body physics steps with a moving spider', async ({ bench }) => {
-    expect(session.world.entities.filter((entity) => entity.kind === 'apple').length).toBe(20);
+    expect(
+      [...session.world.entities.values()].filter((entity) => entity.kind === 'apple').length,
+    ).toBe(20);
     await bench(
       '120 physics steps (reset whole world)',
       {

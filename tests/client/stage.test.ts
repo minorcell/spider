@@ -1,3 +1,4 @@
+import { indexEntities } from '@/src/shared/world';
 import { attachCargo } from '@/tests/simHelpers';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { Stage } from '@/src/client/stage';
@@ -159,11 +160,11 @@ it('drops hidden time and fractional steps across visibility changes', () => {
 
 it('projects the Agent observation onto the map and pans the same world', () => {
   const session = new SimSession(7);
-  session.world.entities = [
+  session.world.entities = indexEntities([
     apple,
     { ...apple, id: 'visible', x: 4, z: 0 },
     { ...apple, id: 'distant', x: 32, z: -9, kind: 'test' },
-  ];
+  ]);
   session.world.terrain = { height: () => 0 };
   session.world.blocks = [];
   session.world.marks = [{ name: '水边', x: 2, z: 3 }];
@@ -211,12 +212,12 @@ it('projects the Agent observation onto the map and pans the same world', () => 
 it('paints carrying and listens to item and gait changes in the real world', async () => {
   const session = new SimSession(7);
   const fruit = { ...apple };
-  session.world.entities = [
+  session.world.entities = indexEntities([
     fruit,
     { ...fruit, id: 'leaf', kind: 'grass', x: 3, footprint: { kind: 'circle', r: 1.2 } },
     { ...fruit, id: 'tree', kind: 'tree', x: 5 },
     { ...fruit, id: 'far', kind: 'stone', x: 400, z: 400 },
-  ];
+  ]);
   session.world.blocks = [];
   const { stage } = stageFor(session);
   stage.bind(
@@ -248,7 +249,7 @@ it('paints carrying and listens to item and gait changes in the real world', asy
   session.world.tethers.delete(fruit.id);
   frame(80);
   expect(sound.place).toHaveBeenCalledOnce();
-  session.world.entities.splice(session.world.entities.indexOf(fruit), 1);
+  session.world.entities.delete(fruit.id);
   frame(96);
   expect(sound.take).toHaveBeenCalledOnce();
   const a = { ...apple, id: 'a' };
@@ -259,7 +260,7 @@ it('paints carrying and listens to item and gait changes in the real world', asy
   frame(128);
   expect(sound.grasp).toHaveBeenCalledTimes(3);
   session.world.tethers.delete(a.id);
-  session.world.entities.splice(session.world.entities.indexOf(a), 1);
+  session.world.entities.delete(a.id);
   frame(144);
   expect(sound.take).toHaveBeenCalledTimes(2);
   expect(sound.place).toHaveBeenCalledOnce();

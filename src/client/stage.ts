@@ -263,8 +263,7 @@ export class Stage {
     if (this.#carrying) {
       for (const id of world.tethers.keys()) if (!this.#carrying.has(id)) this.#sound.grasp();
       for (const id of this.#carrying) {
-        if (!world.tethers.has(id) && world.entities.some((item) => item.id === id))
-          this.#sound.place();
+        if (!world.tethers.has(id) && world.entities.has(id)) this.#sound.place();
       }
     }
     const carried = (this.#carrying ??= new Set());
@@ -272,7 +271,7 @@ export class Stage {
     for (const id of world.tethers.keys()) carried.add(id);
 
     this.#seen.clear();
-    for (const item of world.entities) {
+    for (const item of world.entities.values()) {
       this.#seen.add(item.id);
       if (item.stage > (this.#stages.get(item.id) ?? item.stage)) this.#sound.bite();
       this.#stages.set(item.id, item.stage);

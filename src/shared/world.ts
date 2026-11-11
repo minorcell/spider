@@ -2,7 +2,13 @@ import { grassOnDryGround, grassRadius } from '@/src/shared/grass';
 import { groundSupport } from '@/src/shared/contact';
 import { PHYSICS } from '@/src/shared/config';
 import { kindOf } from '@/src/shared/kinds';
-import { applePopulation, islandFamilies, type ScatterOptions } from '@/src/shared/islandContent';
+import {
+  initialPopulations,
+  islandFamilies,
+  populationRules,
+  type PopulationRule,
+  type ScatterOptions,
+} from '@/src/shared/islandContent';
 import { mulberry32 } from '@/src/shared/noise';
 import { blockedAt } from '@/src/shared/sight';
 import { stepPhysics } from '@/src/shared/sim/physics';
@@ -25,8 +31,6 @@ const WATER = TERRAIN.water;
 
 const BOG_DEPTH_MIN = 0.05;
 const BOG_DEPTH_MAX = 0.34;
-
-export const APPLE_EVERY = applePopulation.interval;
 
 const SPROUT_CLEAR = 2.2;
 
@@ -57,6 +61,12 @@ export function restingY(
   return groundSupport((px, pz) => terrain.height(px, pz), x, z, radius) + rest;
 }
 
+export function indexEntities(entities: Iterable<EntityState>): Map<string, EntityState> {
+  const index = new Map<string, EntityState>();
+  for (const entity of entities) index.set(entity.id, entity);
+  return index;
+}
+
 export function createWorld(
   seed = Math.floor(Math.random() * 1_000_000_000),
   terrain = new Terrain(seed),
@@ -64,68 +74,142 @@ export function createWorld(
   const rng = mulberry32(seed ^ 0x9e3779b9);
   const blocks = nestBlocks();
   const placed: { x: number; z: number }[] = [];
-  const entities: EntityState[] = [
-    { id: 'home', kind: 'nest', x: 0, y: 0.02, z: 0, stage: 0 },
-    ...islandFamilies.flatMap((family) =>
-      scatter(rng, terrain, placed, blocks, family.kind, family.count, family.home, family),
-    ),
-  ];
+  const entities: EntityState[] = [{ id: 'home', kind: 'nest', x: 0, y: 0.02, z: 0, stage: 0 }];
+  for (const family of islandFamilies) {
+    const offset = entities.filter((entity) => entity.kind === family.kind).length;
+    entities.push(
+      ...scatter(
+        rng,
+        terrain,
+        placed,
+        blocks,
+        family.kind,
+        family.count,
+        family.home,
+        family,
+        offset,
+      ),
+    );
+  }
   return {
     seed: terrain.seed,
     terrain,
-    entities,
+    entities: indexEntities(entities),
+    entitySerials: new Map(),
     blocks: [...blocks, ...propBlocks(entities)],
     marks: [],
     tethers: new Map(),
-    appleIn: APPLE_EVERY,
-    sprouts: 0,
+    populations: initialPopulations(),
     physics: PHYSICS,
   };
 }
 
-export function grow(world: WorldState, dt: number, avoid?: { x: number; z: number }): void {
-  if (world.appleIn == null || world.sprouts == null) return;
-  const { kind, count, home } = applePopulation;
-  let onGround = 0;
-  for (const entity of world.entities) {
-    if (entity.kind === kind && !world.tethers.has(entity.id)) onGround += 1;
+export function addEntity(
+  world: WorldState,
+  kind: string,
+  position: { x: number; z: number },
+  time: number,
+): EntityState {
+  const id = nextPropId(world, kind);
+  const entity = makeEntity(world.terrain, id, kind, position, time);
+  world.entities.set(id, entity);
+  world.blocks.push(...propBlocks([entity]));
+  return entity;
+}
+
+export function removeEntity(world: WorldState, entity: EntityState): void {
+  const serial = serialOf(entity.id, entity.kind);
+  if (serial > (world.entitySerials.get(entity.kind) ?? 0)) {
+    world.entitySerials.set(entity.kind, serial);
   }
-  if (onGround >= count) {
-    world.appleIn = APPLE_EVERY;
-    return;
+  world.entities.delete(entity.id);
+  world.tethers.delete(entity.id);
+  if (kindOf(entity.kind)?.block) {
+    world.blocks = world.blocks.filter((block) => block.id !== entity.id);
   }
-  world.appleIn -= dt;
-  if (world.appleIn > 0) return;
-  world.appleIn = APPLE_EVERY;
-  const salt = world.sprouts;
-  world.sprouts += 1;
-  const rng = mulberry32((world.seed ^ 0x51f15e) + salt);
-  const placed = world.entities.map((entity) => ({ x: entity.x, z: entity.z }));
+}
+
+export function expireEntities(world: WorldState, time: number): void {
+  for (const entity of world.entities.values()) {
+    if (entity.expiresAt !== undefined && entity.expiresAt <= time) removeEntity(world, entity);
+  }
+}
+
+function makeEntity(
+  terrain: WorldState['terrain'],
+  id: string,
+  kind: string,
+  { x, z }: { x: number; z: number },
+  time: number,
+  footprint?: Footprint,
+): EntityState {
+  const entity: EntityState = {
+    id,
+    kind,
+    x,
+    y: restingY(terrain, kind, x, z, footprint),
+    z,
+    stage: 0,
+  };
+  const lifetime = kindOf(kind)?.lifetime;
+  if (lifetime !== undefined) entity.expiresAt = time + lifetime;
+  if (footprint !== undefined) entity.footprint = footprint;
+  return entity;
+}
+
+export function grow(
+  world: WorldState,
+  dt: number,
+  avoid?: { x: number; z: number },
+  time = 0,
+): void {
+  for (const rule of populationRules) {
+    const clock = world.populations.get(rule.id);
+    if (!clock) continue;
+    let onGround = 0;
+    for (const entity of world.entities.values()) {
+      if (entity.kind === rule.kind && !world.tethers.has(entity.id)) onGround += 1;
+    }
+    clock.remaining = onGround >= rule.count ? rule.interval : Math.max(0, clock.remaining - dt);
+    if (clock.remaining > 0) continue;
+    clock.remaining = rule.interval;
+    sprout(world, rule, clock.attempts++, time, avoid);
+  }
+}
+
+function sprout(
+  world: WorldState,
+  rule: PopulationRule,
+  attempt: number,
+  time: number,
+  avoid: { x: number; z: number } | undefined,
+): void {
+  const { kind, home, salt } = rule;
+  const rng = mulberry32((world.seed ^ salt) + attempt);
+  const placed = [...world.entities.values()];
   for (let guard = 0; guard < SPROUT_TRIES; guard++) {
-    const spot = roll(rng, world.terrain, placed, world.blocks, kind, home, avoid);
+    const spot = roll(rng, world.terrain, placed, world.blocks, kind, home, avoid, rule);
     if (!spot) continue;
-    const settled = settle(world.terrain, world.blocks, kind, spot, placed, avoid);
+    const settled = settle(world.terrain, world.blocks, kind, spot, placed, avoid, rule.gap);
     if (!settled) continue;
-    world.entities.push({
-      id: nextPropId(world, kind),
-      kind,
-      x: settled.x,
-      y: restingY(world.terrain, kind, settled.x, settled.z),
-      z: settled.z,
-      stage: 0,
-    });
+    addEntity(world, kind, settled, time);
     return;
   }
 }
 
-export function nextPropId(world: Pick<WorldState, 'entities'>, kind: string): string {
-  const taken = world.entities.filter((item) => item.kind === kind);
-  const next =
-    taken.reduce((max, item) => {
-      const suffix = Number(item.id.slice(kind.length + 1));
-      return Number.isFinite(suffix) ? Math.max(max, suffix) : max;
-    }, 0) + 1;
-  return `${kind}-${next}`;
+function serialOf(id: string, kind: string): number {
+  const prefix = `${kind}-`;
+  if (!id.startsWith(prefix)) return 0;
+  const suffix = Number(id.slice(prefix.length));
+  return Number.isSafeInteger(suffix) && suffix > 0 ? suffix : 0;
+}
+
+function nextPropId(world: WorldState, kind: string): string {
+  let highest = world.entitySerials.get(kind) ?? 0;
+  for (const id of world.entities.keys()) highest = Math.max(highest, serialOf(id, kind));
+  const serial = highest + 1;
+  world.entitySerials.set(kind, serial);
+  return `${kind}-${serial}`;
 }
 
 export function nestBlocks(): Block[] {
@@ -156,7 +240,7 @@ export function nestBlocks(): Block[] {
   return blocks;
 }
 
-export function propBlocks(entities: readonly EntityState[]): Block[] {
+export function propBlocks(entities: Iterable<EntityState>): Block[] {
   const blocks: Block[] = [];
   for (const entity of entities) {
     const spec = kindOf(entity.kind)?.block;
@@ -187,11 +271,13 @@ export function populateScenery(
   capacity: number,
 ): void {
   const rng = mulberry32(world.seed ^ 0x7363656e);
-  const placed = [...world.entities, avoid];
+  const placed = [...world.entities.values(), avoid];
   for (const family of islandFamilies) {
     if (!family.repair) continue;
-    const existing = world.entities.filter((entity) => entity.kind === family.kind).length;
-    const count = Math.min(family.count - existing, capacity - world.entities.length);
+    const existing = [...world.entities.values()].filter(
+      (entity) => entity.kind === family.kind,
+    ).length;
+    const count = Math.min(family.count - existing, capacity - world.entities.size);
     const added = scatter(
       rng,
       world.terrain,
@@ -204,7 +290,7 @@ export function populateScenery(
     );
     for (const entity of added) {
       entity.id = nextPropId(world, family.kind);
-      world.entities.push(entity);
+      world.entities.set(entity.id, entity);
     }
     world.blocks.push(...propBlocks(added));
   }
@@ -218,7 +304,8 @@ function scatter(
   kind: string,
   count: number,
   minFromHome: number,
-  options: ScatterOptions = {},
+  options: ScatterOptions,
+  offset = 0,
 ): EntityState[] {
   const entities: EntityState[] = [];
   let guard = 0;
@@ -226,8 +313,9 @@ function scatter(
     guard += 1;
     const spot = roll(rng, terrain, placed, blocks, kind, minFromHome, undefined, options);
     if (!spot) continue;
-    const settled = settle(terrain, blocks, kind, spot, placed);
+    const settled = settle(terrain, blocks, kind, spot, placed, undefined, options.gap);
     if (!settled) continue;
+    const id = `${kind}-${offset + entities.length + 1}`;
     const footprint =
       options.radius != null
         ? {
@@ -235,7 +323,7 @@ function scatter(
             r: quantize(options.radius[0] + rng() * (options.radius[1] - options.radius[0])),
           }
         : kind === 'grass'
-          ? { kind: 'circle' as const, r: grassRadius(`grass-${entities.length + 1}`) }
+          ? { kind: 'circle' as const, r: grassRadius(id) }
           : undefined;
     if (
       kind === 'grass' &&
@@ -244,15 +332,7 @@ function scatter(
     )
       continue;
     placed.push(settled);
-    entities.push({
-      id: `${kind}-${entities.length + 1}`,
-      kind,
-      x: settled.x,
-      y: restingY(terrain, kind, settled.x, settled.z, footprint),
-      z: settled.z,
-      stage: 0,
-      footprint,
-    });
+    entities.push(makeEntity(terrain, id, kind, settled, 0, footprint));
   }
   return entities;
 }
@@ -267,6 +347,7 @@ export function settle(
   start: { x: number; z: number },
   placed: { x: number; z: number }[],
   avoid?: { x: number; z: number },
+  gap = MIN_GAP,
 ): { x: number; z: number } | null {
   const spec = kindOf(kind)?.physics;
   const depth = WATER - terrain.height(start.x, start.z);
@@ -287,10 +368,12 @@ export function settle(
   const scratch: WorldState = {
     seed: 0,
     terrain,
-    entities: [entity],
+    entities: indexEntities([entity]),
+    entitySerials: new Map(),
     blocks: [...blocks],
     marks: [],
     tethers: new Map(),
+    populations: new Map(),
     physics: PHYSICS,
   };
   const far = { x: 1e6, z: 1e6, speed: 0 };
@@ -324,7 +407,7 @@ export function settle(
   if (restDepth >= 0) return null;
   if (Math.hypot(x, z) > TERRAIN.island * 0.7) return null;
   if (avoid && Math.hypot(avoid.x - x, avoid.z - z) < SPROUT_CLEAR) return null;
-  if (placed.some((point) => Math.hypot(point.x - x, point.z - z) < MIN_GAP)) return null;
+  if (placed.some((point) => Math.hypot(point.x - x, point.z - z) < gap)) return null;
   if (blockedAt(x, z, blocks, spec.radius)) return null;
   return { x, z };
 }

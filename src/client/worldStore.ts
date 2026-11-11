@@ -3,6 +3,7 @@ import type { SnapshotStore } from '@/src/client/storage/snapshot';
 import { PersistentCache } from '@/src/client/store/cache';
 import {
   applyBody,
+  bodyOfRecord,
   captureBody,
   chooseRecord,
   classify,
@@ -218,10 +219,10 @@ export async function restoreWorld(
     };
   }
   if (!readLease()) setLease(chosen.owner, chosen.leaseUntil);
-  await adoptBody(session, strip(chosen));
+  await adoptBody(session, bodyOfRecord(chosen));
   pending = chosen.pending;
   seenSeq = chosen.seq;
-  lastBody = strip(chosen);
+  lastBody = bodyOfRecord(chosen);
   cache.hydrate(chosen);
   if (dbOpen && !dbDeferred) await mirror(chosen, ls, idb);
   return {
@@ -386,7 +387,7 @@ async function catchUp(): Promise<void> {
   }
   if (!chosen || chosen.seq <= seenSeq || chosen.owner === owner) return;
   setLease(chosen.owner, chosen.leaseUntil);
-  await adoptBody(session, strip(chosen));
+  await adoptBody(session, bodyOfRecord(chosen));
   pending = chosen.pending;
   seenSeq = chosen.seq;
   lastBody = captureBody(session, pending);
@@ -486,7 +487,7 @@ async function reconcile(): Promise<void> {
   }
   if (idb.status !== 'ok' || idb.record.seq <= seenSeq) return;
   setLease(idb.record.owner, idb.record.leaseUntil);
-  await adoptBody(session, strip(idb.record));
+  await adoptBody(session, bodyOfRecord(idb.record));
   pending = idb.record.pending;
   seenSeq = idb.record.seq;
   lastBody = captureBody(session, pending);
@@ -520,7 +521,7 @@ export function prefer(a?: WorldRecord, b?: WorldRecord): WorldRecord | undefine
   return a && b ? newer(a, b) : (a ?? b);
 }
 
-function changed(prev: SimBody, next: SimBody, appleSlack: number): boolean {
+function changed(prev: SimBody, next: SimBody, populationSlack: number): boolean {
   const dx = next.spider.position.x - prev.spider.position.x;
   const dz = next.spider.position.z - prev.spider.position.z;
   if (Math.hypot(dx, dz) > MOVE_M) return true;
@@ -533,7 +534,24 @@ function changed(prev: SimBody, next: SimBody, appleSlack: number): boolean {
   ) {
     return true;
   }
-  if (prev.appleIn - next.appleIn >= appleSlack) return true;
+  if (prev.appleIn - next.appleIn >= populationSlack) return true;
+  const priorPopulations = prev.populations ?? {};
+  const nextPopulations = next.populations ?? {};
+  if (Object.keys(priorPopulations).length !== Object.keys(nextPopulations).length) return true;
+  for (const [id, state] of Object.entries(nextPopulations)) {
+    const before = priorPopulations[id];
+    if (
+      !before ||
+      before.attempts !== state.attempts ||
+      before.remaining - state.remaining >= populationSlack
+    )
+      return true;
+  }
+  const priorSerials = prev.entitySerials ?? {};
+  const nextSerials = next.entitySerials ?? {};
+  if (Object.keys(priorSerials).length !== Object.keys(nextSerials).length) return true;
+  if (Object.entries(nextSerials).some(([kind, serial]) => priorSerials[kind] !== serial))
+    return true;
   if (!sameMarks(prev.marks, next.marks)) return true;
   return !sameList(prev.entities, next.entities) || !sameList(prev.carrying, next.carrying);
 }
@@ -558,6 +576,7 @@ function sameList(a: SimBody['entities'], b: SimBody['entities']): boolean {
     return (
       item.id === other.id &&
       item.stage === other.stage &&
+      item.expiresAt === other.expiresAt &&
       quant(item.x) === quant(other.x) &&
       quant(item.z) === quant(other.z) &&
       sameFoot(item.footprint, other.footprint)
@@ -594,20 +613,6 @@ async function adoptBody(session: Restorable, body: SimBody): Promise<void> {
     return;
   }
   session.adopt(body);
-}
-
-function strip(record: WorldRecord): SimBody {
-  return {
-    scenery: record.scenery,
-    seed: record.seed,
-    appleIn: record.appleIn,
-    sprouts: record.sprouts,
-    entities: record.entities,
-    marks: record.marks,
-    carrying: record.carrying,
-    spider: record.spider,
-    pending: record.pending,
-  };
 }
 
 function arm(): void {

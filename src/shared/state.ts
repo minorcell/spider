@@ -1,3 +1,4 @@
+import type { PopulationState } from '@/src/shared/islandContent';
 import { carriedItems } from '@/src/shared/sim/tether';
 import { propertiesOf } from '@/src/shared/kinds';
 import {
@@ -76,6 +77,7 @@ export interface EntityState {
   y: number;
   z: number;
   stage: number;
+  expiresAt?: number;
   footprint?: Footprint;
   vx?: number;
   vy?: number;
@@ -102,13 +104,13 @@ export interface WorldState {
     surface?(x: number, z: number): number;
     inside?(x: number, z: number, margin?: number): boolean;
   };
-  entities: EntityState[];
+  entities: Map<string, EntityState>;
+  entitySerials: Map<string, number>;
   blocks: Block[];
   marks: PlaceMark[];
   /** Rest length by target ID, in attachment order. */
   tethers: Map<string, number>;
-  appleIn?: number;
-  sprouts?: number;
+  populations: Map<string, PopulationState>;
   physics?: {
     gravity: number;
     damping: number;
@@ -262,7 +264,7 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
     heading: Math.round(heading * 10) / 10,
     height: round3(state.height),
     speed: round3(state.speed),
-    cover: grassHere(px, pz, world.entities, eye) ? 'grass' : null,
+    cover: grassHere(px, pz, world.entities.values(), eye) ? 'grass' : null,
     home: insideHome(px, pz),
     wet: waterDepth > 0,
     waterDepth: round3(waterDepth),
@@ -322,7 +324,7 @@ export function toObservation(
   const water = readWater(world.terrain, px, pz, WATER_SENSE);
   const shore = waterDepth > 0 ? nearestShore(world.terrain, px, pz, WATER_SENSE) : null;
   const eye = ground + EYE_HEIGHT + state.height;
-  for (const entity of world.entities) {
+  for (const entity of world.entities.values()) {
     if (world.tethers.has(entity.id)) continue;
     const dx = entity.x - px;
     const dz = entity.z - pz;
@@ -390,7 +392,7 @@ export function toObservation(
       heading: Math.round(heading * 10) / 10,
       height: round3(state.height),
       speed: round3(state.speed),
-      cover: grassHere(px, pz, world.entities, eye) ? 'grass' : null,
+      cover: grassHere(px, pz, world.entities.values(), eye) ? 'grass' : null,
       home: insideHome(px, pz),
       wet: waterDepth > 0,
       waterDepth: round3(waterDepth),
@@ -439,7 +441,7 @@ export function toNear(
   const height = (x: number, z: number): number => world.terrain.height(x, z);
   const eye = surfaceOf(world.terrain, px, pz) + EYE_HEIGHT + state.height;
   const near: NearEntity[] = [];
-  for (const entity of world.entities) {
+  for (const entity of world.entities.values()) {
     if (world.tethers.has(entity.id) || !canAct(entity.kind)) continue;
     const dx = entity.x - px;
     const dz = entity.z - pz;

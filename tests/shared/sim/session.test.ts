@@ -1,5 +1,6 @@
+import { indexEntities } from '@/src/shared/world';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { KINDS } from '@/src/shared/kinds';
+import { kindOf, KINDS } from '@/src/shared/kinds';
 import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
 import { STUCK_LIMIT, type Goal } from '@/src/shared/sim/goals';
 import { visualRange, worldClock } from '@/src/shared/ecology';
@@ -113,7 +114,9 @@ describe('SimSession basics', () => {
 
   it('names an apple within reach', () => {
     const session = new SimSession(1);
-    session.world.entities = session.world.entities.filter((entity) => entity.kind === 'nest');
+    session.world.entities = indexEntities(
+      [...session.world.entities.values()].filter((entity) => entity.kind === 'nest'),
+    );
     const apple = session.addEntity('apple', 0, -0.7);
     const near = session.near();
     expect(near.map((item) => item.id)).toEqual([apple.id]);
@@ -142,7 +145,7 @@ describe('SimSession basics', () => {
   it('shortens the view inside grass, until the body is raised over it', () => {
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 0, 1, 12) });
     const session = new SimSession(3);
-    const grass = session.world.entities.find((entity) => entity.kind === 'grass')!;
+    const grass = [...session.world.entities.values()].find((entity) => entity.kind === 'grass')!;
     session.spider.root.position.set(grass.x, 0, grass.z);
     expect(session.observe(16).view).toBe(4.5);
     session.spider.heightSet = 1.6;
@@ -154,7 +157,9 @@ describe('SimSession basics', () => {
     vi.setSystemTime(new Date(2026, 0, 1, 23, 0, 0));
     try {
       const session = new SimSession(3);
-      session.world.entities = session.world.entities.filter((entity) => entity.kind === 'nest');
+      session.world.entities = indexEntities(
+        [...session.world.entities.values()].filter((entity) => entity.kind === 'nest'),
+      );
       const apple = session.addEntity('apple', 0, -0.7);
       const dark = worldClock(new Date(2026, 0, 1, 23));
       expect(session.observe().view).toBeCloseTo(VIEW_DISTANCE * visualRange(dark), 3);
@@ -511,7 +516,7 @@ describe('approach', () => {
     await expect(session.approach(apple.id)).resolves.toMatchObject({ reason: 'not-found' });
     session.release(apple.id);
     vi.spyOn(session, 'moveTo').mockImplementation(async () => {
-      session.world.entities.splice(session.world.entities.indexOf(apple), 1);
+      session.world.entities.delete(apple.id);
       return { ok: true };
     });
     await expect(session.approach(apple.id)).resolves.toMatchObject({ reason: 'not-found' });
@@ -540,7 +545,9 @@ describe('approach', () => {
     const session = new SimSession(6);
     const apple = session.addEntity('apple', 0, 0);
     await settle(session.approach(apple.id, -0.06), session);
-    expect(session.world.entities.some((entity) => entity.id === apple.id)).toBe(true);
+    expect([...session.world.entities.values()].some((entity) => entity.id === apple.id)).toBe(
+      true,
+    );
   });
 
   it('walks to a standoff and faces it', async () => {
@@ -600,7 +607,9 @@ describe('approach', () => {
 describe('eat', () => {
   it('finds nothing to eat', async () => {
     const session = new SimSession(7);
-    session.world.entities = session.world.entities.filter((entity) => entity.kind !== 'apple');
+    session.world.entities = indexEntities(
+      [...session.world.entities.values()].filter((entity) => !kindOf(entity.kind)?.eat),
+    );
     await expect(session.eat()).resolves.toMatchObject({ ok: false, reason: 'nothing-to-eat' });
   });
 
@@ -633,7 +642,7 @@ describe('eat', () => {
   it('refuses an edible thing that is too high', async () => {
     const session = new SimSession(7);
     const apple = fakeEntity({ id: 'apple-high', x: 0, y: 100, z: -0.5 });
-    session.world.entities.push(apple);
+    session.world.entities.set(apple.id, apple);
     await expect(session.eat(apple.id)).resolves.toMatchObject({
       ok: false,
       reason: 'out-of-reach',
@@ -667,7 +676,7 @@ describe('eat', () => {
     const apple = session.addEntity('apple', 0, -0.8);
     const outcome = await settle(session.eat(apple.id), session, 20, 60);
     expect(outcome).toMatchObject({ ok: true, action: 'eat', target: apple.id, removed: true });
-    expect(session.world.entities).not.toContain(apple);
+    expect([...session.world.entities.values()]).not.toContain(apple);
   });
 
   it('resumes a partly eaten thing', async () => {
@@ -685,13 +694,15 @@ describe('eat', () => {
     const meal = session.eat(apple.id);
     for (let i = 0; i < 180; i++) session.frame(1 / 60);
     expect(session.world.tethers.has(apple.id)).toBe(false);
-    expect(session.world.entities).not.toContain(apple);
+    expect([...session.world.entities.values()]).not.toContain(apple);
     await expect(meal).resolves.toMatchObject({ ok: true, removed: true });
   });
 
   it('eats the nearest carried thing when no id is given', async () => {
     const session = new SimSession(7);
-    session.world.entities = session.world.entities.filter((entity) => entity.kind !== 'apple');
+    session.world.entities = indexEntities(
+      [...session.world.entities.values()].filter((entity) => !kindOf(entity.kind)?.eat),
+    );
     const apple = fakeEntity({ id: 'apple-back' });
     attachCargo(session.world, apple);
     const outcome = await settle(session.eat(), session, 20, 60);
@@ -705,14 +716,14 @@ describe('eat', () => {
     session.cancel();
     const outcome = await promise;
     expect(outcome).toMatchObject({ ok: false, reason: 'cancelled', removed: false });
-    expect(session.world.entities).toContain(apple);
+    expect([...session.world.entities.values()]).toContain(apple);
   });
 
   it('handles a thing that vanished mid-meal', async () => {
     const session = new SimSession(7);
     const apple = session.addEntity('apple', 0, -0.8);
     const promise = session.eat(apple.id);
-    session.world.entities.splice(session.world.entities.indexOf(apple), 1);
+    session.world.entities.delete(apple.id);
     const outcome = await settle(promise, session, 20, 60);
     expect(outcome).toMatchObject({ ok: false, reason: 'not-found', removed: false });
   });
@@ -732,7 +743,6 @@ describe('eat', () => {
 
   it('keeps a thing that does not disappear', async () => {
     KINDS.candy = {
-      properties: ['edible'],
       rest: 0,
       eat: { duration: 0.2, stages: 2, removes: false },
     };
@@ -740,11 +750,11 @@ describe('eat', () => {
     const candy = session.addEntity('candy', 0, -0.5);
     const outcome = await settle(session.eat(candy.id), session, 5, 20);
     expect(outcome).toMatchObject({ ok: true, removed: false });
-    expect(session.world.entities).toContain(candy);
+    expect([...session.world.entities.values()]).toContain(candy);
   });
 
-  it('treats an edible property without a meal as not edible', async () => {
-    KINDS['candy-no-meal'] = { properties: ['edible'], rest: 0 };
+  it('rejects a registered item without a meal', async () => {
+    KINDS['candy-no-meal'] = { rest: 0 };
     const session = new SimSession(7);
     const candy = session.addEntity('candy-no-meal', 0, -0.5);
     await expect(session.eat(candy.id)).resolves.toMatchObject({
@@ -755,7 +765,6 @@ describe('eat', () => {
 
   it('handles a meal with no slices', async () => {
     KINDS.zero = {
-      properties: ['edible'],
       rest: 0,
       eat: { duration: 0.1, stages: 0, removes: false },
     };
@@ -804,7 +813,9 @@ describe('carrying', () => {
 
   it('finds nothing to carry', async () => {
     const session = new SimSession(8);
-    session.world.entities = session.world.entities.filter((entity) => entity.kind !== 'apple');
+    session.world.entities = indexEntities(
+      [...session.world.entities.values()].filter((entity) => !kindOf(entity.kind)?.carryable),
+    );
     await expect(session.pickUp()).resolves.toMatchObject({
       ok: false,
       reason: 'nothing-to-carry',
@@ -845,7 +856,9 @@ describe('carrying', () => {
     const outcome = await settle(session.pickUp(apple.id), session, 5, 20);
     expect(outcome).toMatchObject({ ok: true, action: 'pick-up', target: apple.id });
     expect(carriedItems(session.world)).toContain(apple);
-    expect(session.world.entities.filter((item) => item.id === apple.id)).toEqual([apple]);
+    expect([...session.world.entities.values()].filter((item) => item.id === apple.id)).toEqual([
+      apple,
+    ]);
     await expect(session.pickUp(apple.id)).resolves.toMatchObject({ reason: 'not-found' });
   });
 
@@ -866,7 +879,7 @@ describe('carrying', () => {
     const session = new SimSession(8);
     const apple = session.addEntity('apple', 0, -0.8);
     const promise = session.pickUp(apple.id);
-    session.world.entities.splice(session.world.entities.indexOf(apple), 1);
+    session.world.entities.delete(apple.id);
     await expect(settle(promise, session, 5, 20)).resolves.toMatchObject({
       ok: false,
       reason: 'not-found',
@@ -912,7 +925,7 @@ describe('carrying', () => {
     const outcome = session.drop();
     expect(outcome).toMatchObject({ ok: true, action: 'drop', target: item.id });
     expect(carriedItems(session.world)).toEqual([]);
-    expect(session.world.entities).toContain(item);
+    expect([...session.world.entities.values()]).toContain(item);
     expect(Number.isFinite(item.x)).toBe(true);
   });
 
@@ -932,8 +945,10 @@ describe('carrying', () => {
     const far = session.addEntity('apple', 0, -0.9);
     const near = session.addEntity('apple', 0, -0.5);
     const farther = session.addEntity('apple', 0, -1.1);
-    session.world.entities = session.world.entities.filter(
-      (entity) => entity === far || entity === near || entity === farther,
+    session.world.entities = indexEntities(
+      [...session.world.entities.values()].filter(
+        (entity) => entity === far || entity === near || entity === farther,
+      ),
     );
     const outcome = await settle(session.pickUp(), session, 5, 20);
     expect(outcome).toMatchObject({ ok: true, target: near.id });
@@ -964,7 +979,9 @@ describe('carrying', () => {
       attachCargo(session.world, fakeEntity({ id: `kept-${index}` }));
       expect(session.store(`kept-${index}`).ok).toBe(true);
     }
-    const stored = session.world.entities.filter((entity) => entity.id.startsWith('kept-'));
+    const stored = [...session.world.entities.values()].filter((entity) =>
+      entity.id.startsWith('kept-'),
+    );
     expect(stored).toHaveLength(9);
     expect(new Set(stored.map((entity) => `${entity.x},${entity.z}`)).size).toBe(9);
   });
@@ -977,7 +994,7 @@ describe('carrying', () => {
     const outcome = session.store();
     expect(outcome).toMatchObject({ ok: true, action: 'store', target: item.id });
     expect(carriedItems(session.world)).toEqual([]);
-    expect(session.world.entities).toContain(item);
+    expect([...session.world.entities.values()]).toContain(item);
   });
 
   it('stores one named thing and keeps the rest on the back', () => {
@@ -1008,36 +1025,48 @@ describe('sleep and props', () => {
 
   it('grows a replacement apple as the simulation runs', () => {
     const session = new SimSession(4);
-    session.world.entities = session.world.entities.filter((entity) => entity.kind !== 'apple');
-    session.world.appleIn = 0.02;
+    session.world.entities = indexEntities(
+      [...session.world.entities.values()].filter((entity) => entity.kind !== 'apple'),
+    );
+    session.world.populations.get('apple')!.remaining = 0.02;
     session.frame(1 / 60);
-    expect(session.world.entities.some((entity) => entity.kind === 'apple')).toBe(false);
+    expect([...session.world.entities.values()].some((entity) => entity.kind === 'apple')).toBe(
+      false,
+    );
     session.frame(1 / 60);
-    expect(session.world.entities.filter((entity) => entity.kind === 'apple')).toHaveLength(1);
+    expect(
+      [...session.world.entities.values()].filter((entity) => entity.kind === 'apple'),
+    ).toHaveLength(1);
 
-    session.world.entities = session.world.entities.filter((entity) => entity.kind !== 'apple');
-    session.world.appleIn = 0;
+    session.world.entities = indexEntities(
+      [...session.world.entities.values()].filter((entity) => entity.kind !== 'apple'),
+    );
+    session.world.populations.get('apple')!.remaining = 0;
     session.frame(1);
-    expect(session.world.entities.some((entity) => entity.kind === 'apple')).toBe(true);
+    expect([...session.world.entities.values()].some((entity) => entity.kind === 'apple')).toBe(
+      true,
+    );
   });
 
   it('numbers a new prop after the highest existing one', () => {
     const session = new SimSession(10);
-    const existing = session.world.entities.filter((entity) => entity.kind === 'apple').length;
+    const existing = [...session.world.entities.values()].filter(
+      (entity) => entity.kind === 'apple',
+    ).length;
     const added = session.addEntity('apple', 1, 1);
     expect(added.id).toBe(`apple-${existing + 1}`);
     expect(Number.isFinite(added.y)).toBe(true);
-    expect(session.world.entities).toContain(added);
+    expect([...session.world.entities.values()]).toContain(added);
   });
 
-  it('ignores non-numeric suffixes and counts carried props', () => {
+  it('continues allocating IDs after a carried item is removed', () => {
     const session = new SimSession(10);
-    session.world.entities = [{ ...fakeEntity({ id: 'apple-x' }) }];
+    session.world.entities = indexEntities([{ ...fakeEntity({ id: 'apple-x' }) }]);
     attachCargo(session.world, fakeEntity({ id: 'apple-7' }));
     expect(session.addEntity('apple', 0, 0).id).toBe('apple-8');
     session.world.tethers.clear();
-    session.world.entities = [{ ...fakeEntity({ id: 'apple-x' }) }];
-    expect(session.addEntity('apple', 0, 0).id).toBe('apple-1');
+    session.world.entities = indexEntities([{ ...fakeEntity({ id: 'apple-x' }) }]);
+    expect(session.addEntity('apple', 0, 0).id).toBe('apple-9');
   });
 
   it('keeps its own copy of the goal contract', () => {
@@ -1047,7 +1076,7 @@ describe('sleep and props', () => {
 
 it('applies gravity to slack cargo and tension to taut cargo', () => {
   const session = new SimSession(3);
-  session.world.entities = [];
+  session.world.entities = new Map();
   const back = session.spider.root.position;
   const cargo = fakeEntity({ x: back.x, z: back.z + 1.66, y: back.y + 10 });
   attachCargo(session.world, cargo);
@@ -1068,7 +1097,7 @@ it('applies gravity to slack cargo and tension to taut cargo', () => {
 
 it('blocks tethered cargo at a wall and keeps its motion when released', () => {
   const session = new SimSession(3);
-  session.world.entities = [];
+  session.world.entities = new Map();
   session.world.terrain = { height: () => 1 };
   const anchor = tetherAnchor(session.spider.root.position, session.spider.yaw);
   const cargo = session.addEntity('apple', 3, anchor.z);
@@ -1086,7 +1115,7 @@ it('blocks tethered cargo at a wall and keeps its motion when released', () => {
   const beforeRelease = { ...cargo };
   expect(session.release()).toMatchObject({ ok: true, target: cargo.id, carrying: [] });
   expect(cargo).toEqual(beforeRelease);
-  expect(session.world.entities[0]).toBe(cargo);
+  expect([...session.world.entities.values()][0]).toBe(cargo);
   session.frame(1 / 60);
   expect(cargo.x).toBeLessThan(beforeRelease.x);
   expect(session.release(cargo.id)).toMatchObject({ ok: false, reason: 'not-carrying' });

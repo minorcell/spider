@@ -26,7 +26,7 @@ export function tetherLength(anchor: Vec3, item: EntityState, index: number): nu
 export function carriedItems(world: WorldState): EntityState[] {
   const items: EntityState[] = [];
   for (const id of world.tethers.keys()) {
-    const item = world.entities.find((entity) => entity.id === id);
+    const item = world.entities.get(id);
     if (item) items.push(item);
   }
   return items;

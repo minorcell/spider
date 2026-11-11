@@ -147,9 +147,9 @@ describe('main-thread dress', () => {
   it('dresses the island on the main thread in under 250 ms', () => {
     const world = createWorld(SEED);
     const buffers = islandBuffers((x, z) => world.terrain.height(x, z));
-    expect(world.entities.some((entity) => entity.kind === 'nest')).toBe(true);
-    expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(true);
-    expect(world.entities.some((entity) => entity.kind === 'grass')).toBe(true);
+    expect([...world.entities.values()].some((entity) => entity.kind === 'nest')).toBe(true);
+    expect([...world.entities.values()].some((entity) => entity.kind === 'apple')).toBe(true);
+    expect([...world.entities.values()].some((entity) => entity.kind === 'grass')).toBe(true);
     expect(
       bestOf(3, () => {
         islandGroup(buffers);

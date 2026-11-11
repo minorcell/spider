@@ -416,7 +416,7 @@ describe('flushWorld', () => {
       const session = new SimSession(2);
       session.spider.root.position.x = 0.3;
       session.spider.heightSet = 0.2;
-      const prop = session.world.entities.find((entity) => entity.kind === 'apple')!;
+      const prop = [...session.world.entities.values()].find((entity) => entity.kind === 'apple')!;
       Object.assign(prop, { qx: 0, qy: 0, qz: 0, qw: 1 });
       const store = memoryStore(stamp(session, { owner: 'tab-a' }));
       sessionStorage.setItem('spider.world.owner', 'tab-a');
@@ -425,7 +425,9 @@ describe('flushWorld', () => {
       if (change === 'small movement') session.spider.root.position.x += 0.01;
       if (change === 'height') session.spider.heightSet += 0.1;
       if (change === 'prop orientation') {
-        const restoredProp = session.world.entities.find((entity) => entity.id === prop.id)!;
+        const restoredProp = [...session.world.entities.values()].find(
+          (entity) => entity.id === prop.id,
+        )!;
         Object.assign(restoredProp, { qx: 0.5, qy: 0.5, qz: 0.5, qw: 0.5 });
       }
       const expected = captureBody(session, null);
@@ -565,14 +567,16 @@ describe('flushWorld', () => {
     flushWorld('poke');
     await writesDone();
     const first = JSON.parse(localStorage.getItem(KEY) ?? '').seq as number;
-    session.world.appleIn = (session.world.appleIn ?? 24) - 1;
+    session.world.populations.get('apple')!.remaining =
+      (session.world.populations.get('apple')!.remaining ?? 24) - 1;
     flushWorld('interval');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(first);
     flushWorld('hide');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(first + 1);
-    session.world.appleIn = (session.world.appleIn ?? 24) - 5;
+    session.world.populations.get('apple')!.remaining =
+      (session.world.populations.get('apple')!.remaining ?? 24) - 5;
     flushWorld('interval');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(first + 2);
@@ -583,7 +587,8 @@ describe('flushWorld', () => {
     session.spider.yaw += 0.05;
     flushWorld('poke');
     await writesDone();
-    session.world.sprouts = (session.world.sprouts ?? 0) + 1;
+    session.world.populations.get('apple')!.attempts =
+      (session.world.populations.get('apple')!.attempts ?? 0) + 1;
     flushWorld('poke');
     await writesDone();
     session.world.seed = 99;
@@ -593,7 +598,7 @@ describe('flushWorld', () => {
     setPending({ text: '带上苹果', tool: null });
     flushWorld('poke');
     await writesDone();
-    const grass = session.world.entities.find((entity) => entity.kind === 'grass');
+    const grass = [...session.world.entities.values()].find((entity) => entity.kind === 'grass');
     grass!.footprint = { kind: 'box', hx: 1, hz: 1 };
     flushWorld('poke');
     await writesDone();
@@ -605,7 +610,7 @@ describe('flushWorld', () => {
     flushWorld('poke');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(moved + 1);
-    session.world.entities.pop();
+    session.world.entities.delete([...session.world.entities.keys()].at(-1)!);
     flushWorld('poke');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(moved + 2);

@@ -1,3 +1,4 @@
+import { indexEntities } from '@/src/shared/world';
 import { describe, expect, it } from 'vitest';
 import {
   toHeading,
@@ -33,10 +34,12 @@ function world(over: Partial<WorldState> = {}): WorldState {
   return {
     seed: 7,
     terrain: { height: flat },
-    entities: [],
+    entities: new Map(),
+    entitySerials: new Map(),
     blocks: [],
     marks: [],
     tethers: new Map(),
+    populations: new Map(),
     ...over,
   };
 }
@@ -69,7 +72,7 @@ describe('angles', () => {
 
 describe('toSense', () => {
   it('reports the body without the island around it', () => {
-    const worldState = world({ entities: [apple()] });
+    const worldState = world({ entities: indexEntities([apple()]) });
     const sense = toSense(spider(), worldState);
     expect(sense).toMatchObject({ x: 0, z: 0, heading: 0, home: true });
     expect(sense.ahead).toEqual({ open: 8, by: 'clear', id: null, kind: null });
@@ -91,7 +94,7 @@ describe('toSense', () => {
     const sense = toSense(
       spider(),
       world({
-        entities: [grass, apple({ id: 'apple-back', stage: 2 })],
+        entities: indexEntities([grass, apple({ id: 'apple-back', stage: 2 })]),
         tethers: new Map([['apple-back', 1.2]]),
       }),
     );
@@ -111,7 +114,7 @@ describe('toSense', () => {
       stage: 0,
       footprint: { kind: 'circle', r: 2 },
     };
-    const sense = toSense(spider({ height: 1 }), world({ entities: [grass] }));
+    const sense = toSense(spider({ height: 1 }), world({ entities: indexEntities([grass]) }));
     expect(sense.cover).toBeNull();
   });
 
@@ -189,7 +192,7 @@ describe('water sense', () => {
 
 describe('toObservation', () => {
   it('describes a visible entity in reach', () => {
-    const seen = toObservation(spider(), world({ entities: [apple()] }), 4, 16, 1.6);
+    const seen = toObservation(spider(), world({ entities: indexEntities([apple()]) }), 4, 16, 1.6);
     expect(seen.beyond).toBe(0);
     expect(seen.hidden).toBe(0);
     expect(seen.hiddenByWall).toBe(0);
@@ -223,7 +226,7 @@ describe('toObservation', () => {
   });
 
   it('counts things past the view', () => {
-    const seen = toObservation(spider(), world({ entities: [apple()] }), 4, 1, 1.6);
+    const seen = toObservation(spider(), world({ entities: indexEntities([apple()]) }), 4, 1, 1.6);
     expect(seen.beyond).toBe(1);
     expect(seen.hidden).toBe(0);
     expect(seen.entities).toEqual([]);
@@ -233,7 +236,7 @@ describe('toObservation', () => {
     const wall = block('wall', 0.5, 1.5, -2, -1);
     const seen = toObservation(
       spider(),
-      world({ entities: [apple()], blocks: [wall] }),
+      world({ entities: indexEntities([apple()]), blocks: [wall] }),
       4,
       16,
       1.6,
@@ -247,7 +250,7 @@ describe('toObservation', () => {
   it('sees a low apple over a bank once the body is reared up', () => {
     const bank = (_x: number, z: number): number => (z < -1 && z > -2 ? 1.5 : 0);
     const spot = world({
-      entities: [apple({ x: 0, y: 0, z: -3 })],
+      entities: indexEntities([apple({ x: 0, y: 0, z: -3 })]),
       terrain: { height: bank },
     });
     const low = toObservation(spider({ height: 0 }), spot, 4, 16, 1.6);
@@ -261,7 +264,7 @@ describe('toObservation', () => {
     const ridge = (x: number): number => (x > 0.5 && x < 1.5 ? 2 : 0);
     const seen = toObservation(
       spider(),
-      world({ entities: [apple()], terrain: { height: ridge } }),
+      world({ entities: indexEntities([apple()]), terrain: { height: ridge } }),
       4,
       16,
       1.6,
@@ -276,7 +279,7 @@ describe('toObservation', () => {
     const bank = (_x: number, z: number): number => (z < -4 ? 3 : 0);
     const seen = toObservation(
       spider(),
-      world({ entities: [apple({ x: 0, y: 3, z: -6 })], terrain: { height: bank } }),
+      world({ entities: indexEntities([apple({ x: 0, y: 3, z: -6 })]), terrain: { height: bank } }),
       4,
       16,
       1.6,
@@ -288,7 +291,10 @@ describe('toObservation', () => {
   it('does not let the target itself hide it', () => {
     const seen = toObservation(
       spider(),
-      world({ entities: [apple()], blocks: [block('apple-1', 1.5, 2.5, -3.5, -2.5)] }),
+      world({
+        entities: indexEntities([apple()]),
+        blocks: [block('apple-1', 1.5, 2.5, -3.5, -2.5)],
+      }),
       4,
       16,
       1.6,
@@ -298,12 +304,12 @@ describe('toObservation', () => {
 
   it('marks a high thing out of reach', () => {
     const high = apple({ y: 3 });
-    const seen = toObservation(spider(), world({ entities: [high] }), 4, 16, 1.6);
+    const seen = toObservation(spider(), world({ entities: indexEntities([high]) }), 4, 16, 1.6);
     expect(seen.entities[0].inReach).toBe(false);
   });
 
   it('marks a distant thing out of reach', () => {
-    const seen = toObservation(spider(), world({ entities: [apple()] }), 1, 16, 1.6);
+    const seen = toObservation(spider(), world({ entities: indexEntities([apple()]) }), 1, 16, 1.6);
     expect(seen.entities[0].inReach).toBe(false);
   });
 
@@ -319,7 +325,7 @@ describe('toObservation', () => {
     };
     const seen = toObservation(
       spider({ position: { x: 5, y: 1, z: 0 }, feet: [] }),
-      world({ entities: [grass] }),
+      world({ entities: indexEntities([grass]) }),
       4,
       16,
       1.6,
@@ -333,7 +339,7 @@ describe('toObservation', () => {
     const seen = toObservation(
       spider(),
       world({
-        entities: [carried],
+        entities: indexEntities([carried]),
         tethers: new Map([
           ['missing', 1.2],
           [carried.id, 1.2],
@@ -361,7 +367,7 @@ describe('toObservation', () => {
     const near = toNear(
       spider(),
       world({
-        entities: [
+        entities: indexEntities([
           apple({ id: 'apple-b', x: 0.5, z: 0.5, stage: 0 }),
           apple({ id: 'apple-far', z: -4 }),
           apple({ id: 'apple-high', y: 3, z: -0.4 }),
@@ -370,7 +376,7 @@ describe('toObservation', () => {
           grass,
           apple({ id: 'home', kind: 'nest', x: 0, y: 0.02, z: 0, stage: 0 }),
           apple({ id: 'rock-1', kind: 'rock', x: 0.3, z: 0, stage: 0 }),
-        ],
+        ]),
         blocks: [block('wall', 0.4, 0.7, -0.25, 0.25)],
       }),
       1.2,
@@ -400,7 +406,10 @@ describe('toObservation', () => {
     const ridge = (_x: number, z: number): number => (z < -0.4 && z > -0.6 ? 2 : 0);
     const near = toNear(
       spider(),
-      world({ entities: [apple({ id: 'apple-ridge', x: 0, z: -1 })], terrain: { height: ridge } }),
+      world({
+        entities: indexEntities([apple({ id: 'apple-ridge', x: 0, z: -1 })]),
+        terrain: { height: ridge },
+      }),
       1.2,
       1.6,
     );
@@ -409,7 +418,7 @@ describe('toObservation', () => {
 
   it('gives an unknown kind no properties', () => {
     const rock = apple({ id: 'rock-1', kind: 'rock' });
-    const seen = toObservation(spider(), world({ entities: [rock] }), 4, 16, 1.6);
+    const seen = toObservation(spider(), world({ entities: indexEntities([rock]) }), 4, 16, 1.6);
     expect(seen.entities[0].properties).toEqual([]);
   });
 });

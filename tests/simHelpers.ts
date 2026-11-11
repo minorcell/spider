@@ -26,7 +26,7 @@ export function drive(
 
 export function attachCargo(world: WorldState, ...items: EntityState[]): void {
   for (const item of items) {
-    if (!world.entities.includes(item)) world.entities.push(item);
+    world.entities.set(item.id, item);
     world.tethers.set(item.id, 1.2 + world.tethers.size * 0.45);
   }
 }

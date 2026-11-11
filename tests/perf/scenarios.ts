@@ -32,7 +32,7 @@ export function bakeWorkerTerrain(seed = SEED) {
 
 export function dressIsland(world: WorldState): void {
   const height = (x: number, z: number): number => world.terrain.height(x, z);
-  for (const entity of world.entities) {
+  for (const entity of world.entities.values()) {
     const built = buildProp(entity.kind, entity.stage, entity.footprint, entity.id);
     if (built && entity.kind === 'grass') drapeGrass(built, entity.x, entity.z, height);
   }

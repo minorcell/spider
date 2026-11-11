@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { applePopulation } from '@/src/shared/islandContent';
 import { localDate } from '@/src/shared/dates';
 import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
 import { SimSession } from '@/src/shared/sim/session';
 import { tetherAnchor, tetherLength } from '@/src/shared/sim/tether';
 import { Terrain, TERRAIN } from '@/src/shared/terrain';
-import { APPLE_EVERY } from '@/src/shared/world';
 import {
   applyBody,
   captureBody,
@@ -61,7 +61,9 @@ it('restores carried items into the world with their saved or inferred silk leng
     [first.id, tetherLength(anchor, first, 0)],
     [second.id, 4.5],
   ]);
-  expect(restored.world.entities.filter((item) => item.id === first.id)).toEqual([first]);
+  expect([...restored.world.entities.values()].filter((item) => item.id === first.id)).toEqual([
+    first,
+  ]);
   const saved = captureBody(restored, null);
   expect(saved.entities.some((item) => item.id === first.id || item.id === second.id)).toBe(false);
   expect(saved.carrying).toEqual([
@@ -91,7 +93,9 @@ describe('snapshot', () => {
     const restored = session();
     applyBody(restored, old);
     expect(
-      restored.world.entities.filter((entity) => entity.kind === 'tree').map((entity) => entity.id),
+      [...restored.world.entities.values()]
+        .filter((entity) => entity.kind === 'tree')
+        .map((entity) => entity.id),
     ).toEqual(trees.slice(0, 24).map((entity) => entity.id));
     expect(restored.world.blocks.filter((block) => block.id.startsWith('tree-'))).toHaveLength(24);
     const saved = captureBody(restored, null);
@@ -105,9 +109,11 @@ describe('snapshot', () => {
     const flooded = new Terrain(old.seed, new Float32Array((TERRAIN.segments + 1) ** 2).fill(-1));
     const restored = session();
     applyBody(restored, old, flooded);
-    expect(restored.world.entities.some((entity) => entity.kind === 'grass')).toBe(false);
+    expect([...restored.world.entities.values()].some((entity) => entity.kind === 'grass')).toBe(
+      false,
+    );
     expect(
-      restored.world.entities
+      [...restored.world.entities.values()]
         .filter((entity) => entity.kind !== 'grass')
         .map((entity) => entity.id),
     ).toEqual(old.entities.filter((entity) => entity.kind !== 'grass').map((entity) => entity.id));
@@ -130,12 +136,12 @@ describe('snapshot', () => {
     const restored = session();
     applyBody(restored, old);
     expect(
-      restored.world.entities
+      [...restored.world.entities.values()]
         .filter((entity) => entity.kind === 'grass')
         .map((entity) => entity.id),
     ).toEqual(patches.slice(0, 32).map((entity) => entity.id));
     expect(
-      restored.world.entities
+      [...restored.world.entities.values()]
         .filter((entity) => entity.kind !== 'grass')
         .map((entity) => entity.id),
     ).toEqual(existing.map((entity) => entity.id));
@@ -146,7 +152,9 @@ describe('snapshot', () => {
 
     old.entities = [...existing, ...patches.slice(0, 10)];
     applyBody(restored, old);
-    expect(restored.world.entities.filter((entity) => entity.kind === 'grass')).toHaveLength(10);
+    expect(
+      [...restored.world.entities.values()].filter((entity) => entity.kind === 'grass'),
+    ).toHaveLength(10);
   });
 
   it('fills vegetation in the first scenery release without duplicating ids', () => {
@@ -162,13 +170,13 @@ describe('snapshot', () => {
     const restored = session();
     applyBody(restored, old);
     expect(
-      restored.world.entities.filter((entity) => entity.kind === 'tree').length,
+      [...restored.world.entities.values()].filter((entity) => entity.kind === 'tree').length,
     ).toBeGreaterThan(8);
     expect(
-      restored.world.entities.filter((entity) => entity.kind === 'grass').length,
+      [...restored.world.entities.values()].filter((entity) => entity.kind === 'grass').length,
     ).toBeGreaterThan(24);
-    expect(new Set(restored.world.entities.map((entity) => entity.id)).size).toBe(
-      restored.world.entities.length,
+    expect(new Set([...restored.world.entities.values()].map((entity) => entity.id)).size).toBe(
+      restored.world.entities.size,
     );
     expect(classify({ ...old, ...captureBody(restored, null) }).status).toBe('ok');
   });
@@ -184,10 +192,12 @@ describe('snapshot', () => {
     const originals = structuredClone(old.entities);
     applyBody(first, old);
     for (const kind of ['tree', 'stone', 'bog-stone']) {
-      expect(first.world.entities.some((entity) => entity.kind === kind)).toBe(true);
+      expect([...first.world.entities.values()].some((entity) => entity.kind === kind)).toBe(true);
     }
     for (const entity of originals) {
-      expect(first.world.entities.find((item) => item.id === entity.id)).toMatchObject({
+      expect(
+        [...first.world.entities.values()].find((item) => item.id === entity.id),
+      ).toMatchObject({
         kind: entity.kind,
         x: entity.x,
         z: entity.z,
@@ -410,10 +420,9 @@ describe('snapshot', () => {
 
   it('falls back to the default apple timer and sprout count', () => {
     const bare = session();
-    bare.world.appleIn = undefined;
-    bare.world.sprouts = undefined;
+    bare.world.populations.clear();
     const body = captureBody(bare, null);
-    expect(body.appleIn).toBe(APPLE_EVERY);
+    expect(body.appleIn).toBe(applePopulation.interval);
     expect(body.sprouts).toBe(0);
   });
 

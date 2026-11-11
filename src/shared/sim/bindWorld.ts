@@ -11,7 +11,7 @@ export function bindLegWorld(spider: Spider, world: WorldState): void {
     (into) => {
       let count = 0;
       nest = null;
-      for (const entity of world.entities) {
+      for (const entity of world.entities.values()) {
         if (entity.kind === 'nest') nest = entity;
         const physics = kindOf(entity.kind)?.physics;
         if (!physics?.loose || physics.radius <= 0) continue;

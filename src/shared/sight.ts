@@ -150,11 +150,11 @@ function coverShape(entity: EntityState, radius: number): GrassClump[] {
 export function grassHere(
   x: number,
   z: number,
-  entities: readonly EntityState[],
+  entities: Iterable<EntityState>,
   eye = Number.NEGATIVE_INFINITY,
 ): boolean {
-  return entities.some(
-    (entity) =>
+  for (const entity of entities) {
+    if (
       entity.kind === 'grass' &&
       entity.footprint?.kind === 'circle' &&
       Math.abs(entity.x - x) <= entity.footprint.r &&
@@ -163,8 +163,11 @@ export function grassHere(
         (clump) =>
           Math.hypot(entity.x + clump.x - x, entity.z + clump.z - z) <= clump.radius &&
           eye < entity.y + clump.height,
-      ),
-  );
+      )
+    )
+      return true;
+  }
+  return false;
 }
 
 function nearestWall(
