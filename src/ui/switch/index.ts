@@ -5,15 +5,10 @@ import { border, color } from '@/src/ui/token';
 const thumbs = new WeakMap<HTMLInputElement, HTMLElement>();
 
 function placeThumb(input: HTMLInputElement, thumb: HTMLElement): void {
-  const track = thumb.parentElement!;
   paint(thumb, {
     left: input.checked ? 'auto' : '2px',
     right: input.checked ? '2px' : 'auto',
-    background: input.checked ? color.accent : color.muted,
-  });
-  paint(track, {
-    border: input.checked ? border.focus : border.hairline,
-    background: input.checked ? color.selected : color.paperDeep,
+    background: input.checked ? color.ink : 'transparent',
   });
 }
 
@@ -33,8 +28,7 @@ export function enhanceSwitch(label: HTMLLabelElement): HTMLLabelElement {
     position: 'relative',
     display: 'flex',
     alignItems: 'center',
-    gap: '11px',
-    minHeight: '32px',
+    gap: '10px',
   });
   paint(input, {
     position: 'absolute',
@@ -50,9 +44,9 @@ export function enhanceSwitch(label: HTMLLabelElement): HTMLLabelElement {
   track.setAttribute('aria-hidden', 'true');
   paint(track, {
     boxSizing: 'border-box',
-    width: '38px',
-    height: '20px',
-    borderRadius: '4px',
+    width: '2.6em',
+    height: '1.35em',
+    border: border.ink,
     position: 'relative',
     flex: 'none',
   });
@@ -60,9 +54,9 @@ export function enhanceSwitch(label: HTMLLabelElement): HTMLLabelElement {
   paint(thumb, {
     position: 'absolute',
     top: '2px',
-    width: '14px',
-    height: '14px',
-    borderRadius: '2px',
+    width: '0.85em',
+    height: 'calc(1.35em - 6px)',
+    border: border.ink,
   });
   track.append(thumb);
   input.after(track);
@@ -71,7 +65,7 @@ export function enhanceSwitch(label: HTMLLabelElement): HTMLLabelElement {
   input.addEventListener('change', () => placeThumb(input, thumb));
   bindFocus(input);
   input.addEventListener('focus', () => {
-    track.style.outline = border.focus;
+    track.style.outline = border.ink;
     track.style.outlineOffset = '2px';
   });
   input.addEventListener('blur', () => {

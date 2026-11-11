@@ -80,7 +80,7 @@ describe('startThemeClock', () => {
     vi.setSystemTime(new Date(2026, 0, 1, 18));
     window.dispatchEvent(new Event('pageshow'));
     expect(doc.documentElement.dataset.theme).toBe('night');
-    expect(doc.documentElement.style.getPropertyValue('--ui-paper')).toBe('#16201d');
+    expect(doc.documentElement.style.getPropertyValue('--ui-paper')).toBe('#172235');
 
     stop();
     expect(vi.getTimerCount()).toBe(0);

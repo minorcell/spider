@@ -80,11 +80,11 @@ describe('dress', () => {
     const tail = document.createElement('span');
     paintTrace(trace, tail);
     placeTail(tail, 20, 40, 30, true);
-    expect(tail.style.borderBottom).toBe('1px solid var(--ui-hairline)');
+    expect(tail.style.borderBottom).toBe('1px solid var(--ui-ink)');
     expect(tail.style.left).toBe('30px');
     expect(tail.style.top).toBe('55px');
     placeTail(tail, 20, 40, 30, false);
-    expect(tail.style.borderTop).toBe('1px solid var(--ui-hairline)');
+    expect(tail.style.borderTop).toBe('1px solid var(--ui-ink)');
     expect(tail.style.top).toBe('15px');
     const layer = document.createElement('div');
     const readout = document.createElement('div');
@@ -103,7 +103,20 @@ describe('dress', () => {
     const full = usagePage();
     dressUsage(full);
     dressUsage(full);
-    expect(full.querySelector<HTMLElement>('.select-wrap')?.style.flexGrow).toBe('1');
+    const range = full.querySelector<HTMLElement>('.range')!;
+    range.setAttribute('aria-expanded', 'true');
+    range.dispatchEvent(new MouseEvent('click'));
+    expect(range.style.outline).toContain('1px');
+    range.setAttribute('aria-expanded', 'false');
+    range.click();
+    expect(range.style.outline).toBe('');
+    const selected = full.querySelector<HTMLElement>('[aria-selected="true"]')!;
+    const other = full.querySelector<HTMLElement>('[aria-selected="false"]')!;
+    other.dispatchEvent(new MouseEvent('mouseenter'));
+    other.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(other.style.outline).toBe('');
+    selected.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(selected.style.outline).toContain('1px');
     const request = full.querySelector('details')!;
     const summary = request.querySelector('summary')!;
     summary.dispatchEvent(new MouseEvent('mouseenter'));
@@ -132,7 +145,6 @@ describe('dress', () => {
       brand: document.createElement('p'),
       nav: document.createElement('nav'),
       foot: document.createElement('p'),
-      close: document.createElement('button'),
       body: document.createElement('div'),
     };
     nodes.keys.append(document.createElement('p'));

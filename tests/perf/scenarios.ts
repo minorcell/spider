@@ -26,7 +26,7 @@ export function planAroundNest(blocks: readonly Block[], height: (x: number, z: 
   return planRoute(0, 0, 8, 0, blocks, height, WORLD_RADIUS);
 }
 
-export function bakeWorkerTerrain(seed = SEED) {
+export function bakeWorkerIsland(seed = SEED) {
   return createWorldHandler()({ id: 0, method: 'prepare', seed });
 }
 

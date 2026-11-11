@@ -29,6 +29,8 @@ describe('world worker', () => {
     const local = new Terrain(3);
     expect(prepared.seed).toBe(3);
     expect(new Terrain(3, prepared.grid).height(14, -8)).toBeCloseTo(local.height(14, -8));
+    expect(prepared.island.groundPosition.length).toBeGreaterThan(0);
+    expect(prepared.island.coverPosition.length).toBeGreaterThan(0);
   });
 
   it('posts the buffers so the page can take them', async () => {
@@ -36,13 +38,20 @@ describe('world worker', () => {
     attachWorldWorker(port, async (request) => ({
       seed: request.seed,
       grid: new Float32Array([1]),
+      island: {
+        groundPosition: new Float32Array([0, 1, 2]),
+        groundColor: new Float32Array([1, 1, 1]),
+        groundIndex: new Uint32Array([0]),
+        coverPosition: new Float32Array([0, 0, 0]),
+        coverColor: new Float32Array([1, 1, 1]),
+      },
     }));
     port.onmessage?.({ data: { id: 2, method: 'prepare', seed: 1 } } as MessageEvent<WorldRequest>);
     await settle();
     const reply = port.postMessage.mock.calls[0][0] as WorldReply;
     const transfer = port.postMessage.mock.calls[0][1] as ArrayBuffer[];
     expect(reply).toMatchObject({ id: 2, ok: true });
-    expect(transfer).toHaveLength(1);
+    expect(transfer).toHaveLength(6);
   });
 
   it('turns a thrown error into a failed reply', async () => {
@@ -62,7 +71,7 @@ describe('world worker', () => {
     expect(port.postMessage).toHaveBeenNthCalledWith(2, { id: 4, ok: false, error: 'plain' });
   });
 
-  it('prepares terrain from a port and falls back when the worker is missing', async () => {
+  it('builds an island from a port and falls back when the worker is missing', async () => {
     const handle = createWorldHandler();
     const port: WorldPort = {
       onmessage: null,
@@ -86,12 +95,14 @@ describe('world worker', () => {
     };
     const client = new WorldClient(port);
     const prepared = await client.prepare(6);
+    expect(prepared.island.children).toHaveLength(3);
     expect(prepared.terrain.height(0, 0)).toBe(0);
     expect(prepared.terrain.height(0, 0)).toBeCloseTo(new Terrain(6).height(0, 0));
 
     const local = await prepareWorld(6, async () => null);
     expect(local.terrain.height(11, 4)).toBeCloseTo(prepared.terrain.height(11, 4));
     const again = await prepareWorld(6, async () => null);
+    expect(again.island).not.toBe(local.island);
     expect(again.terrain).toBe(local.terrain);
 
     const fallback = await prepareWorld(2, async () => {
@@ -190,7 +201,7 @@ describe('world worker', () => {
     attachWorldWorker(port);
     port.onmessage?.({ data: { id: 8, method: 'prepare', seed: 5 } } as MessageEvent<WorldRequest>);
     await settle();
-    expect(port.postMessage.mock.calls[0][1]).toHaveLength(1);
+    expect(port.postMessage.mock.calls[0][1]).toHaveLength(6);
   });
 
   it('starts a worker when the browser has one and reuses it', async () => {

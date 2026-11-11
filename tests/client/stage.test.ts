@@ -1,15 +1,85 @@
-import { indexEntities } from '@/src/shared/world';
-import { attachCargo } from '@/tests/simHelpers';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BufferGeometry, Group, Line } from 'three';
+import { KINDS } from '@/src/shared/kinds';
+import { Spider as RealSpider } from '@/src/shared/sim/Spider';
+import type { EntityState, WorldState } from '@/src/shared/state';
 import { Stage } from '@/src/client/stage';
+import { tetherAnchor } from '@/src/shared/sim/tether';
+import { indexEntities } from '@/src/shared/world';
+import { flat } from '@/tests/helpers';
 import { setLocalBusy } from '@/src/client/local/activity';
-import { SimSession } from '@/src/shared/sim/session';
-import { captureBody } from '@/src/shared/sim/snapshot';
-import type { EntityState } from '@/src/shared/state';
-import { waterAt } from '@/src/shared/water';
 import { ResizeObserverStub } from '@/tests/stubs';
 
-const sound = vi.hoisted(() => ({
+const threeControl = vi.hoisted(() => ({
+  renderers: [] as FakeRenderer[],
+  onRender: null as
+    | null
+    | ((camera: {
+        position: { set(x: number, y: number, z: number): void };
+        lookAt(x: number, y: number, z: number): void;
+      }) => void),
+}));
+
+interface FakeRenderer {
+  domElement: HTMLCanvasElement;
+  loop: ((time: number) => void) | null;
+  setPixelRatio: ReturnType<typeof vi.fn>;
+  setClearColor: ReturnType<typeof vi.fn>;
+  setSize: ReturnType<typeof vi.fn>;
+  setAnimationLoop: ReturnType<typeof vi.fn>;
+  render: ReturnType<typeof vi.fn>;
+  dispose: ReturnType<typeof vi.fn>;
+}
+
+vi.mock('three/webgpu', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('three/webgpu')>();
+  class WebGPURenderer implements FakeRenderer {
+    domElement = document.createElement('canvas');
+    loop: ((time: number) => void) | null = null;
+    shadowMap = { enabled: false, type: 0 };
+    setPixelRatio = vi.fn();
+    setClearColor = vi.fn();
+    setSize = vi.fn();
+    setAnimationLoop = vi.fn((callback: ((time: number) => void) | null) => {
+      this.loop = callback;
+    });
+    render = vi.fn(
+      (
+        _scene: unknown,
+        camera?: {
+          updateMatrixWorld?: () => void;
+          position: { set(x: number, y: number, z: number): void };
+          lookAt(x: number, y: number, z: number): void;
+        },
+      ) => {
+        if (camera) threeControl.onRender?.(camera);
+        camera?.updateMatrixWorld?.();
+      },
+    );
+    dispose = vi.fn();
+
+    constructor() {
+      this.domElement.setPointerCapture = vi.fn();
+      this.domElement.releasePointerCapture = vi.fn();
+      this.domElement.getBoundingClientRect = () =>
+        ({
+          left: 0,
+          top: 0,
+          width: 800,
+          height: 600,
+          right: 800,
+          bottom: 600,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        }) as DOMRect;
+      threeControl.renderers.push(this);
+    }
+  }
+  return { ...actual, WebGPURenderer };
+});
+
+const sound = {
   step: vi.fn(),
   bite: vi.fn(),
   take: vi.fn(),
@@ -18,271 +88,737 @@ const sound = vi.hoisted(() => ({
   knock: vi.fn(),
   voice: vi.fn(),
   dispose: vi.fn(),
-}));
+};
+
 vi.mock('@/src/client/sound', () => ({ createSound: () => sound }));
 
-const context = {
-  fillRect: vi.fn(),
-  drawImage: vi.fn(),
-  beginPath: vi.fn(),
-  moveTo: vi.fn(),
-  lineTo: vi.fn(),
-  stroke: vi.fn(),
-  ellipse: vi.fn(),
-  save: vi.fn(),
-  restore: vi.fn(),
-  translate: vi.fn(),
-  rotate: vi.fn(),
-  createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
-  arc: vi.fn(),
-  closePath: vi.fn(),
-  fill: vi.fn(),
-  strokeText: vi.fn(),
-  fillText: vi.fn(),
-};
-const terrainPixels = { fillRect: vi.fn() };
-const apple: EntityState = { id: 'apple-test', kind: 'apple', x: 0, y: 0, z: -0.95, stage: 0 };
-let frame: FrameRequestCallback;
-
-function stageFor(session: SimSession) {
+function makeHost(width = 800, height = 600): HTMLElement {
   const host = document.createElement('div');
-  Object.defineProperty(host, 'clientWidth', { configurable: true, value: 900 });
-  Object.defineProperty(host, 'clientHeight', { configurable: true, value: 600 });
+  Object.defineProperty(host, 'clientWidth', { configurable: true, value: width });
+  Object.defineProperty(host, 'clientHeight', { configurable: true, value: height });
   document.body.append(host);
-  const stage = new Stage(host, session.spider);
-  const step = vi.fn((dt: number) => session.frame(dt));
-  const observe = vi.fn(() => session.observe());
-  const canvas = host.querySelector('canvas')!;
-  canvas.setPointerCapture = vi.fn();
-  return { host, stage, step, observe, canvas };
+  return host;
+}
+
+function renderer(): FakeRenderer {
+  return threeControl.renderers.at(-1)!;
+}
+
+function entity(over: Partial<EntityState>): EntityState {
+  return { id: 'apple-1', kind: 'apple', x: 2, y: 0, z: 0, stage: 0, ...over };
+}
+
+function makeWorld(entities: EntityState[] = [], tethered: EntityState[] = []): WorldState {
+  return {
+    seed: 1,
+    terrain: { height: flat },
+    entities: indexEntities([...entities, ...tethered]),
+    entitySerials: new Map(),
+    blocks: [],
+    marks: [],
+    populations: new Map(),
+    tethers: new Map(tethered.map((item) => [item.id, 3.5])),
+  };
+}
+
+function frame(extraMs = 17): void {
+  const loop = renderer().loop!;
+  loop(performance.now() + extraMs);
 }
 
 beforeEach(() => {
-  document.body.replaceChildren();
-  vi.clearAllMocks();
-  setLocalBusy(false);
-  vi.spyOn(performance, 'now').mockReturnValue(0);
-  vi.spyOn(Date, 'now').mockReturnValue(new Date(2026, 10, 11, 0).getTime());
-  vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
-    frame = callback;
-    return 19;
+  threeControl.renderers = [];
+  threeControl.onRender = null;
+  for (const key of Object.keys(sound)) sound[key as keyof typeof sound].mockReset();
+  document.body.innerHTML = '';
+});
+
+describe('Stage setup', () => {
+  it('reduces inference rendering without slowing simulation and restores quality afterward', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 2 });
+    const stage = new Stage(makeHost(), new RealSpider());
+    const step = vi.fn();
+    stage.bind(step, () => makeWorld());
+    stage.start();
+    const draw = renderer();
+    const start = performance.now();
+    setLocalBusy(true);
+    expect(draw.setPixelRatio).toHaveBeenLastCalledWith(1);
+    for (const dt of [0, 16, 34, 50, 68]) draw.loop!(start + dt);
+    expect(step).toHaveBeenCalledTimes(4);
+    expect(step.mock.calls.every(([dt]) => dt === 1 / 60)).toBe(true);
+    expect(draw.render).toHaveBeenCalledTimes(3);
+    setLocalBusy(false);
+    expect(draw.setPixelRatio).toHaveBeenLastCalledWith(2);
+    draw.loop!(start + 84);
+    expect(draw.render).toHaveBeenCalledTimes(4);
+    stage.dispose();
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 1 });
   });
-  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
-    .mockReturnValueOnce(context as unknown as CanvasRenderingContext2D)
-    .mockReturnValue(terrainPixels as unknown as CanvasRenderingContext2D);
-  vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue(
-    new DOMRect(10, 20, 900, 600),
-  );
+  it('shows the pack at night only while the spider leaves the lamp on', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 0, 1, 23));
+    try {
+      const spider = new RealSpider();
+      const stage = new Stage(makeHost(), spider);
+      const pack = spider.chassis.getObjectByName('headlamp');
+      expect(pack?.visible).toBe(false);
+      spider.lamp = true;
+      stage.start();
+      frame();
+      expect(pack?.visible).toBe(true);
+      spider.lamp = false;
+      frame();
+      expect(pack?.visible).toBe(false);
+      stage.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('creates the renderer, camera, and canvas', () => {
+    const dispose = vi.spyOn(BufferGeometry.prototype, 'dispose');
+    const host = makeHost();
+    const spider = new RealSpider();
+    const stage = new Stage(host, spider);
+    const draw = renderer();
+    expect(host.contains(draw.domElement)).toBe(true);
+    expect(draw.setPixelRatio).toHaveBeenCalled();
+    expect(draw.setSize).toHaveBeenCalledWith(800, 600, false);
+    stage.dispose();
+    expect(draw.setAnimationLoop).toHaveBeenLastCalledWith(null);
+    expect(draw.dispose).toHaveBeenCalled();
+    expect(dispose).toHaveBeenCalled();
+    expect(sound.dispose).toHaveBeenCalled();
+    expect(host.contains(draw.domElement)).toBe(false);
+  });
+
+  it('draws at the screen pixels on a retina display', () => {
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 2 });
+    void new Stage(makeHost(), new RealSpider());
+    expect(renderer().setPixelRatio).toHaveBeenCalledWith(2);
+  });
+
+  it('caps the pixel ratio at two', () => {
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 3 });
+    void new Stage(makeHost(), new RealSpider());
+    expect(renderer().setPixelRatio).toHaveBeenCalledWith(2);
+  });
+
+  it('falls back to a pixel ratio of one', () => {
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 0 });
+    void new Stage(makeHost(), new RealSpider());
+    expect(renderer().setPixelRatio).toHaveBeenCalledWith(1);
+  });
+
+  it('rescales when the observer fires', () => {
+    const host = makeHost(0, 0);
+    void new Stage(host, new RealSpider());
+    const draw = renderer();
+    expect(draw.setSize).not.toHaveBeenCalled();
+    Object.defineProperty(host, 'clientWidth', { configurable: true, value: 640 });
+    Object.defineProperty(host, 'clientHeight', { configurable: true, value: 480 });
+    ResizeObserverStub.last!.trigger();
+    expect(draw.setSize).toHaveBeenCalledWith(640, 480, false);
+  });
+
+  it('runs without a bound world', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    stage.start();
+    frame();
+    expect(renderer().render).toHaveBeenCalled();
+    stage.voice();
+    expect(sound.voice).toHaveBeenCalled();
+  });
+
+  it('keeps drawing while a cloud hold skips the simulation step', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const step = vi.fn();
+    stage.bind(step, () => makeWorld());
+    stage.start();
+    stage.hold(true);
+    frame();
+    expect(step).not.toHaveBeenCalled();
+    expect(renderer().render).toHaveBeenCalled();
+    stage.hold(false);
+    frame();
+    expect(step).toHaveBeenCalledTimes(1);
+  });
 });
 
-it('draws and steps the live session, preserving hold, inference pacing and cleanup', () => {
-  const session = new SimSession(7);
-  const { host, stage, step, observe, canvas } = stageFor(session);
-  const anchor = vi.fn();
+describe('world sync', () => {
+  it('builds the island once and rebuilds props as they change', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const apple = entity({ id: 'apple-1', x: 2, y: 0.5, z: 0 });
+    const grass = entity({
+      id: 'grass-1',
+      kind: 'grass',
+      x: -2,
+      y: 0,
+      z: 0,
+      footprint: { kind: 'circle', r: 1.5 },
+    });
+    const rock = entity({ id: 'rock-1', kind: 'rock', x: 0, y: 0, z: 2 });
+    const carried = entity({ id: 'apple-back', x: 0, y: 0, z: 0 });
+    let current = makeWorld([apple, grass, rock]);
+    const step = vi.fn();
+    const anchor = vi.fn();
+    stage.bind(step, () => current);
+    stage.follow(anchor);
+    stage.start();
+
+    frame();
+    expect(step).toHaveBeenCalled();
+    expect(anchor).toHaveBeenCalledWith(expect.objectContaining({ x: expect.any(Number) }));
+
+    apple.stage = 1;
+    current = makeWorld([apple, grass, rock], [carried]);
+    frame();
+    expect(sound.bite).toHaveBeenCalled();
+    expect(sound.grasp).toHaveBeenCalled();
+
+    frame();
+    expect(sound.grasp).toHaveBeenCalledTimes(1);
+
+    current = makeWorld([apple, grass, rock, carried]);
+    frame();
+    expect(sound.place).toHaveBeenCalled();
+
+    current = makeWorld([grass, rock, carried]);
+    frame();
+    expect(sound.take).toHaveBeenCalled();
+  });
+
+  it('spins a round prop around its center and leaves the bottom on the ground', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const apple = entity({
+      id: 'apple-1',
+      x: 2,
+      y: 0.5,
+      z: 0,
+      qx: 0,
+      qy: 0,
+      qz: 0.1,
+      qw: 0.995,
+    });
+    const nest = entity({ id: 'home', kind: 'nest', x: 0, y: 0.02, z: 0 });
+    stage.bind(vi.fn(), () => makeWorld([apple, nest]));
+    stage.start();
+    frame();
+    const scene = renderer().render.mock.calls.at(-1)?.[0] as {
+      children: {
+        position: { x: number; y: number; z: number };
+        quaternion: { z: number; w: number };
+        children: { position: { y: number } }[];
+      }[];
+    };
+    const radius = KINDS.apple.physics!.radius;
+    const prop = scene.children.find((child) => Math.abs(child.position.x - 2) < 1e-6);
+    expect(prop?.position.y).toBeCloseTo(0.5 + radius);
+    expect(prop?.quaternion.z).toBeCloseTo(0.1);
+    expect(prop?.quaternion.w).toBeCloseTo(0.995);
+    expect(prop?.children[0]?.position.y).toBeCloseTo(-radius);
+  });
+
+  it('keeps a placed island and swaps in the next one from the source', async () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const first = new Group();
+    first.name = 'ready';
+    stage.placeIsland(first);
+    const next = new Group();
+    next.name = 'next';
+    stage.setIslandSource(async () => next);
+    stage.bind(vi.fn(), () => makeWorld());
+    stage.start();
+    frame();
+    const scene = () =>
+      renderer().render.mock.calls.at(-1)?.[0] as { children: { name: string }[] };
+    expect(scene().children.some((child) => child.name === 'ready')).toBe(true);
+    stage.retile();
+    frame();
+    expect(scene().children.some((child) => child.name === 'ready')).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    frame();
+    expect(scene().children.some((child) => child.name === 'next')).toBe(true);
+
+    stage.setIslandSource(async () => {
+      throw new Error('no mesh');
+    });
+    stage.retile();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    frame();
+    expect(scene().children.some((child) => child.name === 'next')).toBe(false);
+  });
+
+  it('drops a placed island when the world is not bound yet', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const placed = new Group();
+    placed.name = 'placed';
+    stage.placeIsland(placed);
+    const source = vi.fn(async () => new Group());
+    stage.setIslandSource(source);
+    stage.retile();
+    expect(source).not.toHaveBeenCalled();
+    stage.bind(vi.fn(), () => makeWorld());
+    stage.start();
+    frame();
+    const scene = renderer().render.mock.calls.at(-1)?.[0] as { children: { name: string }[] };
+    expect(scene.children.some((child) => child.name === 'placed')).toBe(false);
+  });
+
+  it('ignores an island that arrives after a newer one was requested', async () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    stage.bind(vi.fn(), () => makeWorld());
+    stage.start();
+    let resolveStale: (group: Group) => void = () => {};
+    let resolveFresh: (group: Group) => void = () => {};
+    const stale = new Group();
+    stale.name = 'stale';
+    const fresh = new Group();
+    fresh.name = 'fresh';
+    stage.setIslandSource(
+      () =>
+        new Promise((resolve) => {
+          resolveStale = resolve;
+        }),
+    );
+    stage.retile();
+    stage.setIslandSource(
+      () =>
+        new Promise((resolve) => {
+          resolveFresh = resolve;
+        }),
+    );
+    stage.retile();
+    resolveStale(stale);
+    await Promise.resolve();
+    frame();
+    const names = (): string[] => {
+      const scene = renderer().render.mock.calls.at(-1)?.[0] as { children: { name: string }[] };
+      return scene.children.map((child) => child.name);
+    };
+    expect(names()).not.toContain('stale');
+    resolveFresh(fresh);
+    await Promise.resolve();
+    frame();
+    expect(names()).toContain('fresh');
+    expect(names()).not.toContain('stale');
+  });
+
+  it('ignores a failed island after a newer one was requested', async () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    stage.bind(vi.fn(), () => makeWorld());
+    stage.start();
+    let rejectStale: (error: Error) => void = () => {};
+    let resolveFresh: (group: Group) => void = () => {};
+    const fresh = new Group();
+    fresh.name = 'fresh';
+    stage.setIslandSource(
+      () =>
+        new Promise((_, reject) => {
+          rejectStale = reject;
+        }),
+    );
+    stage.retile();
+    stage.setIslandSource(
+      () =>
+        new Promise((resolve) => {
+          resolveFresh = resolve;
+        }),
+    );
+    stage.retile();
+    rejectStale(new Error('late'));
+    await Promise.resolve();
+    frame();
+    const scene = renderer().render.mock.calls.at(-1)?.[0] as { children: unknown[] };
+    expect(scene.children.map((child) => (child as { name: string }).name)).toContain(
+      'ecology-sky',
+    );
+    expect(scene.children.map((child) => (child as { name: string }).name)).toContain(
+      'water-splash',
+    );
+    expect(scene.children).toHaveLength(5);
+    resolveFresh(fresh);
+    await Promise.resolve();
+    frame();
+    const drawn = renderer().render.mock.calls.at(-1)?.[0] as { children: { name: string }[] };
+    expect(drawn.children.map((child) => child.name)).toContain('fresh');
+  });
+
+  it('retile drops the baked island and builds it again', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    stage.retile();
+    const apple = entity({ id: 'apple-1', x: 2, y: 0.5, z: 0 });
+    const current = makeWorld([apple]);
+    stage.bind(vi.fn(), () => current);
+    stage.start();
+    frame();
+    stage.setOverlook(true);
+    stage.retile();
+    frame();
+    expect(sound.take).not.toHaveBeenCalled();
+  });
+
+  it('rebuilds a prop without a bite when the stage goes backwards', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const apple = entity({ id: 'apple-1', x: 2, y: 0.5, z: 0, stage: 1 });
+    const current = makeWorld([apple]);
+    stage.bind(vi.fn(), () => current);
+    stage.start();
+    frame();
+    apple.stage = 0;
+    frame();
+    expect(sound.bite).not.toHaveBeenCalled();
+  });
+
+  it('keeps a carried prop silent when another joins the back', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const first = entity({ id: 'apple-a', x: 0, y: 0, z: 0 });
+    const second = entity({ id: 'apple-b', x: 0, y: 0, z: 0 });
+    let current = makeWorld([], [first]);
+    stage.bind(vi.fn(), () => current);
+    stage.start();
+    frame();
+    current = makeWorld([], [first, second]);
+    frame();
+    expect(sound.grasp).toHaveBeenCalledTimes(1);
+    expect(sound.place).not.toHaveBeenCalled();
+  });
+
+  it('draws every tether in the seven-item carry limit', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const held = Array.from({ length: 7 }, (_, index) =>
+      entity({ id: `apple-${index}`, x: 0, y: 0, z: 0 }),
+    );
+    const current = makeWorld([], held);
+    stage.bind(vi.fn(), () => current);
+    stage.start();
+    frame();
+    const scene = renderer().render.mock.calls.at(-1)![0] as Group;
+    expect(
+      scene.children.filter((node) => node instanceof Line && current.tethers.has(node.name)),
+    ).toHaveLength(7);
+  });
+
+  it('does not sound a place for a carried prop that vanished', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const carried = entity({ id: 'apple-back', x: 0, y: 0, z: 0 });
+    let current = makeWorld([], [carried]);
+    stage.bind(vi.fn(), () => current);
+    stage.start();
+    frame();
+    current = makeWorld();
+    frame();
+    expect(sound.place).not.toHaveBeenCalled();
+    expect(sound.take).toHaveBeenCalled();
+  });
+
+  it('keeps one prop for an unchanged stage', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const apple = entity({ id: 'apple-1', x: 2, y: 0.5, z: 0, stage: 1 });
+    const current = makeWorld([apple]);
+    stage.bind(vi.fn(), () => current);
+    stage.start();
+    frame();
+    frame();
+    expect(sound.bite).not.toHaveBeenCalled();
+  });
+});
+
+describe('camera input', () => {
+  it('orbits and zooms within the chase limits', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const canvas = renderer().domElement;
+    stage.start();
+    frame();
+
+    canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 10, clientY: 10 }));
+    canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100 }));
+    canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 140, clientY: 120 }));
+    canvas.dispatchEvent(new MouseEvent('pointerup', { clientX: 140, clientY: 120 }));
+
+    for (let i = 0; i < 20; i++) {
+      canvas.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: -10000, cancelable: true, bubbles: true }),
+      );
+    }
+    for (let i = 0; i < 20; i++) {
+      canvas.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: 10000, cancelable: true, bubbles: true }),
+      );
+    }
+    frame();
+    expect(renderer().render).toHaveBeenCalled();
+  });
+
+  it('drags the overlook like a map and holds the view angle', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const canvas = renderer().domElement;
+    const at = { x: 0, y: 0, z: 0 };
+    const spin = [0, 0, 0, 0];
+    threeControl.onRender = (camera) => {
+      const placed = camera as unknown as {
+        position: { x: number; y: number; z: number };
+        quaternion: { x: number; y: number; z: number; w: number };
+      };
+      at.x = placed.position.x;
+      at.y = placed.position.y;
+      at.z = placed.position.z;
+      spin[0] = placed.quaternion.x;
+      spin[1] = placed.quaternion.y;
+      spin[2] = placed.quaternion.z;
+      spin[3] = placed.quaternion.w;
+    };
+
+    stage.setOverlook(true);
+    stage.start();
+    frame();
+
+    let tick = 16;
+    const settle = (): void => {
+      for (let i = 0; i < 80; i++) {
+        tick += 16;
+        frame(tick);
+      }
+    };
+    const start = { ...at };
+    const heading = [...spin];
+
+    canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 400, clientY: 300 }));
+    canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 500, clientY: 300 }));
+    frame();
+    settle();
+    expect(at.x).toBeLessThan(start.x);
+    expect(at.z).toBeCloseTo(start.z);
+    expect(spin).toEqual(heading);
+
+    const panned = { ...at };
+    canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 500, clientY: 400 }));
+    frame();
+    settle();
+    expect(at.z).toBeLessThan(panned.z);
+    expect(at.x).toBeCloseTo(panned.x);
+    expect(spin).toEqual(heading);
+  });
+
+  it('eases from the chase view into the overlook', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    let cameraY = 0;
+    threeControl.onRender = (camera) => {
+      cameraY = (camera as unknown as { position: { y: number } }).position.y;
+    };
+    stage.bind(vi.fn(), () => makeWorld());
+    stage.start();
+    frame();
+    const chaseY = cameraY;
+
+    stage.setOverlook(true);
+    frame();
+    expect(cameraY).toBeGreaterThan(chaseY);
+    expect(cameraY).toBeLessThan(34);
+
+    let tick = 16;
+    for (let i = 0; i < 80; i++) {
+      tick += 16;
+      frame(tick);
+    }
+    expect(cameraY).toBeCloseTo(34, 1);
+  });
+
+  it('follows the ground and clears ridges in the overlook', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const canvas = renderer().domElement;
+    let cameraY = 0;
+    threeControl.onRender = (camera) => {
+      cameraY = (camera as unknown as { position: { y: number } }).position.y;
+    };
+    const terrain = { height: (x: number) => (x < -1 ? 5 : 0) };
+    stage.bind(vi.fn(), () => ({ ...makeWorld(), terrain }));
+    stage.setOverlook(true);
+    stage.start();
+    frame();
+    const level = cameraY;
+
+    canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 400, clientY: 300 }));
+    canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 500, clientY: 300 }));
+    let tick = 16;
+    for (let i = 0; i < 80; i++) {
+      tick += 16;
+      frame(tick);
+    }
+    expect(cameraY).toBeGreaterThan(level);
+    expect(cameraY).toBeCloseTo(level + 5, 1);
+  });
+
+  it('raises the overlook camera over a ridge instead of into it', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    let cameraY = 0;
+    threeControl.onRender = (camera) => {
+      cameraY = (camera as unknown as { position: { y: number } }).position.y;
+    };
+    const terrain = { height: (_x: number, z: number) => (z > 3 ? 20 : 0) };
+    stage.bind(vi.fn(), () => ({ ...makeWorld(), terrain }));
+    stage.setOverlook(true);
+    stage.start();
+    frame();
+    expect(cameraY).toBeGreaterThan(34);
+  });
+
+  it('pans and raises the camera in the overlook', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const canvas = renderer().domElement;
+    stage.setOverlook(true);
+    stage.start();
+    frame();
+    canvas.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100 }));
+    canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 900, clientY: -900 }));
+    for (let i = 0; i < 30; i++) {
+      canvas.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: -10000, cancelable: true, bubbles: true }),
+      );
+    }
+    for (let i = 0; i < 30; i++) {
+      canvas.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: 10000, cancelable: true, bubbles: true }),
+      );
+    }
+    frame();
+    stage.setOverlook(false);
+    frame();
+    expect(renderer().render).toHaveBeenCalled();
+  });
+});
+
+describe('feedback', () => {
+  it('ticks for a landing foot and knocks on a halt', () => {
+    const spider = new RealSpider();
+    const stage = new Stage(makeHost(), spider);
+    stage.bind(vi.fn(), () => makeWorld());
+    stage.start();
+
+    frame();
+    expect(sound.step).not.toHaveBeenCalled();
+
+    spider.legs[0].lifted = true;
+    frame();
+    spider.legs[0].lifted = false;
+    frame();
+    expect(sound.step).toHaveBeenCalled();
+
+    spider.halt = 'steep';
+    frame();
+    expect(sound.knock).toHaveBeenCalledTimes(1);
+    spider.halt = 'clear';
+    frame();
+    spider.halt = 'solid';
+    frame();
+    expect(sound.knock).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports the anchor and hides a behind-camera point', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const anchor = vi.fn();
+    stage.follow(anchor);
+    stage.bind(vi.fn(), () => makeWorld());
+    stage.start();
+    frame();
+    expect(anchor).toHaveBeenCalledWith(expect.objectContaining({ x: expect.any(Number) }));
+  });
+
+  it('hides the anchor when the shell is behind the camera', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const anchor = vi.fn();
+    stage.follow(anchor);
+    stage.bind(vi.fn(), () => makeWorld());
+    stage.start();
+    threeControl.onRender = (camera) => {
+      camera.position.set(0, 1.45, 10);
+      camera.lookAt(0, 1.45, 20);
+    };
+    frame();
+    expect(anchor).toHaveBeenLastCalledWith(null);
+  });
+
+  it('stops listening after dispose', () => {
+    const stage = new Stage(makeHost(), new RealSpider());
+    const draw = renderer();
+    stage.dispose();
+    draw.domElement.dispatchEvent(new MouseEvent('pointerdown', { clientX: 1, clientY: 1 }));
+    expect(draw.domElement.setPointerCapture).not.toHaveBeenCalled();
+  });
+});
+
+it('draws the registered models and updates their silk until release', () => {
+  const spider = new RealSpider();
+  const stage = new Stage(makeHost(), spider);
+  const stone = entity({ id: 'pebble-1', kind: 'pebble', x: 3, z: 2 });
+  const berry = entity({ id: 'berry-1', kind: 'berry', x: 0, z: 3 });
+  const marker = entity({ id: 'marker-1', kind: 'marker', x: 0, y: 0.5, z: 3 });
+  const world = makeWorld([berry], [stone, marker]);
+  world.tethers.set(stone.id, 12);
+  world.tethers.set('missing', 2);
+  stage.bind(vi.fn(), () => world);
   stage.start();
-  frame(0);
-  expect(context.drawImage).not.toHaveBeenCalled();
-  stage.follow(anchor);
-  stage.bind(step, () => session.world, observe);
-  frame(17);
-  expect(step).toHaveBeenLastCalledWith(1 / 60);
-  expect(canvas.width).toBe(300);
-  expect(canvas.height).toBe(200);
-  expect(context.drawImage).toHaveBeenCalledOnce();
-  expect(anchor.mock.lastCall?.[0]).toMatchObject({ x: 460, y: expect.any(Number) });
-  expect(observe).not.toHaveBeenCalled();
-  expect(terrainPixels.fillRect).toHaveBeenCalled();
+  frame();
 
-  const tiles = terrainPixels.fillRect.mock.calls.length;
-  setLocalBusy(true);
-  frame(34);
-  expect(step).toHaveBeenCalledTimes(2);
-  expect(context.drawImage).toHaveBeenCalledOnce();
-  stage.hold(true);
-  frame(120);
-  expect(step).toHaveBeenCalledTimes(2);
-  expect(context.drawImage).toHaveBeenCalledTimes(2);
-  expect(terrainPixels.fillRect).toHaveBeenCalledTimes(tiles);
-  setLocalBusy(false);
-  vi.mocked(performance.now).mockReturnValue(120);
-  stage.hold(false);
-  const saved = captureBody(new SimSession(31), null);
-  saved.marks = [{ name: '从存档回来', x: 2, z: 1 }];
-  session.adopt(saved);
-  stage.retile();
-  ResizeObserverStub.last?.trigger();
-  frame(200);
-  expect(step).toHaveBeenCalledTimes(5);
-  expect(step.mock.calls.every(([dt]) => dt === 1 / 60)).toBe(true);
-  expect(terrainPixels.fillRect.mock.calls.length).toBeGreaterThan(tiles);
-  expect(context.fillText).toHaveBeenCalledWith(
-    '从存档回来',
-    expect.any(Number),
-    expect.any(Number),
-  );
+  const scene = renderer().render.mock.calls.at(-1)![0] as Group;
+  const tether = scene.children.find((node) => node.name === stone.id) as Line;
+  expect(tether).toBeInstanceOf(Line);
+  expect(scene.getObjectByName('missing')).toBeUndefined();
+  const plainEndpoint = scene.getObjectByName(marker.id) as Line;
+  expect(plainEndpoint.geometry.getAttribute('position').getY(8)).toBeCloseTo(marker.y);
+  const points = tether.geometry.getAttribute('position');
+  const anchor = tetherAnchor(spider.root.position, spider.yaw);
+  expect(points.getX(0)).toBeCloseTo(anchor.x);
+  expect(points.getY(0)).toBeCloseTo(anchor.y);
+  expect(points.getZ(0)).toBeCloseTo(anchor.z);
+  expect(points.getY(4)).toBeLessThan((points.getY(0) + points.getY(8)) / 2);
+  const propColors = new Set<number>();
+  scene.traverse((node) => {
+    const material = (node as { material?: { color?: { getHex(): number } } }).material;
+    if (material?.color) propColors.add(material.color.getHex());
+  });
+  expect(propColors).toContain(0x8793a4);
+  expect(propColors).toContain(0xa05f9d);
 
-  stage.voice();
-  expect(sound.voice).toHaveBeenCalledOnce();
+  stone.x += 1;
+  frame();
+  expect(scene.children).toContain(tether);
+  expect(points.getX(8)).toBeCloseTo(stone.x);
+  const dispose = vi.spyOn(tether.geometry, 'dispose');
+  world.tethers.clear();
+  frame();
+  expect(scene.children).not.toContain(tether);
+  expect(dispose).toHaveBeenCalledOnce();
   stage.dispose();
-  expect(cancelAnimationFrame).toHaveBeenCalledWith(19);
-  expect(ResizeObserverStub.last?.disconnect).toHaveBeenCalledOnce();
-  expect(sound.dispose).toHaveBeenCalledOnce();
-  expect(host.childElementCount).toBe(0);
 });
 
-it('drops hidden time and fractional steps across visibility changes', () => {
-  const session = new SimSession(7);
-  const { stage, step, observe } = stageFor(session);
+it('runs at most three fixed steps and clears hidden time on resume', () => {
+  const now = vi.spyOn(performance, 'now').mockReturnValue(0);
   const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
-  stage.bind(step, () => session.world, observe);
+  const stage = new Stage(makeHost(), new RealSpider());
+  const step = vi.fn();
+  stage.bind(step, () => makeWorld());
   stage.start();
-  frame(8);
-  frame(16);
-  expect(step).not.toHaveBeenCalled();
+  const tick = renderer().loop!;
+  tick(100);
+  expect(step).toHaveBeenCalledTimes(3);
+  tick(108);
+  expect(step).toHaveBeenCalledTimes(3);
   hidden.mockReturnValue(true);
-  vi.mocked(performance.now).mockReturnValue(16);
+  now.mockReturnValue(108);
   document.dispatchEvent(new Event('visibilitychange'));
-  frame(400);
-  expect(step).not.toHaveBeenCalled();
+  tick(200);
+  expect(step).toHaveBeenCalledTimes(3);
   hidden.mockReturnValue(false);
-  vi.mocked(performance.now).mockReturnValue(1000);
+  now.mockReturnValue(1000);
   document.dispatchEvent(new Event('visibilitychange'));
-  frame(1001);
-  expect(step).not.toHaveBeenCalled();
-  vi.mocked(performance.now).mockReturnValue(1001);
   stage.hold(false);
-  frame(1017);
-  expect(step).toHaveBeenCalledExactlyOnceWith(1 / 60);
+  tick(1010);
+  expect(step).toHaveBeenCalledTimes(3);
+  tick(1017);
+  expect(step).toHaveBeenLastCalledWith(1 / 60);
+  expect(step).toHaveBeenCalledTimes(4);
   stage.dispose();
-  hidden.mockRestore();
-});
-
-it('projects the Agent observation onto the map and pans the same world', () => {
-  const session = new SimSession(7);
-  session.world.entities = indexEntities([
-    apple,
-    { ...apple, id: 'visible', x: 4, z: 0 },
-    { ...apple, id: 'distant', x: 32, z: -9, kind: 'test' },
-  ]);
-  session.world.terrain = { height: () => 0 };
-  session.world.blocks = [];
-  session.world.marks = [{ name: '水边', x: 2, z: 3 }];
-  session.spider.lamp = true;
-  const { host, stage, step, observe, canvas } = stageFor(session);
-  stage.bind(step, () => session.world, observe);
-  const anchor = vi.fn();
-  stage.follow(anchor);
-  stage.setOverlook(true);
-  stage.start();
-  frame(16);
-  expect(host.querySelector<HTMLElement>('#observe')?.hidden).toBe(false);
-  expect(host.querySelector('#observe-readout')?.textContent).toContain('看见');
-  expect(context.fillText).toHaveBeenCalledWith('水边', expect.any(Number), expect.any(Number));
-  expect(context.createRadialGradient).toHaveBeenCalled();
-  expect(observe).toHaveBeenCalledOnce();
-  frame(32);
-  expect(observe).toHaveBeenCalledOnce();
-  frame(132);
-  expect(observe).toHaveBeenCalledTimes(2);
-  expect(observe.mock.lastCall).toBeDefined();
-  expect(observe.mock.results[0].value.entities.some((item) => !item.inReach)).toBe(true);
-
-  const move = new PointerEvent('pointermove', { clientX: 900, clientY: 600 });
-  canvas.dispatchEvent(move);
-  canvas.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, clientX: 20, clientY: 20 }));
-  canvas.dispatchEvent(move);
-  canvas.dispatchEvent(new PointerEvent('pointercancel'));
-  expect(canvas.setPointerCapture).toHaveBeenCalledWith(2);
-  const wheel = new WheelEvent('wheel', { deltaY: -5000, cancelable: true });
-  canvas.dispatchEvent(wheel);
-  expect(wheel.defaultPrevented).toBe(true);
-  frame(160);
-  expect(anchor).toHaveBeenLastCalledWith(null);
-  stage.setOverlook(false);
-  vi.mocked(Date.now).mockReturnValue(new Date(2026, 10, 11, 12).getTime());
-  session.spider.bindWater(() => waterAt({ height: () => -2 }, 0, 0));
-  frame(200);
-  expect(host.querySelector<HTMLElement>('#observe')?.hidden).toBe(true);
-  expect(anchor.mock.lastCall?.[0]).not.toBeNull();
-  expect(context.ellipse).toHaveBeenCalledOnce();
-  stage.dispose();
-});
-
-it('paints carrying and listens to item and gait changes in the real world', async () => {
-  const session = new SimSession(7);
-  const fruit = { ...apple };
-  session.world.entities = indexEntities([
-    fruit,
-    { ...fruit, id: 'leaf', kind: 'grass', x: 3, footprint: { kind: 'circle', r: 1.2 } },
-    { ...fruit, id: 'tree', kind: 'tree', x: 5 },
-    { ...fruit, id: 'far', kind: 'stone', x: 400, z: 400 },
-  ]);
-  session.world.blocks = [];
-  const { stage } = stageFor(session);
-  stage.bind(
-    () => {},
-    () => session.world,
-    () => session.observe(),
-  );
-  stage.start();
-  frame(16);
-  expect(sound.grasp).not.toHaveBeenCalled();
-
-  const pickingUp = session.pickUp(fruit.id);
-  for (let i = 0; i < 100; i++) session.frame(0.025);
-  expect(await pickingUp).toMatchObject({ ok: true });
-  frame(32);
-  expect([...session.world.tethers.keys()]).toEqual([fruit.id]);
-  expect(sound.grasp).toHaveBeenCalledOnce();
-  expect(context.stroke).toHaveBeenCalled();
-  fruit.stage++;
-  session.spider.legs[0].lifted = true;
-  frame(48);
-  session.spider.legs[0].lifted = false;
-  session.spider.halt = 'solid';
-  frame(64);
-  expect(sound.bite).toHaveBeenCalledOnce();
-  expect(sound.step).toHaveBeenCalledOnce();
-  expect(sound.knock).toHaveBeenCalledOnce();
-
-  session.world.tethers.delete(fruit.id);
-  frame(80);
-  expect(sound.place).toHaveBeenCalledOnce();
-  session.world.entities.delete(fruit.id);
-  frame(96);
-  expect(sound.take).toHaveBeenCalledOnce();
-  const a = { ...apple, id: 'a' };
-  const b = { ...apple, id: 'b' };
-  attachCargo(session.world, a);
-  frame(112);
-  attachCargo(session.world, b);
-  frame(128);
-  expect(sound.grasp).toHaveBeenCalledTimes(3);
-  session.world.tethers.delete(a.id);
-  session.world.entities.delete(a.id);
-  frame(144);
-  expect(sound.take).toHaveBeenCalledTimes(2);
-  expect(sound.place).toHaveBeenCalledOnce();
-  stage.dispose();
-});
-
-it('draws a pebble and a berry using their registered pixel colors', () => {
-  const session = new SimSession(7);
-  session.world.entities.clear();
-  session.addEntity('pebble', 0, -1);
-  session.addEntity('berry', 1, -1);
-  const colors = new Set<string>();
-  context.fillRect.mockImplementation(() => {
-    colors.add(Reflect.get(context, 'fillStyle'));
-  });
-  const { stage, step, observe } = stageFor(session);
-  stage.bind(step, () => session.world, observe);
-  stage.start();
-  frame(17);
-  stage.dispose();
-  context.fillRect.mockReset();
-
-  expect(colors).toContain('#8793a4');
-  expect(colors).toContain('#a05f9d');
 });

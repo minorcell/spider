@@ -24,7 +24,7 @@ import { toObservation } from '@/src/shared/state';
 import { surfaceOf, Terrain } from '@/src/shared/terrain';
 import { createWorld, REACH, REACH_Y, VIEW_DISTANCE } from '@/src/shared/world';
 import {
-  bakeWorkerTerrain,
+  bakeWorkerIsland,
   dressIsland,
   planAroundNest,
   SEED,
@@ -138,8 +138,8 @@ describe('route around the nest', () => {
 });
 
 describe('worker boot', () => {
-  it('bakes worker terrain in under 250 ms', () => {
-    expect(bestOf(3, () => void bakeWorkerTerrain())).toBeLessThan(250);
+  it('bakes the worker island in under 250 ms', () => {
+    expect(bestOf(3, () => void bakeWorkerIsland())).toBeLessThan(250);
   });
 });
 

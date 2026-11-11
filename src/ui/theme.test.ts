@@ -17,7 +17,7 @@ describe('installTheme', () => {
     installTheme(doc, 'day');
 
     expect(doc.documentElement.dataset.theme).toBe('day');
-    expect(doc.documentElement.style.getPropertyValue('color-scheme')).toBe('dark');
+    expect(doc.documentElement.style.getPropertyValue('color-scheme')).toBe('light');
     expect(doc.documentElement.style.getPropertyValue('--ui-ink')).toBe(themes.day.ink);
     expect(doc.documentElement.style.getPropertyValue('--ui-paper')).toBe(themes.day.paper);
     expect(doc.documentElement.style.getPropertyValue('--ui-paper-deep')).toBe(

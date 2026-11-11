@@ -64,10 +64,11 @@ window.addEventListener('pagehide', () => {
 
 const note = await restoreWorld(session, new Date(), store);
 stage = new Stage(host, session.spider);
+stage.placeIsland(ready.island);
+stage.setIslandSource(async (seed) => (await prepareWorld(seed)).island);
 stage.bind(
   (dt) => session.frame(dt),
   () => session.world,
-  () => session.observe(),
 );
 stage.start();
 mountPanel(document, session, stage, note, opening);

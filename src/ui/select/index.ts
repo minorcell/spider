@@ -1,6 +1,6 @@
 import { h } from '@/src/ui/dom';
 import { bindFocus, paint } from '@/src/ui/style';
-import { border, color, controlStyle, font, panelStyle } from '@/src/ui/token';
+import { border, color, font } from '@/src/ui/token';
 
 export type SelectChoice = { value: string; label: string };
 
@@ -45,20 +45,20 @@ export function menuSelect(
 
   const paintTrigger = (): void => {
     paint(trigger, {
-      ...controlStyle,
-      width: '100%',
       minWidth: '112px',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
       gap: '14px',
-      padding: '6px 10px',
+      border: border.ink,
+      padding: '7px 9px',
+      background: color.paper,
+      color: color.ink,
       font: font.body,
       cursor: 'pointer',
       textAlign: 'left',
     });
     paint(menu, {
-      ...panelStyle,
       position: 'absolute',
       top: 'calc(100% + 5px)',
       right: '0',
@@ -66,7 +66,8 @@ export function menuSelect(
       minWidth: '100%',
       margin: '0',
       padding: '4px',
-      boxShadow: '0 8px 24px #080d0b9c',
+      border: border.ink,
+      background: color.paper,
     });
     paint(wrap, { position: 'relative' });
   };
@@ -79,9 +80,8 @@ export function menuSelect(
     for (const option of menu.querySelectorAll<HTMLElement>('[role="option"]')) {
       const selected = option.dataset.value === input.value;
       option.setAttribute('aria-selected', selected ? 'true' : 'false');
-      option.style.outline = selected ? border.focus : '';
+      option.style.outline = selected ? border.ink : '';
       option.style.outlineOffset = selected ? '-1px' : '';
-      option.style.background = selected ? color.selected : 'transparent';
     }
   };
   const valueProp = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!;
@@ -99,7 +99,7 @@ export function menuSelect(
   const setOpen = (open: boolean): void => {
     trigger.setAttribute('aria-expanded', String(open));
     menu.hidden = !open;
-    trigger.style.outline = open ? border.focus : '';
+    trigger.style.outline = open ? border.ink : '';
     trigger.style.outlineOffset = open ? '2px' : '';
   };
 
@@ -133,7 +133,6 @@ export function menuSelect(
           display: 'block',
           width: '100%',
           border: '0',
-          borderRadius: '4px',
           padding: '6px 8px',
           background: 'transparent',
           color: color.ink,
@@ -143,14 +142,14 @@ export function menuSelect(
           cursor: 'pointer',
         });
         option.addEventListener('mouseenter', () => {
-          option.style.outline = border.focus;
+          option.style.outline = border.ink;
           option.style.outlineOffset = '-1px';
         });
         option.addEventListener('mouseleave', () => {
           if (option.getAttribute('aria-selected') !== 'true') option.style.outline = '';
         });
         if (choice.value === input.value) {
-          option.style.outline = border.focus;
+          option.style.outline = border.ink;
           option.style.outlineOffset = '-1px';
         }
         return option;

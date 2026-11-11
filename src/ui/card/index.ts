@@ -1,6 +1,6 @@
 import { h } from '@/src/ui/dom';
 import { paint } from '@/src/ui/style';
-import { border, color, panelStyle } from '@/src/ui/token';
+import { border, color } from '@/src/ui/token';
 
 export function card(
   doc: Document,
@@ -8,7 +8,7 @@ export function card(
   ...body: Node[]
 ): HTMLElement {
   const heading = h(doc, 'h2', {}, options.title);
-  paint(heading, { margin: '0', fontSize: '16px', fontWeight: '650' });
+  paint(heading, { margin: '0', fontSize: '16px', fontWeight: '400', letterSpacing: '0.07em' });
   const hint = h(doc, 'small', {}, options.hint);
   paint(hint, { color: color.muted, fontSize: '11px' });
   const head = h(doc, 'div', { class: 'card-head' }, heading, hint);
@@ -28,7 +28,7 @@ export function card(
     head,
     ...body,
   );
-  paint(node, { ...panelStyle, minWidth: '0', background: color.paperDeep });
+  paint(node, { minWidth: '0', border: border.hairline, background: 'transparent' });
   if (options.spaced) paint(node, { marginTop: '16px' });
   return node;
 }

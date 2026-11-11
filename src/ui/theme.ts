@@ -1,4 +1,4 @@
-import { color, themes, variableName, type ThemeName, type ThemePalette } from '@/src/ui/token';
+import { themes, variableName, type ThemeName, type ThemePalette } from '@/src/ui/token';
 
 const STYLE_ID = 'ui-theme';
 const TRANSITION_MS = 1100;
@@ -14,14 +14,7 @@ function themeStyle(): string {
   const transitions = entries
     .map(([key]) => `${variableName(key as keyof ThemePalette)} ${TRANSITION_MS}ms ease`)
     .join(',');
-  return `${declarations}
-    :root { transition: ${transitions}; }
-    ::selection { background: ${color.accent}; color: ${color.onAccent}; }
-    .ui-button:not(:disabled):hover { filter: brightness(1.1); }
-    button:disabled { opacity: .5; cursor: not-allowed !important; }
-    input::placeholder, textarea::placeholder { color: var(--ui-muted); opacity: 1; }
-    @media (prefers-reduced-motion: reduce) { :root { transition: none; } }
-  `;
+  return `${declarations}:root{transition:${transitions}}@media (prefers-reduced-motion: reduce){:root{transition:none}}`;
 }
 
 function ensureStyle(doc: Document): void {
@@ -39,7 +32,7 @@ export function installTheme(doc: Document, theme: ThemeName): void {
     root.style.setProperty(variableName(key as keyof ThemePalette), value);
   }
   root.dataset.theme = theme;
-  root.style.setProperty('color-scheme', 'dark');
+  root.style.setProperty('color-scheme', theme === 'night' ? 'dark' : 'light');
   const meta = doc.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) meta.content = themes[theme].paper;
 }

@@ -18,24 +18,20 @@ export interface BlockSpec {
   height: number;
 }
 
-export interface PixelAppearance {
-  readonly base: string;
-  readonly top: string;
-  readonly shade: string;
-  readonly shape: 'stone' | 'fruit' | 'tree' | 'grass';
-}
-
-export const STONE_PIXELS: PixelAppearance = {
-  base: '#74817a',
-  top: '#a0ac93',
-  shade: '#43534c',
-  shape: 'stone',
-};
+export type PropModel =
+  | 'apple'
+  | 'grass'
+  | 'nest'
+  | 'tree'
+  | 'stone'
+  | 'bog-stone'
+  | { readonly color: number; readonly segments: number };
 
 export interface KindSpec {
   properties?: readonly string[];
   carryable?: true;
-  pixels?: PixelAppearance | false;
+  label?: string;
+  model?: PropModel;
   /** Lifetime measured in simulation seconds. */
   lifetime?: number;
   eat?: EatSpec;
@@ -50,19 +46,22 @@ const EMPTY_PROPERTIES: readonly string[] = Object.freeze([]);
 export const KINDS: Record<string, KindSpec> = {
   apple: {
     carryable: true,
-    pixels: { base: '#cb6550', top: '#f2a27c', shade: '#7c433b', shape: 'fruit' },
+    label: '苹果',
+    model: 'apple',
     eat: { duration: 3, stages: 2, removes: true },
     rest: 0,
     physics: { solid: true, radius: 0.26, loose: true, rolls: true, mass: 0.059, volume: 0.074 },
   },
   pebble: {
     carryable: true,
-    pixels: { base: '#8793a4', top: '#c1ccd5', shade: '#4c596e', shape: 'stone' },
+    label: '石子',
+    model: { color: 0x8793a4, segments: 8 },
     rest: 0,
     physics: { solid: true, radius: 0.19, loose: true, rolls: true, mass: 0.07 },
   },
   berry: {
-    pixels: { base: '#a05f9d', top: '#e2a9d4', shade: '#613757', shape: 'fruit' },
+    label: '浆果',
+    model: { color: 0xa05f9d, segments: 14 },
     lifetime: 180,
     eat: { duration: 1, stages: 1, removes: true },
     rest: 0,
@@ -70,30 +69,35 @@ export const KINDS: Record<string, KindSpec> = {
   },
   grass: {
     properties: ['cover'],
-    pixels: { base: '#688651', top: '#9aaa67', shade: '#456b48', shape: 'grass' },
+    label: '草',
+    model: 'grass',
     rest: 0,
     physics: { solid: false, radius: 0, loose: false, rolls: false },
   },
   nest: {
     properties: ['home'],
-    pixels: false,
+    label: '巢',
+    model: 'nest',
     rest: 0,
     physics: { solid: true, radius: 0, loose: false, rolls: false },
   },
   tree: {
-    pixels: { base: '#3c6447', top: '#719554', shade: '#2a4e39', shape: 'tree' },
+    label: '树',
+    model: 'tree',
     rest: -0.05,
     physics: { solid: true, radius: 0.3, loose: false, rolls: false },
     block: { radius: 0.62, height: 2.2 },
   },
   stone: {
-    pixels: STONE_PIXELS,
+    label: '石',
+    model: 'stone',
     rest: 0,
     physics: { solid: true, radius: 0.8, loose: false, rolls: false },
     block: { radius: 0.82, height: 0.7 },
   },
   'bog-stone': {
-    pixels: { base: '#657b6b', top: '#98a47c', shade: '#40594c', shape: 'stone' },
+    label: '沼石',
+    model: 'bog-stone',
     rest: -0.1,
     wet: true,
     physics: { solid: true, radius: 0.8, loose: false, rolls: false },

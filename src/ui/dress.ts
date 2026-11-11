@@ -1,14 +1,14 @@
 import { onMedia, paint } from '@/src/ui/style';
 import { installTheme } from '@/src/ui/theme';
-import { border, color, font, media, panelStyle, typeface, type ThemeName } from '@/src/ui/token';
+import { border, color, font, media, typeface, type ThemeName } from '@/src/ui/token';
 
-const bodyText = { color: color.ink, font: font.body, letterSpacing: 'normal' };
+const serif = { color: color.ink, font: font.body, letterSpacing: '0.04em' };
 
 export function paintDocument(doc: Document, theme: ThemeName = 'day'): void {
   installTheme(doc, theme);
   const fill = { margin: '0', height: '100%', overflow: 'hidden', background: color.paper };
   paint(doc.documentElement, fill);
-  paint(doc.body, { ...fill, ...bodyText });
+  paint(doc.body, { ...fill, ...serif });
 }
 
 export function paintStage(sheet: HTMLElement, stage: HTMLElement): void {
@@ -28,9 +28,9 @@ export function paintFps(node: HTMLElement): void {
     left: 'max(22px, env(safe-area-inset-left))',
     zIndex: '2',
     margin: '0',
+    padding: '0',
     color: color.muted,
-    ...panelStyle,
-    padding: '3px 6px',
+    background: color.paper,
     fontFamily: typeface.mono,
     fontSize: '11px',
     fontVariantNumeric: 'tabular-nums',
@@ -40,8 +40,7 @@ export function paintFps(node: HTMLElement): void {
 
 export function paintTrace(trace: HTMLElement, tail: HTMLElement): void {
   paint(trace, {
-    ...bodyText,
-    ...panelStyle,
+    ...serif,
     position: 'absolute',
     left: '0',
     top: '0',
@@ -52,6 +51,8 @@ export function paintTrace(trace: HTMLElement, tail: HTMLElement): void {
     margin: '0',
     padding: '7px 10px 8px',
     listStyle: 'none',
+    background: color.paper,
+    border: border.ink,
     pointerEvents: 'none',
   });
   paint(tail, {
@@ -75,10 +76,10 @@ export function placeTail(
   paint(tail, {
     left: `${x}px`,
     top: down ? `${top + height - 5}px` : `${top - 5}px`,
-    borderRight: down ? border.hairline : '0',
-    borderBottom: down ? border.hairline : '0',
-    borderLeft: down ? '0' : border.hairline,
-    borderTop: down ? '0' : border.hairline,
+    borderRight: down ? border.ink : '0',
+    borderBottom: down ? border.ink : '0',
+    borderLeft: down ? '0' : border.ink,
+    borderTop: down ? '0' : border.ink,
   });
   tail.hidden = false;
 }
@@ -86,8 +87,6 @@ export function placeTail(
 export function paintObserve(layer: HTMLElement, readout: HTMLElement, pins: HTMLElement): void {
   paint(layer, { position: 'absolute', inset: '0', zIndex: '2', pointerEvents: 'none' });
   paint(readout, {
-    ...panelStyle,
-    padding: '7px 10px',
     position: 'absolute',
     left: '22px',
     top: '62px',
@@ -122,7 +121,6 @@ type Chrome = {
   brand: HTMLElement;
   nav: HTMLElement;
   foot: HTMLElement;
-  close: HTMLButtonElement;
   body: HTMLElement;
 };
 
@@ -137,12 +135,12 @@ export function dressChrome(nodes: Chrome): void {
     bottom: '18px',
     zIndex: '2',
     margin: '0',
-    ...bodyText,
+    ...serif,
     pointerEvents: 'none',
     opacity: '0.78',
   });
   const hint = nodes.keys.querySelector('p');
-  if (hint) paint(hint, { ...panelStyle, margin: '0', padding: '3px 7px', font: font.read });
+  if (hint) paint(hint, { margin: '0' });
   paint(nodes.corner, {
     position: 'absolute',
     top: '18px',
@@ -151,7 +149,7 @@ export function dressChrome(nodes: Chrome): void {
     display: 'flex',
     gap: '8px',
   });
-  paint(nodes.brand, { margin: '0 8px 28px', fontSize: '23px', fontWeight: '750' });
+  paint(nodes.brand, { margin: '0 8px 28px', fontSize: '17px', letterSpacing: '0.1em' });
   const small = nodes.brand.querySelector('small');
   if (small)
     paint(small, {
@@ -159,7 +157,7 @@ export function dressChrome(nodes: Chrome): void {
       marginTop: '5px',
       color: color.muted,
       fontSize: '11px',
-      fontWeight: '500',
+      letterSpacing: '0.04em',
     });
   paint(nodes.nav, { display: 'grid', gap: '4px' });
   paint(nodes.foot, {
@@ -193,10 +191,7 @@ function layoutChrome(nextPilot: boolean, nextSheet: boolean): void {
   sheetNarrowFlag = nextSheet;
   const frame = chrome!;
   paint(frame.pilot, {
-    ...panelStyle,
-    ...bodyText,
-    padding: '7px',
-    boxShadow: '0 5px 16px #080d0b80',
+    ...serif,
     position: 'absolute',
     right: '22px',
     bottom: nextPilot ? '96px' : '18px',
@@ -208,8 +203,7 @@ function layoutChrome(nextPilot: boolean, nextSheet: boolean): void {
     margin: '0',
   });
   paint(frame.goal, {
-    width: nextPilot ? 'auto' : 'min(25rem, 44vw)',
-    minWidth: '0',
+    width: nextPilot ? 'auto' : 'min(22rem, 42vw)',
     flex: nextPilot ? '1' : '0 0 auto',
   });
   paint(frame.shell, {
@@ -221,23 +215,15 @@ function layoutChrome(nextPilot: boolean, nextSheet: boolean): void {
   });
   paint(frame.rail, {
     display: 'flex',
-    position: 'relative',
     flexDirection: 'column',
     minHeight: '0',
     padding: nextSheet ? '17px 18px 12px' : '28px 18px 20px',
-    borderRight: nextSheet ? '0' : border.hairline,
-    borderBottom: nextSheet ? border.hairline : '0',
-    background: color.paperDeep,
+    borderRight: nextSheet ? '0' : border.ink,
+    borderBottom: nextSheet ? border.ink : '0',
   });
   paint(frame.brand, { margin: nextSheet ? '0 0 14px' : '0 8px 28px' });
-  paint(frame.nav, { gridTemplateColumns: nextSheet ? 'repeat(5, minmax(0, 1fr))' : 'none' });
+  paint(frame.nav, { gridTemplateColumns: nextSheet ? 'repeat(3, 1fr)' : 'none' });
   paint(frame.foot, { display: nextSheet ? 'none' : 'block' });
-  paint(frame.close, {
-    position: nextSheet ? 'absolute' : 'static',
-    top: '17px',
-    right: '18px',
-    marginTop: nextSheet ? '0' : '12px',
-  });
 }
 
 let usagePage: HTMLElement | null = null;
@@ -262,11 +248,7 @@ export function dressUsage(root: HTMLElement): void {
 }
 
 function paintUsage(root: HTMLElement): void {
-  paint(root, {
-    boxSizing: 'border-box',
-    padding: '30px clamp(22px, 4vw, 48px) 36px',
-    ...bodyText,
-  });
+  paint(root, { boxSizing: 'border-box', padding: '30px clamp(22px, 4vw, 48px) 36px', ...serif });
   const top = root.querySelector<HTMLElement>('.top');
   if (top)
     paint(top, {
@@ -289,6 +271,71 @@ function paintUsage(root: HTMLElement): void {
     });
   const actions = root.querySelector<HTMLElement>('.top-actions');
   if (actions) paint(actions, { display: 'flex', alignItems: 'center', gap: '8px' });
+  const wrap = root.querySelector<HTMLElement>('.select-wrap');
+  if (wrap) paint(wrap, { position: 'relative' });
+  const range = root.querySelector<HTMLElement>('.range');
+  if (range) {
+    paint(range, {
+      minWidth: '112px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: '14px',
+      border: border.ink,
+      padding: '7px 9px',
+      background: 'transparent',
+      textAlign: 'left',
+      color: color.ink,
+      font: font.body,
+      cursor: 'pointer',
+    });
+    range.addEventListener('click', () => {
+      const open = range.getAttribute('aria-expanded') === 'true';
+      range.style.outline = open ? border.ink : '';
+      range.style.outlineOffset = open ? '2px' : '';
+    });
+  }
+  const arrow = root.querySelector<HTMLElement>('.select-arrow');
+  if (arrow) paint(arrow, { fontSize: '12px', lineHeight: '1' });
+  const menu = root.querySelector<HTMLElement>('.select-menu');
+  if (menu) {
+    paint(menu, {
+      position: 'absolute',
+      top: 'calc(100% + 5px)',
+      right: '0',
+      zIndex: '5',
+      minWidth: '100%',
+      margin: '0',
+      padding: '4px',
+      border: border.ink,
+      background: color.paper,
+    });
+    for (const option of menu.querySelectorAll<HTMLElement>('button')) {
+      paint(option, {
+        display: 'block',
+        width: '100%',
+        border: '0',
+        padding: '6px 8px',
+        background: 'transparent',
+        textAlign: 'left',
+        whiteSpace: 'nowrap',
+        color: color.ink,
+        font: font.body,
+        cursor: 'pointer',
+      });
+      option.addEventListener('mouseenter', () => {
+        option.style.outline = border.ink;
+        option.style.outlineOffset = '-1px';
+      });
+      option.addEventListener('mouseleave', () => {
+        if (option.getAttribute('aria-selected') !== 'true') option.style.outline = '';
+      });
+      if (option.getAttribute('aria-selected') === 'true') {
+        option.style.outline = border.ink;
+        option.style.outlineOffset = '-1px';
+      }
+    }
+  }
   const grid = root.querySelector<HTMLElement>('.grid');
   if (grid) paint(grid, { display: 'grid', gap: '16px' });
   const chart = root.querySelector<HTMLElement>('.chart');
@@ -485,7 +532,7 @@ function layoutUsage(root: HTMLElement): void {
   if (top) paint(top, { flexDirection: phoneNarrow ? 'column' : 'row' });
   const actions = root.querySelector<HTMLElement>('.top-actions');
   if (actions) paint(actions, { width: phoneNarrow ? '100%' : 'auto' });
-  const range = root.querySelector<HTMLElement>('.select-wrap');
+  const range = root.querySelector<HTMLElement>('.range');
   if (range) paint(range, { flex: phoneNarrow ? '1' : '0 0 auto' });
   const wrap = root.querySelector<HTMLElement>('.donut-wrap');
   if (wrap) paint(wrap, { gridTemplateColumns: phoneNarrow ? '115px 1fr' : '135px 1fr' });

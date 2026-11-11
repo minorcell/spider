@@ -13,6 +13,7 @@ import {
   type Camera,
 } from 'three';
 import { PALETTE } from '@/src/shared/config';
+import { kindOf } from '@/src/shared/kinds';
 import { paintObserve, paintPin } from '@/src/ui/dress';
 import { aheadAt } from '@/src/shared/sense';
 import { EYE_HEIGHT, sightOutline } from '@/src/shared/sight';
@@ -26,15 +27,6 @@ import { describeObservation, meters } from './observationText';
 
 const RING = 72;
 const OBSERVE_REFRESH_MS = 100;
-const NAME: Record<string, string> = {
-  apple: '苹果',
-  grass: '草',
-  nest: '巢',
-  tree: '树',
-  stone: '石',
-  'bog-stone': '沼石',
-};
-
 export class ObserveOverlay {
   readonly #root = new Group();
   readonly #viewRing: Line;
@@ -103,6 +95,10 @@ export class ObserveOverlay {
 
   get object(): Group {
     return this.#root;
+  }
+
+  dispose(): void {
+    this.#layer.remove();
   }
 
   reset(): void {
@@ -240,7 +236,7 @@ export class ObserveOverlay {
             : state === 'hidden'
               ? '挡住'
               : '视线外';
-      const name = NAME[entity.kind] ?? entity.kind;
+      const name = kindOf(entity.kind)?.label ?? entity.kind;
       const rise = entity.y - observation.self.ground;
       const climb =
         Math.abs(rise) < 0.05 ? '' : rise > 0 ? `　高 ${meters(rise)}` : `　低 ${meters(-rise)}`;

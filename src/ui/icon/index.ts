@@ -1,5 +1,6 @@
-import { button } from '@/src/ui/button';
-import { paint } from '@/src/ui/style';
+import { h } from '@/src/ui/dom';
+import { bindFocus, paint } from '@/src/ui/style';
+import { border, color } from '@/src/ui/token';
 
 const GEAR =
   'M6.9 1.15h2.2l.22 1.35a4.7 4.7 0 0 1 1.05.6l1.15-.7.95.95-.7 1.15c.26.32.47.67.6 1.05l1.35.22v2.2l-1.35.22a4.7 4.7 0 0 1-.6 1.05l.7 1.15-.95.95-1.15-.7a4.7 4.7 0 0 1-1.05.6l-.22 1.35H6.9l-.22-1.35a4.7 4.7 0 0 1-1.05-.6l-1.15.7-.95-.95.7-1.15a4.7 4.7 0 0 1-.6-1.05l-1.35-.22V6.77l1.35-.22c.13-.38.34-.73.6-1.05l-.7-1.15.95-.95 1.15.7c.32-.26.67-.47 1.05-.6L6.9 1.15zM8 5.65a2.35 2.35 0 1 0 0 4.7 2.35 2.35 0 1 0 0-4.7z';
@@ -39,15 +40,23 @@ export function iconButton(
   name: IconName,
   options: { id?: string; label: string },
 ): HTMLButtonElement {
-  const node = button(doc, '', { id: options.id });
-  node.setAttribute('aria-label', options.label);
+  const node = h(doc, 'button', {
+    type: 'button',
+    'aria-label': options.label,
+    ...(options.id === undefined ? {} : { id: options.id }),
+  });
   paint(node, {
     display: 'grid',
     placeItems: 'center',
-    width: '36px',
-    height: '36px',
+    width: '2em',
+    height: '2em',
     padding: '0',
+    border: border.ink,
+    background: color.paper,
+    color: color.ink,
+    cursor: 'pointer',
   });
+  bindFocus(node);
   node.append(icon(doc, name));
   return node;
 }

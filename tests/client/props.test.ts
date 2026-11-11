@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Box3, Group, LineSegments, Mesh, Vector3 } from 'three';
 import { buildProp, drapeGrass } from '@/src/client/props';
+import { KINDS } from '@/src/shared/kinds';
 import { nestSurface } from '@/src/shared/nestShape';
+
+const bounds = (group: Group) => new Box3().setFromObject(group).getSize(new Vector3());
 
 describe('buildProp', () => {
   it('batches a tree into four draws while retaining crown and trunk detail', () => {
@@ -19,7 +22,6 @@ describe('buildProp', () => {
       const small = buildProp(kind, 0, { kind: 'circle', r: 0.5 }, `${kind}-1`)!;
       const again = buildProp(kind, 0, { kind: 'circle', r: 0.5 }, `${kind}-1`)!;
       const large = buildProp(kind, 0, { kind: 'circle', r: 1 }, `${kind}-1`)!;
-      const bounds = (group: Group) => new Box3().setFromObject(group).getSize(new Vector3());
       expect(bounds(again).toArray()).toEqual(bounds(small).toArray());
       expect(bounds(large).y).toBeGreaterThan(bounds(small).y);
       expect(small.userData.height).toBeGreaterThan(0);
@@ -116,6 +118,24 @@ describe('buildProp', () => {
     expect(counts.every((count) => count > 0)).toBe(true);
     expect(new Set(counts).size).toBeGreaterThan(1);
     expect(buildProp('grass', 0, undefined, 'grass-x')).toBeInstanceOf(Group);
+  });
+
+  it('draws registered round models at their physical size and reuses the berry material', () => {
+    const pebble = buildProp('pebble', 0)!;
+    const berry = buildProp('berry', 0)!;
+    const bitten = buildProp('berry', 1)!;
+    expect(bounds(pebble).y).toBeCloseTo(2 * KINDS.pebble.physics!.radius);
+    expect(bounds(bitten).y).toBeLessThan(bounds(berry).y);
+    expect((bitten.children[0] as Mesh).material).toBe((berry.children[0] as Mesh).material);
+  });
+
+  it('uses the default visual size for a registered round decoration', () => {
+    KINDS.decoration = { rest: 0, model: { color: 0x9bc9a8, segments: 8 } };
+    try {
+      expect(bounds(buildProp('decoration', 0)!).y).toBeCloseTo(0.4);
+    } finally {
+      delete KINDS.decoration;
+    }
   });
 
   it('returns null for an unknown kind', () => {

@@ -30,7 +30,7 @@ describe('dialog', () => {
       },
     }));
     const sheet = dialog(document, { id: 'settings', label: '设置', kind: 'sheet' });
-    expect(sheet.style.width).toContain('980px');
+    expect(sheet.style.width).toContain('1120px');
     matches = true;
     for (const listener of listeners) listener();
     expect(sheet.style.width).toBe('calc(100% - 16px)');

@@ -36,7 +36,7 @@ describe('icon', () => {
     const plain = iconButton(document, 'gear', { label: '设置' });
     expect(named.id).toBe('settings-open');
     expect(named.getAttribute('aria-label')).toBe('设置');
-    expect(named.style.width).toBe('36px');
+    expect(named.style.width).toBe('2em');
     expect(named.querySelector('svg')).not.toBeNull();
     expect(plain.hasAttribute('id')).toBe(false);
   });

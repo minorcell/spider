@@ -221,7 +221,7 @@ describe('mountPanel chrome', () => {
     history.replaceState(null, '', '/#observe');
     mount();
     expect(stage.setOverlook).toHaveBeenCalledWith(true);
-    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动地图　滚轮缩放');
+    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动平移　滚轮远近');
     expect(document.querySelector('#observe-open')!.getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -237,11 +237,11 @@ describe('mountPanel chrome', () => {
     clickButton('#observe-open');
     expect(stage.setOverlook).toHaveBeenLastCalledWith(true);
     expect(location.hash).toBe('#observe');
-    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动地图　滚轮缩放');
+    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动平移　滚轮远近');
     clickButton('#observe-open');
     expect(stage.setOverlook).toHaveBeenLastCalledWith(false);
     expect(location.hash).toBe('');
-    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动画面　滚轮缩放');
+    expect(document.querySelector('#look-hint')!.textContent).toBe('拖动旋转视角　滚轮缩放');
   });
 
   it('mounts without the optional hint', () => {
@@ -269,25 +269,25 @@ describe('GitHub badge', () => {
     expect(count.textContent).toBe('');
     expect(count.hidden).toBe(true);
     for (const control of document.querySelector('#corner')!.children) {
-      expect((control as HTMLElement).style.minHeight).toBe('36px');
+      expect((control as HTMLElement).style.height).toBe('32px');
       expect((control as HTMLElement).style.boxSizing).toBe('border-box');
       expect((control as HTMLElement).style.alignItems).toBe('center');
     }
   });
 
-  it('highlights on hover and outlines on focus', () => {
+  it('inverts on hover and outlines on focus', () => {
     installChrome();
     const badge = document.querySelector<HTMLAnchorElement>('#github')!;
     const star = badge.querySelector('svg') as SVGElement;
-    expect(badge.style.background).toBe('var(--ui-control)');
+    expect(badge.style.background).toBe('var(--ui-paper)');
 
     badge.dispatchEvent(new MouseEvent('mouseenter'));
-    expect(badge.style.background).toBe('var(--ui-selected)');
-    expect(badge.style.color).toBe('var(--ui-accent)');
+    expect(badge.style.background).toBe('var(--ui-ink)');
+    expect(badge.style.color).toBe('var(--ui-paper)');
     expect(star.style.opacity).toBe('1');
 
     badge.dispatchEvent(new MouseEvent('mouseleave'));
-    expect(badge.style.background).toBe('var(--ui-control)');
+    expect(badge.style.background).toBe('var(--ui-paper)');
     expect(badge.style.color).toBe('var(--ui-ink)');
     expect(star.style.opacity).toBe('0.85');
 
@@ -915,7 +915,7 @@ describe('diary panel', () => {
     expect(box.checked).toBe(true);
     expect(
       box.closest('label')!.querySelector<HTMLElement>('.ui-switch-track span')!.style.background,
-    ).toBe('var(--ui-accent)');
+    ).toBe('var(--ui-ink)');
     box.checked = false;
     box.dispatchEvent(new Event('change', { bubbles: true }));
     expect(readPilot().autoMemory).toBe(false);
