@@ -1,18 +1,8 @@
-import { describe, test } from 'vitest';
+import { ActorPresenter } from '@/src/client/rig/presenter';
+import { drive } from '@/tests/simHelpers';
+import { test } from 'vitest';
 import { SimSession } from '@/src/shared/sim/session';
 import { SEED, stepDriven } from '@/tests/perf/scenarios';
-
-const session = new SimSession(SEED);
-const home = session.spider.capture();
-
-describe('driven frames', () => {
-  test('120 driven frames', async ({ bench }) => {
-    await bench('120 driven frames', () => {
-      session.spider.settle(home);
-      stepDriven(session);
-    }).run();
-  });
-});
 
 test('120 driven frames from the same complete snapshot', async ({ bench }) => {
   const { applyBody, captureBody } = await import('@/src/shared/sim/snapshot');
@@ -29,6 +19,28 @@ test('120 driven frames from the same complete snapshot', async ({ bench }) => {
     },
     () => {
       stepDriven(target);
+    },
+  ).run();
+});
+
+test('120 world and browser animation steps', async ({ bench }) => {
+  let session: SimSession;
+  let presenter: ActorPresenter;
+  await bench(
+    '120 world + rig steps',
+    {
+      beforeEach: () => {
+        session = new SimSession(SEED);
+        presenter = new ActorPresenter(session);
+      },
+    },
+    () => {
+      void drive(session, 4, { throttle: 1 });
+      try {
+        for (let i = 0; i < 120; i++) presenter.step(1 / 60);
+      } finally {
+        session.cancel();
+      }
     },
   ).run();
 });

@@ -470,3 +470,11 @@ describe('stepPhysics', () => {
     expect([...hand.entities.values()][0].vx).toBeLessThan(0);
   });
 });
+
+it('normalizes a degenerate stored orientation when a round body starts rolling', () => {
+  const cargo = apple({ x: 3, qx: 0, qy: 0, qz: 0, qw: 0 });
+  const slope = world({ terrain: { height: (x) => x * 0.4 }, entities: indexEntities([cargo]) });
+  stepPhysics(slope, body, 0.05);
+  expect(cargo.x).toBeLessThan(3);
+  expect([cargo.qx, cargo.qy, cargo.qz, cargo.qw]).toEqual([0, 0, 0, 1]);
+});

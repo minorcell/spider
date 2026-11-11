@@ -57,9 +57,7 @@ describe('registered items in the island', () => {
 
   it('rolls a pebble into a wall using its registered body', () => {
     const session = new SimSession(7);
-    session.world.entities = new Map([
-      [session.spider.controller.entity.id, session.spider.controller.entity],
-    ]);
+    session.world.entities = new Map([[session.actor.entity.id, session.actor.entity]]);
     session.world.terrain = { height: () => 1 };
     const wall = block('wall', 0.8, 1, -4, -1);
     session.world.blocks = [wall];
@@ -125,7 +123,7 @@ describe('registered items in the island', () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 86_400_000);
     pump(session, 1);
     expect(session.world.entities.get(berry.id)).toBe(berry);
-    session.spider.time = berry.expiresAt! - 1 / 60;
+    session.actor.state.time = berry.expiresAt! - 1 / 60;
     pump(session, 1);
     expect(session.world.entities.has(berry.id)).toBe(false);
 

@@ -22,7 +22,7 @@ import {
   tubeCrest,
   tubeGeo,
   tubeShell,
-} from '@/src/shared/sim/parts';
+} from '@/src/client/rig/parts';
 
 const CEPH_REAR_Z = 0.36;
 const CEPH_Y_SCALE = 0.18 / 0.55;

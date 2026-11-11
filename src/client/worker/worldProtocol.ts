@@ -1,4 +1,4 @@
-import type { IslandBuffers } from '@/src/shared/island';
+import type { IslandBuffers } from '@/src/client/islandMesh';
 
 export interface PreparedBuffers {
   seed: number;

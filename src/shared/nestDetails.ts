@@ -1,4 +1,5 @@
-import { Euler, SphereGeometry, Vector3 } from 'three';
+import type { Vec3 } from '@/src/shared/state';
+import { sphereMesh, tubeMesh } from '@/src/shared/mesh';
 import { mulberry32 } from '@/src/shared/noise';
 import {
   NEST_DOOR,
@@ -7,7 +8,6 @@ import {
   nestLocalHeight,
   nestRimRadius,
 } from '@/src/shared/nestShape';
-import { tubeGeometry } from '@/src/shared/tubeGeometry';
 
 const TAU = Math.PI * 2;
 
@@ -16,18 +16,18 @@ function layout() {
   const pebbles = Array.from({ length: 15 }, (_, k) => {
     const angle = NEST_DOOR + 0.68 + (k / 14) * (TAU - 1.36);
     const radius = nestRimRadius(angle);
-    const scale = new Vector3(0.4 + rand() * 0.18, 0.26 + rand() * 0.2, 0.32 + rand() * 0.18);
+    const scale = { x: 0.4 + rand() * 0.18, y: 0.26 + rand() * 0.2, z: 0.32 + rand() * 0.18 };
     return {
       scale,
-      position: new Vector3(
-        Math.cos(angle) * radius,
-        nestLocalHeight(radius, angle) + 0.04,
-        Math.sin(angle) * radius,
-      ),
-      rotation: new Euler(rand() * 0.25, angle + rand() * 0.5, rand() * 0.2),
+      position: {
+        x: Math.cos(angle) * radius,
+        y: nestLocalHeight(radius, angle) + 0.04,
+        z: Math.sin(angle) * radius,
+      },
+      rotation: { x: rand() * 0.25, y: angle + rand() * 0.5, z: rand() * 0.2 },
     };
   });
-  const roots: Vector3[][] = [];
+  const roots: Vec3[][] = [];
   for (let k = 0; k < 9; k++) {
     const angle = (k / 9) * TAU + 0.3;
     if (nestDoor(angle) > 0.2) continue;
@@ -36,11 +36,11 @@ function layout() {
         const t = i / 12;
         const r = 1.4 + t * 1.8;
         const a = angle + Math.sin(t * 4 + k) * 0.08;
-        return new Vector3(
-          Math.cos(a) * r,
-          nestLocalHeight(Math.min(r, NEST_RO), a) + 0.04,
-          Math.sin(a) * r,
-        );
+        return {
+          x: Math.cos(a) * r,
+          y: nestLocalHeight(Math.min(r, NEST_RO), a) + 0.04,
+          z: Math.sin(a) * r,
+        };
       }),
     );
   }
@@ -58,10 +58,10 @@ export const NEST_DETAILS = layout();
 export const NEST_PEBBLE_SKIN = 0.025;
 export const NEST_ROOT_SKIN = 0.006;
 
-export function nestPebbleGeometry(): SphereGeometry {
-  return new SphereGeometry(1, 10, 7);
+export function nestPebbleMesh() {
+  return sphereMesh(10, 7);
 }
 
-export function nestRootGeometry(spine: readonly Vector3[]) {
-  return tubeGeometry(spine, (t) => 0.065 * (1 - t * 0.85), 7);
+export function nestRootMesh(spine: readonly Vec3[]) {
+  return tubeMesh(spine, (t) => 0.065 * (1 - t * 0.85), 7);
 }

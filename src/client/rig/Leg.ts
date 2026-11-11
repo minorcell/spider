@@ -11,7 +11,7 @@ import {
   tubeCrest,
   tubeGeo,
   tubeShell,
-} from '@/src/shared/sim/parts';
+} from '@/src/client/rig/parts';
 
 export class Leg {
   readonly plant = new Vector3();

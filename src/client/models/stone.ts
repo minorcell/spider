@@ -1,7 +1,7 @@
 import { BufferGeometry, Group, Mesh, MeshLambertMaterial, SphereGeometry, Vector3 } from 'three';
 import { PALETTE } from '@/src/shared/config';
 import { mulberry32 } from '@/src/shared/noise';
-import { growShell, inkMat, inkSolidMat } from '@/src/shared/sim/parts';
+import { growShell, inkMat, inkSolidMat } from '@/src/client/rig/parts';
 import { buildGrass } from '@/src/client/grassMesh';
 import { groupHeight, lineFrom } from '@/src/client/models/geometry';
 

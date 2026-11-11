@@ -1,9 +1,8 @@
-import { bindController } from '@/src/shared/sim/bindController';
 import { waterAt } from '@/src/shared/water';
 import { kindOf, type KindSpec } from '@/src/shared/kinds';
 import type { EntityState, WorldState } from '@/src/shared/state';
-import type { LegSphere } from '@/src/shared/sim/legPose';
-import type { Spider } from '@/src/shared/sim/Spider';
+import type { LegSphere } from '@/src/client/rig/legPose';
+import type { Spider } from '@/src/client/rig/Spider';
 
 export function bindLegWorld(spider: Spider, world: WorldState): void {
   const pool: LegSphere[] = [];
@@ -40,5 +39,4 @@ export function bindWorld(spider: Spider, world: WorldState): void {
   bindLegWorld(spider, world);
   spider.bindGround((x, z) => world.terrain.height(x, z));
   spider.bindWater((x, z) => waterAt(world.terrain, x, z));
-  bindController(spider.controller, world);
 }

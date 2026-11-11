@@ -3,7 +3,7 @@ import { Mesh, type Object3D } from 'three';
 import { buildProp, drapeGrass } from '@/src/client/props';
 import { islandGroup } from '@/src/client/groundView';
 import { grassClumps, grassSeed } from '@/src/shared/grass';
-import { groundAttributes, islandBuffers } from '@/src/shared/island';
+import { groundAttributes, islandBuffers } from '@/src/client/islandMesh';
 import { planRoute } from '@/src/shared/route';
 import { coverAt } from '@/src/shared/sight';
 import { SimSession } from '@/src/shared/sim/session';

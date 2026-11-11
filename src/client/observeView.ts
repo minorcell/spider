@@ -19,7 +19,7 @@ import { heldBy } from '@/src/shared/sim/tether';
 import { viewDistance } from '@/src/shared/vision';
 
 import { REACH, REACH_Y } from '@/src/shared/world';
-import type { Spider } from '@/src/shared/sim/Spider';
+import type { Controller } from '@/src/shared/sim/controller';
 import { describeObservation, meters } from './observationText';
 
 const RING = 72;
@@ -111,7 +111,7 @@ export class ObserveOverlay {
   sync(
     on: boolean,
     camera: Camera,
-    spider: Spider,
+    actor: Pick<Controller, 'position' | 'yaw' | 'heightSet' | 'lamp' | 'capture'>,
     world: WorldState,
     view: { left: number; top: number; width: number; height: number },
   ): void {
@@ -122,15 +122,15 @@ export class ObserveOverlay {
       return;
     }
 
-    const x = spider.root.position.x;
-    const z = spider.root.position.z;
+    const x = actor.position.x;
+    const z = actor.position.z;
     const walk = (px: number, pz: number) => surfaceOf(world.terrain, px, pz);
     const now = performance.now();
     let observation = this.#observation;
     let fresh = false;
     if (!observation || now - this.#observedAt >= OBSERVE_REFRESH_MS) {
-      const distance = viewDistance(world, x, z, spider.heightSet, spider.lamp);
-      observation = toObservation(spider.capture(), world, REACH, distance, REACH_Y);
+      const distance = viewDistance(world, x, z, actor.heightSet, actor.lamp);
+      observation = toObservation(actor.capture(), world, REACH, distance, REACH_Y);
       this.#observation = observation;
       this.#observedAt = now;
       fresh = true;
@@ -146,7 +146,7 @@ export class ObserveOverlay {
       layRing(this.#reachRing.geometry, x, z, REACH, ground);
     }
 
-    const yaw = spider.yaw;
+    const yaw = actor.yaw;
     const ahead = this.#aheadAt;
     if (ahead.x !== x || ahead.z !== z || ahead.heading !== yaw) {
       const inside = world.terrain.inside

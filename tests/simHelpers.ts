@@ -15,13 +15,13 @@ export function drive(
     lift: input.lift ?? 0,
     boost: input.boost ?? 0,
   };
-  const startedAt = session.spider.time;
-  const held = () => Math.abs(controls.throttle) > 0.05 && session.spider.stuckFor >= STUCK_LIMIT;
+  const startedAt = session.actor.time;
+  const held = () => Math.abs(controls.throttle) > 0.05 && session.actor.stuckFor >= STUCK_LIMIT;
   return session.run({
     timeout: seconds + 1,
     controls: () => controls,
-    done: () => session.spider.time - startedAt >= seconds || held(),
-    result: () => (held() ? { seconds, halt: session.spider.halt } : { seconds }),
+    done: () => session.actor.time - startedAt >= seconds || held(),
+    result: () => (held() ? { seconds, halt: session.actor.halt } : { seconds }),
   });
 }
 

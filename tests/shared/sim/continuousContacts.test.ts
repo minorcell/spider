@@ -18,9 +18,7 @@ function scene(): SimSession {
   };
   KINDS.heavy = { ...KINDS.light, physics: { ...KINDS.light.physics!, mass: 2 } };
   const session = new SimSession(7);
-  session.world.entities = new Map([
-    [session.spider.controller.entity.id, session.spider.controller.entity],
-  ]);
+  session.world.entities = new Map([[session.actor.entity.id, session.actor.entity]]);
   session.world.blocks = [];
   session.world.terrain = { height: () => 0 };
   session.world.physics = { ...PHYSICS, gravity: 0, damping: 0, maxSpeed: 120 };
@@ -131,14 +129,14 @@ describe('continuous body contacts', () => {
     const session = scene();
     session.world.blocks = [block('wall', 0.65, 0.66, -1, 1)];
     const item = addEntity(session.world, 'light', { x: 0.6, z: 0 }, 0);
-    session.spider.place(0, 0, 0);
-    session.spider.yaw = -Math.PI / 2;
+    Object.assign(session.actor.position, { x: 0, y: 0, z: 0 });
+    session.actor.state.yaw = -Math.PI / 2;
     const action = drive(session, 3, { throttle: 1 });
     pump(session, 240);
     await expect(action).resolves.toMatchObject({ ok: false, reason: 'blocked', halt: 'solid' });
-    expect(session.spider.root.position.x).toBeCloseTo(0.13, 5);
+    expect(session.actor.position.x).toBeCloseTo(0.13, 5);
     expect(item.x).toBeCloseTo(0.63, 5);
-    expect(item.x - session.spider.root.position.x).toBeCloseTo(0.5, 5);
+    expect(item.x - session.actor.position.x).toBeCloseTo(0.5, 5);
   });
 
   it('lets a non-solid registered body pass through other bodies and walls', () => {

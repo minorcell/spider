@@ -7,25 +7,19 @@ import {
   toSense,
   wrapDegrees,
   type EntityState,
-  type SpiderState,
+  type ActorState,
   type WorldState,
 } from '@/src/shared/state';
 import { block, flat } from '@/tests/helpers';
 
-function spider(over: Partial<SpiderState> = {}): SpiderState {
+function spider(over: Partial<ActorState> = {}): ActorState {
   return {
     time: 1.23456,
     position: { x: 0, y: 0.5, z: 0 },
     yaw: 0,
     speed: 1.2345,
     height: 0.25,
-    chassisPitch: 0,
-    chassisRoll: 0,
-    headYaw: 0,
-    feet: [
-      { x: 0, y: 0.5, z: 0 },
-      { x: 1, y: 0.1, z: 1 },
-    ],
+
     ...over,
   };
 }
@@ -327,7 +321,7 @@ describe('toObservation', () => {
       footprint: { kind: 'circle', r: 2 },
     };
     const seen = toObservation(
-      spider({ position: { x: 5, y: 1, z: 0 }, feet: [] }),
+      spider({ position: { x: 5, y: 1, z: 0 } }),
       world({ entities: indexEntities([grass]) }),
       4,
       16,

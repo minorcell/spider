@@ -1,7 +1,7 @@
 import { describe, test } from 'vitest';
 import { islandGroup } from '@/src/client/groundView';
 import { buildProp, drapeGrass } from '@/src/client/props';
-import { islandBuffers } from '@/src/shared/island';
+import { islandBuffers } from '@/src/client/islandMesh';
 import { bakeTerrainGrid } from '@/src/shared/terrain';
 import { createWorld } from '@/src/shared/world';
 import { bakeWorkerIsland, SEED } from '@/tests/perf/scenarios';

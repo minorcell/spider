@@ -2,7 +2,7 @@ import { initialControl } from '@/src/shared/control';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BufferGeometry, Group, Line } from 'three';
 import { KINDS } from '@/src/shared/kinds';
-import { Spider as RealSpider } from '@/src/shared/sim/Spider';
+import { AnimatedActor as RealSpider } from '@/tests/rigHelpers';
 import type { EntityState, WorldState } from '@/src/shared/state';
 import { Stage } from '@/src/client/stage';
 import { tetherAnchor } from '@/src/shared/sim/tether';

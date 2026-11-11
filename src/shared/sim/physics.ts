@@ -1,4 +1,3 @@
-import { Quaternion, Vector3 } from 'three';
 import { groundSupport } from '@/src/shared/contact';
 import { CONTACT, PHYSICS } from '@/src/shared/config';
 import { pullTethers } from '@/src/shared/sim/tether';
@@ -53,9 +52,6 @@ interface Mover {
   pulled: boolean;
 }
 
-const spinQ = new Quaternion();
-const spinDelta = new Quaternion();
-const spinAxis = new Vector3();
 const asleepBodies = new WeakMap<EntityState, number>();
 
 function looseOf(entity: EntityState): {
@@ -80,14 +76,28 @@ function looseOf(entity: EntityState): {
 function roll(entity: EntityState, radius: number, dx: number, dz: number): void {
   const dist = Math.hypot(dx, dz);
   if (dist < 1e-8 || radius <= 0) return;
-  spinAxis.set(dz / dist, 0, -dx / dist);
-  spinDelta.setFromAxisAngle(spinAxis, dist / radius);
-  spinQ.set(entity.qx ?? 0, entity.qy ?? 0, entity.qz ?? 0, entity.qw ?? 1);
-  spinQ.premultiply(spinDelta).normalize();
-  entity.qx = spinQ.x;
-  entity.qy = spinQ.y;
-  entity.qz = spinQ.z;
-  entity.qw = spinQ.w;
+  const half = dist / radius / 2;
+  const ax = (dz / dist) * Math.sin(half);
+  const az = (-dx / dist) * Math.sin(half);
+  const aw = Math.cos(half);
+  const bx = entity.qx ?? 0,
+    by = entity.qy ?? 0,
+    bz = entity.qz ?? 0,
+    bw = entity.qw ?? 1;
+  const x = aw * bx + ax * bw - az * by;
+  const y = aw * by + az * bx - ax * bz;
+  const z = aw * bz + az * bw + ax * by;
+  const w = aw * bw - ax * bx - az * bz;
+  const length = Math.hypot(x, y, z, w);
+  if (length === 0) {
+    entity.qx = entity.qy = entity.qz = 0;
+    entity.qw = 1;
+    return;
+  }
+  entity.qx = x / length;
+  entity.qy = y / length;
+  entity.qz = z / length;
+  entity.qw = w / length;
 }
 
 export function fitsPlacement(world: WorldState, item: EntityState, x: number, z: number): boolean {

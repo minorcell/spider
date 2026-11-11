@@ -1,15 +1,13 @@
-import type { MotionSolver } from '@/src/shared/collision';
-import { Controller } from '@/src/shared/sim/controller';
+import type { Controller } from '@/src/shared/sim/controller';
 import { BufferGeometry, Group, MathUtils, Matrix4, Mesh, Object3D, Vector3 } from 'three';
 import { BONES, CONTACT, GAIT, MOUNTS } from '@/src/shared/config';
-import { WORLD_RADIUS } from '@/src/shared/terrain';
-import type { EntityState, SpiderState, Vec3 } from '@/src/shared/state';
+import type { ActorState, Vec3 } from '@/src/shared/state';
 import { IDLE_CONTROLS, type Controls } from '@/src/shared/types';
 import { floatHeight, WATER, type Water } from '@/src/shared/water';
-import { Leg } from '@/src/shared/sim/Leg';
-import { solveLeg, supportY, type LegSphere } from '@/src/shared/sim/legPose';
-import { ballGeo, ballShell, inkSolidMat, spiderMat } from '@/src/shared/sim/parts';
-import { buildSpiderBody } from '@/src/shared/sim/spiderBody';
+import { Leg } from '@/src/client/rig/Leg';
+import { solveLeg, supportY, type LegSphere } from '@/src/client/rig/legPose';
+import { ballGeo, ballShell, inkSolidMat, spiderMat } from '@/src/client/rig/parts';
+import { buildSpiderBody } from '@/src/client/rig/spiderBody';
 
 // A cephalothorax on eight jointed legs, an abdomen hung behind it, and an
 // alternating tetrapod gait. The drawn shell is finer than these two clearance
@@ -30,6 +28,29 @@ const basisM = new Matrix4();
 
 const partWorld = new Matrix4();
 
+export interface SpiderPose extends ActorState {
+  chassisPitch: number;
+  chassisRoll: number;
+  headYaw: number;
+  feet: Vec3[];
+}
+
+type RigSource = Pick<
+  Controller,
+  | 'position'
+  | 'yaw'
+  | 'yawRate'
+  | 'lamp'
+  | 'heightSet'
+  | 'speed'
+  | 'time'
+  | 'halt'
+  | 'swimming'
+  | 'water'
+  | 'support'
+  | 'capture'
+>;
+
 export class Spider {
   readonly root = new Group();
   /** The legs are solved and placed in world space, so rig is a sibling of root. */
@@ -37,64 +58,31 @@ export class Spider {
   readonly chassis = new Group();
 
   readonly legs: Leg[];
-  readonly controller: Controller;
+  readonly source: RigSource;
   headYaw = 0;
-  get position(): Vec3 {
-    return this.controller.entity;
+  get position(): Readonly<Vec3> {
+    return this.source.position;
   }
   get yaw(): number {
-    return this.controller.state.yaw;
-  }
-  set yaw(value: number) {
-    this.controller.state.yaw = value;
+    return this.source.yaw;
   }
   get yawRate(): number {
-    return this.controller.state.yawRate;
-  }
-  set yawRate(value: number) {
-    this.controller.state.yawRate = value;
+    return this.source.yawRate;
   }
   get lamp(): boolean {
-    return this.controller.state.lamp;
-  }
-  set lamp(value: boolean) {
-    this.controller.state.lamp = value;
+    return this.source.lamp;
   }
   get heightSet(): number {
-    return this.controller.state.height;
-  }
-  set heightSet(value: number) {
-    this.controller.state.height = value;
+    return this.source.heightSet;
   }
   get speed(): number {
-    return this.controller.state.speed;
-  }
-  set speed(value: number) {
-    this.controller.state.speed = value;
+    return this.source.speed;
   }
   get time(): number {
-    return this.controller.state.time;
-  }
-  set time(value: number) {
-    this.controller.state.time = value;
-  }
-  get fall(): number {
-    return this.controller.state.fall;
-  }
-  set fall(value: number) {
-    this.controller.state.fall = value;
-  }
-  get stuckFor(): number {
-    return this.controller.state.stuckFor;
-  }
-  set stuckFor(value: number) {
-    this.controller.state.stuckFor = value;
+    return this.source.time;
   }
   get halt(): 'clear' | 'solid' | 'steep' {
-    return this.controller.state.halt;
-  }
-  set halt(value: 'clear' | 'solid' | 'steep') {
-    this.controller.state.halt = value;
+    return this.source.halt;
   }
   /** Temporary reach posture used while handling a nearby object. */
   interaction: { target: Vector3; phase: 'reach' | 'drag' | 'release' } | null = null;
@@ -127,25 +115,19 @@ export class Spider {
   #mound: (x: number, z: number) => number = () => Number.NEGATIVE_INFINITY;
   readonly #chain = [0, 1, 2, 3, 4].map(() => new Vector3());
 
-  constructor(entity: EntityState = { id: 'preview', kind: 'spider', x: 0, y: 0, z: 0, stage: 0 }) {
-    this.controller = new Controller(entity);
+  constructor(source: RigSource) {
+    this.source = source;
     this.root.add(this.chassis);
     const mounts = this.#buildBody();
     this.legs = MOUNTS.map((spec, index) => new Leg(this.rig, spec, mounts[index], index));
-    this.update(0, IDLE_CONTROLS);
+    this.present(0, IDLE_CONTROLS);
   }
 
   /** The ground the feet plant on. Reseeds the stance for the new surface. */
-  bindGround(ground: (x: number, z: number) => number, limit = WORLD_RADIUS): void {
+  bindGround(ground: (x: number, z: number) => number): void {
     this.#ground = ground;
-    this.controller.bindGround(ground, limit);
     this.#seeded = false;
-    this.update(0, IDLE_CONTROLS);
-  }
-
-  /** The world resolves a movement intent before the rig poses itself. */
-  bindMotion(move: MotionSolver): void {
-    this.controller.bindMotion(move);
+    this.present(0, IDLE_CONTROLS);
   }
 
   /**
@@ -155,24 +137,22 @@ export class Spider {
   bindLegs(fill: (into: LegSphere[]) => void, mound: (x: number, z: number) => number): void {
     this.#fillLegs = fill;
     this.#mound = mound;
-    this.controller.bindSupport(mound);
     this.#held = null;
   }
 
   /** The water column the body floats or wades through. */
   bindWater(water: (x: number, z: number) => Water): void {
     this.#water = water;
-    this.controller.bindWater(water);
   }
 
   /** True while buoyancy, not the ground, is holding the body up. */
   get swimming(): boolean {
-    return this.controller.swimming;
+    return this.source.swimming;
   }
 
   /** Water depth under the body right now. Zero on dry ground. */
   get waterDepth(): number {
-    return this.controller.water.depth;
+    return this.source.water.depth;
   }
 
   /** Render the current entity pose; movement is resolved by its world capability. */
@@ -204,17 +184,6 @@ export class Spider {
     this.#pose(reuse);
   }
 
-  /** Standalone preview/test path. A world session advances the controller separately. */
-  update(dt: number, input: Controls = IDLE_CONTROLS): void {
-    this.controller.update(dt, input);
-    this.present(dt, input);
-  }
-
-  place(x: number, y: number, z: number): void {
-    Object.assign(this.position, { x, y, z });
-    this.present();
-  }
-
   setInteraction(
     target: { x: number; y?: number; z: number } | null,
     phase: 'reach' | 'drag' | 'release' = 'reach',
@@ -234,8 +203,8 @@ export class Spider {
     this.chassis.rotation.x = 0.045 * crouch;
   }
 
-  /** Snapshot for the wire: everything a viewer needs to rebuild the pose. */
-  capture(): SpiderState {
+  /** Visual diagnostics. These fields are not part of the world snapshot. */
+  capture(): SpiderPose {
     return {
       time: this.time,
       position: { x: this.position.x, y: this.position.y, z: this.position.z },
@@ -248,54 +217,6 @@ export class Spider {
       lamp: this.lamp,
       feet: this.legs.map((leg) => ({ x: leg.foot.x, y: leg.foot.y, z: leg.foot.z })),
     };
-  }
-
-  /** Viewer path: adopt an authoritative state and re-solve the pose. */
-  applyState(state: SpiderState): void {
-    this.time = state.time;
-    this.yaw = state.yaw;
-    this.speed = state.speed;
-    this.heightSet = state.height;
-    Object.assign(this.position, state.position);
-    this.root.position.copy(this.position);
-    this.root.rotation.y = state.yaw;
-    this.chassis.rotation.x = state.chassisPitch;
-    this.chassis.rotation.z = state.chassisRoll;
-    this.headYaw = state.headYaw;
-    this.#head.rotation.y = state.headYaw;
-    this.lamp = state.lamp === true;
-    for (let i = 0; i < this.legs.length; i++) {
-      const foot = state.feet[i];
-      const leg = this.legs[i];
-      leg.foot.set(foot.x, foot.y, foot.z);
-      leg.plant.copy(leg.foot);
-      leg.swingFrom.copy(leg.foot);
-      leg.swingTo.copy(leg.foot);
-      leg.lifted = false;
-    }
-    this.#pose(true);
-  }
-
-  /** Put a saved pose back and stop. The saved speed is not resumed. */
-  settle(state: SpiderState): void {
-    this.applyState(state);
-    this.speed = 0;
-    this.yawRate = 0;
-    this.fall = 0;
-    this.stuckFor = 0;
-    this.halt = 'clear';
-    this.headYaw = state.headYaw;
-    for (const leg of this.legs) {
-      leg.plant.copy(leg.foot);
-      leg.swingFrom.copy(leg.foot);
-      leg.swingTo.copy(leg.foot);
-      leg.lifted = false;
-    }
-    this.#seeded = true;
-    this.#stepping = false;
-    this.#stillFor = 0;
-    this.chassis.position.y = 0;
-    this.#pose(true);
   }
 
   #buildBody(): Mesh[] {
@@ -417,7 +338,7 @@ export class Spider {
       out.y = water.surface - WATER.footDraft;
       return;
     }
-    const airborne = this.root.position.y - this.controller.support() > GAIT.drop;
+    const airborne = this.root.position.y - this.source.support() > GAIT.drop;
     const y = airborne
       ? this.root.position.y
       : supportY(out.x, out.z, this.#ground, this.#mound, this.#spheres);

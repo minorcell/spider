@@ -1,4 +1,4 @@
-import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX, MOUNTS } from '@/src/shared/config';
+import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
 import type { ControlSpec, ControlState } from '@/src/shared/control';
 import { kindOf } from '@/src/shared/kinds';
 import { populationRules, type PopulationState } from '@/src/shared/islandContent';
@@ -6,15 +6,14 @@ import type {
   EntityState,
   Footprint,
   PlaceMark,
-  SpiderState,
   TetherRelation,
   WorldState,
 } from '@/src/shared/state';
 import { expireEntities, indexEntities, propBlocks } from '@/src/shared/world';
 import { Terrain } from '@/src/shared/terrain';
 import { attachmentFailure } from '@/src/shared/sim/tether';
-import { bindWorld } from '@/src/shared/sim/bindWorld';
-import type { Spider } from '@/src/shared/sim/Spider';
+import { bindController } from '@/src/shared/sim/bindController';
+import type { Controller } from '@/src/shared/sim/controller';
 
 export const FORMAT = 4;
 export const MAX_ENTITIES = 160;
@@ -33,7 +32,6 @@ export interface SimBody {
   entities: EntityState[];
   marks: PlaceMark[];
   tethers: TetherRelation[];
-  pose: Pick<SpiderState, 'chassisPitch' | 'chassisRoll' | 'headYaw' | 'feet'>;
   pending: { text: string; tool: string | null } | null;
 }
 
@@ -55,7 +53,7 @@ export interface Restorable {
   cancel(): void;
   adopt(body: SimBody): void;
   readonly world: WorldState;
-  readonly spider: Spider;
+  readonly actor: Controller;
 }
 
 export function bodyOfRecord(record: WorldRecord): SimBody {
@@ -74,7 +72,6 @@ export function bodyOfRecord(record: WorldRecord): SimBody {
 
 export function captureBody(session: Restorable, pending: SimBody['pending']): SimBody {
   const world = session.world;
-  const { chassisPitch, chassisRoll, headYaw, feet } = session.spider.capture();
   return {
     seed: world.seed,
     controlledId: world.controlledId!,
@@ -83,7 +80,6 @@ export function captureBody(session: Restorable, pending: SimBody['pending']): S
     entities: structuredClone([...world.entities.values()]),
     marks: structuredClone(world.marks),
     tethers: structuredClone([...world.tethers.values()]),
-    pose: { chassisPitch, chassisRoll, headYaw, feet },
     pending: cleanPending(pending),
   };
 }
@@ -114,18 +110,8 @@ export function applyBody(
   if (!candidate.entities.has(actor.id)) throw new Error('Controlled entity expired');
   session.cancel();
   Object.assign(session.world, candidate);
-  session.spider.controller.bindEntity(actor);
-  bindWorld(session.spider, session.world);
-  const control = actor.control!;
-  session.spider.applyState({
-    ...decoded.pose,
-    position: { x: actor.x, y: actor.y, z: actor.z },
-    time: control.time,
-    yaw: control.yaw,
-    speed: control.speed,
-    height: control.height,
-    lamp: control.lamp,
-  });
+  session.actor.bindEntity(actor);
+  bindController(session.actor, session.world);
 }
 
 export function chooseRecord(ls: unknown, idb: unknown, today: string): WorldRecord | null {
@@ -215,10 +201,9 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
   const tethers = [...relations.tethers.values()];
   const serials = readEntitySerials(raw.entitySerials);
   const populations = readPopulations(raw.populations);
-  const pose = readPose(raw.pose);
   const pending = readPending(raw.pending);
   const marks = readMarks(raw.marks);
-  if (!serials || !populations || !pose || pending === undefined || !marks) return null;
+  if (!serials || !populations || pending === undefined || !marks) return null;
   return {
     seed: raw.seed >>> 0,
     controlledId: raw.controlledId,
@@ -227,7 +212,6 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
     populations,
     marks,
     tethers,
-    pose,
     pending,
   };
 }
@@ -371,30 +355,6 @@ function readSpin(
 function optionalNumber(value: unknown): number | undefined | null {
   if (value === undefined) return undefined;
   return isFiniteNumber(value) ? value : null;
-}
-
-function readPose(value: unknown): SimBody['pose'] | null {
-  if (!value || typeof value !== 'object') return null;
-  const raw = value as Record<string, unknown>;
-  if (
-    !isFiniteNumber(raw.chassisPitch) ||
-    !isFiniteNumber(raw.chassisRoll) ||
-    !isFiniteNumber(raw.headYaw)
-  )
-    return null;
-  if (!Array.isArray(raw.feet) || raw.feet.length !== MOUNTS.length) return null;
-  const feet: SpiderState['feet'] = [];
-  for (const foot of raw.feet) {
-    const point = foot as { x?: unknown; y?: unknown; z?: unknown };
-    if (!placed(point?.x, point?.y, point?.z)) return null;
-    feet.push({ x: point.x as number, y: point.y as number, z: point.z as number });
-  }
-  return {
-    chassisPitch: raw.chassisPitch,
-    chassisRoll: raw.chassisRoll,
-    headYaw: raw.headYaw,
-    feet,
-  };
 }
 
 function readControl(value: unknown, spec: ControlSpec): ControlState | null {

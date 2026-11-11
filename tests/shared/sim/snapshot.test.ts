@@ -305,7 +305,6 @@ describe('entity snapshots', () => {
       halt: 'solid',
       lamp: true,
     });
-    source.spider.headYaw = 0.2;
     source.world.entities.delete('home');
     const fruit = [...source.world.entities.values()].find((entity) => entity.kind === 'apple')!;
     Object.assign(fruit, { y: 5, vx: 2, vy: -1, vz: 3, qx: 0, qy: 0, qz: 0.6, qw: 0.8 });
@@ -316,6 +315,7 @@ describe('entity snapshots', () => {
     });
     const saved = captureBody(source, null);
     expect(saved).not.toHaveProperty('spider');
+    expect(saved).not.toHaveProperty('pose');
     expect(saved).not.toHaveProperty('carrying');
     expect(saved).not.toHaveProperty('appleIn');
     const parsed = classify({ ...good(), ...saved });
@@ -331,8 +331,7 @@ describe('entity snapshots', () => {
       length: 3.7,
     });
     expect(target.actor.state).toEqual(actor.control);
-    expect(target.spider.headYaw).toBe(0.2);
-    expect(target.spider.root.position.toArray()).toEqual([3, 4, -2]);
+    expect(target.actor.position).toMatchObject({ x: 3, y: 4, z: -2 });
     expect(target.world.entities.has('home')).toBe(false);
     actor.x = 100;
     expect(target.actor.position.x).toBe(3);
@@ -439,21 +438,6 @@ describe('entity snapshots', () => {
     const target = session();
     applyBody(target, base);
     expect(target.world.entities.has(berry.id)).toBe(false);
-  });
-
-  it('validates the saved visual pose separately from the physical actor', () => {
-    const base = good();
-    for (const pose of [
-      null,
-      { ...base.pose, headYaw: NaN },
-      { ...base.pose, chassisPitch: NaN },
-      { ...base.pose, chassisRoll: NaN },
-      { ...base.pose, feet: [] },
-      { ...base.pose, feet: base.pose.feet.map(() => null) },
-      { ...base.pose, feet: base.pose.feet.map((foot) => ({ ...foot, y: 5000 })) },
-    ]) {
-      expect(classify({ ...base, pose }).status).toBe('malformed');
-    }
   });
 });
 

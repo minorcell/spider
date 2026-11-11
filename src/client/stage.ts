@@ -17,7 +17,7 @@ import { PALETTE } from '@/src/shared/config';
 import { kindOf } from '@/src/shared/kinds';
 import { WORLD_RADIUS } from '@/src/shared/terrain';
 import type { EntityState, WorldState } from '@/src/shared/state';
-import type { Spider } from '@/src/shared/sim/Spider';
+import type { Spider } from '@/src/client/rig/Spider';
 import { paintCanvas } from '@/src/ui/dress';
 import { FpsDisplay } from '@/src/client/fps';
 import { onLocalBusy } from '@/src/client/local/activity';
@@ -60,7 +60,7 @@ const look = new Vector3();
 const desired = new Vector3();
 const bubbleAt = new Vector3();
 
-/** Renderer and camera. It steps the one spider, then paints that same spider. */
+/** Browser renderer and camera over the world and its actor presentation. */
 export class Stage {
   readonly #fps: FpsDisplay;
   readonly #stopLocal: () => void;
@@ -581,7 +581,8 @@ export class Stage {
     );
     this.#lamp.update(this.#clock, this.#spider.lamp);
     const world = this.#world?.();
-    if (world) this.#observe.sync(this.#overlook, this.#camera, this.#spider, world, this.#view);
+    if (world)
+      this.#observe.sync(this.#overlook, this.#camera, this.#spider.source, world, this.#view);
     this.#renderer.render(this.#scene, this.#camera);
     this.#fps.tick(now);
     this.#onAnchor?.(this.#aboveSpider());

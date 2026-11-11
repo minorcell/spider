@@ -4,30 +4,26 @@ import { indexEntities } from '@/src/shared/world';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BufferAttribute, Line, LineSegments, PerspectiveCamera, Vector3 } from 'three';
 import { ObserveOverlay } from '@/src/client/observeView';
-import type { Spider } from '@/src/shared/sim/Spider';
-import type { EntityState, SpiderState, WorldState } from '@/src/shared/state';
+import type { Controller } from '@/src/shared/sim/controller';
+import type { EntityState, ActorState, WorldState } from '@/src/shared/state';
 import { block, flat } from '@/tests/helpers';
 
 const view = { left: 0, top: 0, width: 800, height: 600 };
 
-function fakeSpider(x: number, z: number, height = 0): Spider {
-  const state: SpiderState = {
+function fakeSpider(x: number, z: number, height = 0): Controller {
+  const state: ActorState = {
     time: 0,
     position: { x, y: 0, z },
     yaw: 0,
     speed: 0,
     height,
-    chassisPitch: 0,
-    chassisRoll: 0,
-    headYaw: 0,
-    feet: [],
   };
   return {
-    root: { position: new Vector3(x, 0, z) },
+    position: new Vector3(x, 0, z),
     yaw: 0,
     heightSet: height,
     capture: () => state,
-  } as unknown as Spider;
+  } as unknown as Controller;
 }
 
 function entity(over: Partial<EntityState>): EntityState {
@@ -333,7 +329,7 @@ describe('ObserveOverlay', () => {
     ) as BufferAttribute;
     const first = ring.getX(0);
 
-    spider.root.position.x = 3;
+    spider.position.x = 3;
     overlay.sync(true, camera(), spider, plain, view);
     expect(ring.getX(0)).toBe(first);
 
@@ -488,7 +484,7 @@ it('does not label the indexed controlled actor as a hidden object', () => {
   const parent = document.createElement('div');
   const overlay = new ObserveOverlay(parent);
   const session = new SimSession(7);
-  overlay.sync(true, camera(), session.spider, session.world, view);
+  overlay.sync(true, camera(), session.actor, session.world, view);
   expect(parent.querySelector('#observe-pins')!.textContent).not.toContain(
     session.world.controlledId,
   );

@@ -1,3 +1,4 @@
+import { Spider } from '@/src/client/rig/Spider';
 import { islandPlacements, islandFamilies } from '@/src/shared/islandContent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KINDS, propertiesOf } from '@/src/shared/kinds';
@@ -6,7 +7,7 @@ import { coverAt, homeAt, blockedAt, occluded } from '@/src/shared/sight';
 import { aheadAt, senseBody } from '@/src/shared/sense';
 import { viewDistance } from '@/src/shared/vision';
 import { SimSession } from '@/src/shared/sim/session';
-import { bindLegWorld } from '@/src/shared/sim/bindWorld';
+import { bindLegWorld } from '@/src/client/rig/bindWorld';
 import { applyBody, captureBody, classify } from '@/src/shared/sim/snapshot';
 import { addEntity, removeEntity, propBlocks, createWorld } from '@/src/shared/world';
 import { Terrain } from '@/src/shared/terrain';
@@ -39,9 +40,7 @@ function registerCamp(): void {
 function campSession(): SimSession {
   registerCamp();
   const session = new SimSession(7);
-  session.world.entities = new Map([
-    [session.spider.controller.entity.id, session.spider.controller.entity],
-  ]);
+  session.world.entities = new Map([[session.actor.entity.id, session.actor.entity]]);
   session.world.blocks = [];
   session.world.terrain = { height: () => 0 };
   const camp = addEntity(session.world, 'camp', { x: 8, z: -6 }, 0);
@@ -50,7 +49,7 @@ function campSession(): SimSession {
   camp.id = 'home';
   session.world.entities.set(camp.id, camp);
   session.world.blocks = propBlocks(session.world.entities.values());
-  session.spider.place(camp.x, 0, camp.z);
+  Object.assign(session.actor.position, { x: camp.x, y: 0, z: camp.z });
   return session;
 }
 
@@ -117,12 +116,12 @@ describe('registered scenery composition', () => {
 
   it('uses the same compound walls for controlled motion and loose items', async () => {
     const session = campSession();
-    session.spider.yaw = -Math.PI / 2;
+    session.actor.state.yaw = -Math.PI / 2;
     const walk = drive(session, 3, { throttle: 1 });
     pump(session, 240);
     await walk;
-    expect(session.spider.root.position.x).toBeLessThan(10);
-    expect(session.spider.root.position.x).toBeGreaterThan(8);
+    expect(session.actor.position.x).toBeLessThan(10);
+    expect(session.actor.position.x).toBeGreaterThan(8);
     const stone = addEntity(session.world, 'pebble', { x: 8, z: -7.5 }, 0);
     stone.vx = 4;
     pump(session, 90);
@@ -166,8 +165,9 @@ describe('registered scenery composition', () => {
     const session = campSession();
     const second = addEntity(session.world, 'camp', { x: -8, z: 6 }, 0);
     second.y = 1;
-    const binding = vi.spyOn(session.spider, 'bindLegs');
-    bindLegWorld(session.spider, session.world);
+    const model = new Spider(session.actor);
+    const binding = vi.spyOn(model, 'bindLegs');
+    bindLegWorld(model, session.world);
     const [collect, surface] = binding.mock.calls[0];
     collect!([]);
     expect(surface!(8, -6)).toBe(0.15);

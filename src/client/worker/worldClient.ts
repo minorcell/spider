@@ -1,6 +1,6 @@
 import type { Group } from 'three';
 import { islandGroup } from '@/src/client/groundView';
-import { islandBuffers } from '@/src/shared/island';
+import { islandBuffers } from '@/src/client/islandMesh';
 import { bakeTerrainGrid, Terrain } from '@/src/shared/terrain';
 import type { PreparedBuffers, WorldReply, WorldRequest } from '@/src/client/worker/worldProtocol';
 

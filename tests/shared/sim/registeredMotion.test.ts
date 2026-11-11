@@ -1,4 +1,5 @@
-import { bindLegWorld } from '@/src/shared/sim/bindWorld';
+import { Spider } from '@/src/client/rig/Spider';
+import { bindLegWorld } from '@/src/client/rig/bindWorld';
 import { propBlocks } from '@/src/shared/world';
 import { WORLD_RADIUS } from '@/src/shared/terrain';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -22,9 +23,7 @@ function scene(): SimSession {
     physics: { solid: true, radius: 0.01, loose: true, rolls: true, mass: 0.01 },
   };
   const session = new SimSession(7);
-  session.world.entities = new Map([
-    [session.spider.controller.entity.id, session.spider.controller.entity],
-  ]);
+  session.world.entities = new Map([[session.actor.entity.id, session.actor.entity]]);
   session.world.blocks = [];
   session.world.terrain = { height: () => 0 };
   session.world.physics = { ...PHYSICS, damping: 0, maxSpeed: 120 };
@@ -48,15 +47,11 @@ describe('registered bodies share continuous collision', () => {
     expect(pellet.vx).toBe(0);
     expect(blockedAt(pellet.x, pellet.z, session.world.blocks, 0.01)).toBe(false);
 
-    session.spider.yaw = -Math.PI / 2;
-    session.spider.update(0.5, { throttle: 1, turn: 0, lift: 0, boost: 1 });
-    expect(session.spider.root.position.x).toBeCloseTo(0.8 - BODY_RADIUS, 6);
+    session.actor.state.yaw = -Math.PI / 2;
+    session.actor.update(0.5, { throttle: 1, turn: 0, lift: 0, boost: 1 });
+    expect(session.actor.position.x).toBeCloseTo(0.8 - BODY_RADIUS, 6);
     expect(
-      blockedAt(
-        session.spider.root.position.x,
-        session.spider.root.position.z,
-        session.world.blocks,
-      ),
+      blockedAt(session.actor.position.x, session.actor.position.z, session.world.blocks),
     ).toBe(false);
   });
 
@@ -84,7 +79,7 @@ describe('registered bodies share continuous collision', () => {
 
   it('uses registered solidity independently from motion and rendering', () => {
     const session = scene();
-    session.spider.place(-5, 0, 0);
+    Object.assign(session.actor.position, { x: -5, y: 0, z: 0 });
     KINDS.ghost = { ...KINDS.pellet, physics: { ...KINDS.pellet.physics!, solid: false } };
     addEntity(session.world, 'fence', { x: 0.2, z: 0 }, 0);
     const ghost = addEntity(session.world, 'ghost', { x: 0, z: 0 }, 0);
@@ -98,27 +93,27 @@ describe('registered bodies share continuous collision', () => {
     KINDS.ghost.boxes = KINDS.fence.boxes;
     expect(propBlocks([ghost])).toEqual([]);
     // Rebinding the legs also reads the same solidity flag.
-    bindLegWorld(session.spider, session.world);
-    session.spider.update(0);
+    bindLegWorld(new Spider(session.actor), session.world);
+    session.actor.update(0);
   });
 
   it('uses the buoyant walking surface when the registered world contains water', () => {
     const session = scene();
     session.world.terrain = { height: () => -2, surface: () => -0.8 };
-    session.spider.yaw = -Math.PI / 2;
-    session.spider.update(0.2, { throttle: 1, turn: 0, lift: 0, boost: 0 });
-    expect(session.spider.swimming).toBe(true);
-    expect(session.spider.root.position.x).toBeGreaterThan(0);
-    expect(session.spider.halt).toBe('clear');
+    session.actor.state.yaw = -Math.PI / 2;
+    session.actor.update(0.2, { throttle: 1, turn: 0, lift: 0, boost: 0 });
+    expect(session.actor.swimming).toBe(true);
+    expect(session.actor.position.x).toBeGreaterThan(0);
+    expect(session.actor.halt).toBe('clear');
   });
 
   it('binds the same world boundary after the controller emits a long intent', () => {
     const session = scene();
-    session.spider.place(WORLD_RADIUS - 0.01, 0, 0);
-    session.spider.yaw = -Math.PI / 2;
-    session.spider.update(0.2, { throttle: 1, turn: 0, lift: 0, boost: 1 });
-    expect(session.spider.root.position.x).toBeLessThanOrEqual(WORLD_RADIUS);
-    expect(session.spider.root.position.x).toBeCloseTo(WORLD_RADIUS, 6);
+    Object.assign(session.actor.position, { x: WORLD_RADIUS - 0.01, y: 0, z: 0 });
+    session.actor.state.yaw = -Math.PI / 2;
+    session.actor.update(0.2, { throttle: 1, turn: 0, lift: 0, boost: 1 });
+    expect(session.actor.position.x).toBeLessThanOrEqual(WORLD_RADIUS);
+    expect(session.actor.position.x).toBeCloseTo(WORLD_RADIUS, 6);
   });
 
   it('plans around the same shape and reports the owning entity instead of collider pieces', () => {

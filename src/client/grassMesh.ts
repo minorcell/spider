@@ -9,7 +9,7 @@ import {
 } from 'three';
 import { grassClumps } from '@/src/shared/grass';
 import { mulberry32 } from '@/src/shared/noise';
-import { grassMat, inkMat } from '@/src/shared/sim/parts';
+import { grassMat, inkMat } from '@/src/client/rig/parts';
 
 const TAU = Math.PI * 2;
 const UP = new Vector3(0, 1, 0);

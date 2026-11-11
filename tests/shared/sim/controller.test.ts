@@ -26,21 +26,6 @@ describe('registered controlled entities', () => {
     expect(Object.getPrototypeOf(actor)).toBe(Object.prototype);
   });
 
-  it('renders committed state without accepting render transforms as simulation input', () => {
-    const session = new SimSession(7);
-    const actor = session.actor.entity;
-    const before = actor.x;
-    session.spider.root.position.x = 90;
-    expect(session.snapshot().state.position.x).toBe(before);
-    session.spider.present();
-    expect(session.spider.root.position.x).toBe(before);
-    actor.x = 4;
-    actor.control!.yaw = 0.7;
-    session.spider.present();
-    expect(session.spider.root.position.x).toBe(4);
-    expect(session.spider.root.rotation.y).toBe(0.7);
-  });
-
   it('uses another registered movement capability without a dedicated controller or collision implementation', () => {
     KINDS.scout = {
       rest: 0,
@@ -61,10 +46,6 @@ describe('registered controlled entities', () => {
     expect(controller.heightSet).toBe(0.2);
     expect(controller.entity.vx).toBeCloseTo(0.4, 6);
     expect(controller.entity.control!.time).toBe(1);
-    // The renderer has not been advanced: it owns no physical progress.
-    expect(session.spider.root.position.x).toBe(0);
-    session.spider.present();
-    expect(session.spider.root.position.x).toBe(controller.position.x);
   });
 
   it('runs the movement kernel without constructing a model and rejects unregistered control', () => {

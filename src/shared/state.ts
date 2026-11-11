@@ -49,17 +49,13 @@ export interface Vec3 {
   z: number;
 }
 
-export interface SpiderState {
+export interface ActorState {
   time: number;
   position: Vec3;
   yaw: number;
   speed: number;
   height: number;
-  chassisPitch: number;
-  chassisRoll: number;
-  headYaw: number;
   lamp?: boolean;
-  feet: Vec3[];
 }
 
 export type Footprint = { kind: 'circle'; r: number } | { kind: 'box'; hx: number; hz: number };
@@ -253,7 +249,7 @@ function canAct(kind: string): boolean {
   return propertiesOf(kind).some((property) => property !== 'cover' && property !== 'home');
 }
 
-export function toSense(state: SpiderState, world: WorldState, withWays = false): Sense {
+export function toSense(state: ActorState, world: WorldState, withWays = false): Sense {
   const heading = toHeading(state.yaw);
   const px = state.position.x;
   const pz = state.position.z;
@@ -311,7 +307,7 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
 }
 
 export function toObservation(
-  state: SpiderState,
+  state: ActorState,
   world: WorldState,
   reach: number,
   view: number,
@@ -442,7 +438,7 @@ export function toObservation(
 }
 
 export function toNear(
-  state: SpiderState,
+  state: ActorState,
   world: WorldState,
   reach: number,
   reachY: number,

@@ -78,7 +78,8 @@ describe('SimSession basics', () => {
     expect(prepared.world.seed).toBe(8);
     const snapshot = session.snapshot();
     expect(snapshot.world).toBe(session.world);
-    expect(snapshot.state.feet).toHaveLength(8);
+    expect(snapshot.state).toEqual(session.actor.capture());
+    expect(snapshot.state).not.toHaveProperty('feet');
   });
 
   it('reports client-local world time', () => {
@@ -109,7 +110,7 @@ describe('SimSession basics', () => {
   it('ignores negative frame steps', () => {
     const session = new SimSession(3);
     session.frame(-5);
-    expect(session.spider.time).toBe(0);
+    expect(session.actor.time).toBe(0);
   });
 
   it('names an apple within reach', () => {
@@ -148,9 +149,9 @@ describe('SimSession basics', () => {
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 0, 1, 12) });
     const session = new SimSession(3);
     const grass = [...session.world.entities.values()].find((entity) => entity.kind === 'grass')!;
-    session.spider.place(grass.x, 0, grass.z);
+    Object.assign(session.actor.position, { x: grass.x, y: 0, z: grass.z });
     expect(session.observe(16).view).toBe(4.5);
-    session.spider.heightSet = 1.6;
+    session.actor.state.height = 1.6;
     expect(session.observe(16).view).toBe(16);
   });
 
@@ -184,11 +185,11 @@ describe('SimSession basics', () => {
       height: () => 0,
       inside: (x, z, margin = 0) => Math.hypot(x, z) < 3 - margin,
     };
-    session.spider.place(2, 0, 0);
-    session.spider.yaw = -Math.PI / 2;
+    Object.assign(session.actor.position, { x: 2, y: 0, z: 0 });
+    session.actor.state.yaw = -Math.PI / 2;
     const outcome = await settle(drive(session, 2, { throttle: 1 }), session);
     expect(outcome).toMatchObject({ ok: false, reason: 'blocked', halt: 'solid' });
-    expect(session.spider.root.position.x).toBeLessThan(3);
+    expect(session.actor.position.x).toBeLessThan(3);
   });
 });
 
@@ -204,7 +205,7 @@ describe('marks', () => {
   });
   it('marks the place under the body and lists it from the current pose', () => {
     const session = new SimSession(5);
-    session.spider.place(3.12345, 0, -2.12345);
+    Object.assign(session.actor.position, { x: 3.12345, y: 0, z: -2.12345 });
     expect(session.mark('  水边  ', '  喝水  ')).toMatchObject({
       ok: true,
       action: 'mark',
@@ -215,24 +216,24 @@ describe('marks', () => {
     });
     expect(session.world.marks).toEqual([{ name: '水边', x: 3.123, z: -2.123, note: '喝水' }]);
 
-    session.spider.place(0, 0, 0);
-    session.spider.yaw = 0;
+    Object.assign(session.actor.position, { x: 0, y: 0, z: 0 });
+    session.actor.state.yaw = 0;
     const [near] = session.marks();
     expect(near.name).toBe('水边');
     expect(near.distance).toBeCloseTo(Math.hypot(3.123, 2.123), 3);
     expect(near.bearing).toBeCloseTo(55.8, 1);
 
-    session.spider.place(3.123, 0, -2.123);
+    Object.assign(session.actor.position, { x: 3.123, y: 0, z: -2.123 });
     expect(session.marks()[0]).toMatchObject({ distance: 0, bearing: 0 });
   });
 
   it('lists marks nearest first and keeps an empty note off the record', () => {
     const session = new SimSession(5);
-    session.spider.place(10, 0, 0);
+    Object.assign(session.actor.position, { x: 10, y: 0, z: 0 });
     session.mark('远');
-    session.spider.place(1, 0, 0);
+    Object.assign(session.actor.position, { x: 1, y: 0, z: 0 });
     session.mark('近', '   ');
-    session.spider.place(0, 0, 0);
+    Object.assign(session.actor.position, { x: 0, y: 0, z: 0 });
     expect(session.marks().map((mark) => mark.name)).toEqual(['近', '远']);
     expect(session.world.marks.find((mark) => mark.name === '近')).not.toHaveProperty('note');
   });
@@ -280,9 +281,9 @@ describe('marks', () => {
 
   it('walks back to a named place or reports that it is missing', async () => {
     const session = new SimSession(5);
-    session.spider.place(0, 0, -3);
+    Object.assign(session.actor.position, { x: 0, y: 0, z: -3 });
     session.mark('门外');
-    session.spider.place(0, 0, 0);
+    Object.assign(session.actor.position, { x: 0, y: 0, z: 0 });
     await expect(settle(session.goToMark(' 门外 '), session)).resolves.toMatchObject({
       ok: true,
       reason: 'reached',
@@ -347,13 +348,13 @@ describe('goals', () => {
     await expect(settle(session.turn(90), session)).resolves.toMatchObject({ ok: true });
     await expect(settle(session.turnTo(45), session)).resolves.toMatchObject({ ok: true });
     await expect(settle(session.setHeight(0.3), session)).resolves.toMatchObject({ ok: true });
-    expect(session.spider.heightSet).toBeCloseTo(0.3, 1);
+    expect(session.actor.heightSet).toBeCloseTo(0.3, 1);
   });
 
   it('reports a wall that stops a walk', async () => {
     const session = new SimSession(4);
-    session.spider.place(0, 0, 1.8);
-    session.spider.yaw = Math.PI;
+    Object.assign(session.actor.position, { x: 0, y: 0, z: 1.8 });
+    session.actor.state.yaw = Math.PI;
     const outcome = await settle(session.walk(2), session);
     expect(outcome).toMatchObject({ ok: false, reason: 'blocked', halt: 'solid' });
   });
@@ -361,8 +362,8 @@ describe('goals', () => {
   it('reports a slope that stops a walk', async () => {
     const session = new SimSession(4);
     session.world.terrain.height = (x: number, z: number): number => (z > 5.5 ? 100 : 0);
-    session.spider.place(0, 0, 5);
-    session.spider.yaw = Math.PI;
+    Object.assign(session.actor.position, { x: 0, y: 0, z: 5 });
+    session.actor.state.yaw = Math.PI;
     const outcome = await settle(session.walk(2), session);
     expect(outcome).toMatchObject({ ok: false, reason: 'steep', halt: 'steep' });
   });
@@ -372,8 +373,8 @@ describe('goals', () => {
     await expect(settle(drive(session, 0.3, { throttle: 1 }), session)).resolves.toMatchObject({
       ok: true,
     });
-    session.spider.place(0, 0, 1.8);
-    session.spider.yaw = Math.PI;
+    Object.assign(session.actor.position, { x: 0, y: 0, z: 1.8 });
+    session.actor.state.yaw = Math.PI;
     const blocked = await settle(drive(session, 2, { throttle: 1 }), session);
     expect(blocked).toMatchObject({ ok: false, reason: 'blocked', halt: 'solid' });
     await expect(settle(drive(session, 0.1, { turn: 1 }), session)).resolves.toMatchObject({
@@ -454,7 +455,7 @@ describe('moveTo', () => {
 
   it('retries a blocked route and reports the solids', async () => {
     const session = new SimSession(5);
-    session.spider.bindMotion((x, z) => ({ x, z, dx: 0, dz: 0, halt: 'solid' }));
+    session.actor.bindMotion((x, z) => ({ x, z, dx: 0, dz: 0, halt: 'solid' }));
     const blocked = await settle(session.moveTo(0, -5), session);
     expect(blocked).toMatchObject({ ok: false, reason: 'blocked', detour: null });
     const around = await settle(session.moveTo(0, 5), session);
@@ -494,7 +495,7 @@ describe('moveTo', () => {
       around: [],
       direct: false,
     });
-    session.spider.bindMotion((x, z) => ({ x, z, dx: 0, dz: 0, halt: 'solid' }));
+    session.actor.bindMotion((x, z) => ({ x, z, dx: 0, dz: 0, halt: 'solid' }));
     const outcome = await settle(session.moveTo(0, -1), session);
     expect(outcome).toMatchObject({
       ok: false,
@@ -567,7 +568,7 @@ describe('approach', () => {
   it('returns a failed move', async () => {
     const session = new SimSession(6);
     const apple = session.addEntity('apple', 0, -1.2);
-    session.spider.bindMotion((x, z) => ({ x, z, dx: 0, dz: 0, halt: 'solid' }));
+    session.actor.bindMotion((x, z) => ({ x, z, dx: 0, dz: 0, halt: 'solid' }));
     await expect(settle(session.approach(apple.id), session)).resolves.toMatchObject({
       ok: false,
       reason: 'blocked',
@@ -876,7 +877,7 @@ describe('carrying', () => {
       reason: 'out-of-reach',
     });
     expect(session.world.tethers.has(apple.id)).toBe(false);
-    expect(session.spider.interaction).toBeNull();
+    expect(session.activity).toBeNull();
   });
 
   it('handles a thing that vanished before the grab', async () => {
@@ -967,7 +968,7 @@ describe('carrying', () => {
   it('refuses to store away from home', () => {
     const session = new SimSession(9);
     attachCargo(session.world, fakeEntity({ id: 'apple-back' }));
-    session.spider.place(10, 0, 10);
+    Object.assign(session.actor.position, { x: 10, y: 0, z: 10 });
     expect(session.store()).toMatchObject({ ok: false, reason: 'not-home' });
   });
 
@@ -996,11 +997,7 @@ describe('carrying', () => {
     const item = fakeEntity({ id: 'apple-back' });
     attachCargo(session.world, item);
     expect(
-      homeAt(
-        session.spider.root.position.x,
-        session.spider.root.position.z,
-        session.world.entities.values(),
-      ),
+      homeAt(session.actor.position.x, session.actor.position.z, session.world.entities.values()),
     ).not.toBeNull();
     const outcome = session.store();
     expect(outcome).toMatchObject({ ok: true, action: 'store', target: item.id });
@@ -1023,7 +1020,7 @@ describe('carrying', () => {
 describe('sleep and props', () => {
   it('refuses to sleep away from home', async () => {
     const session = new SimSession(10);
-    session.spider.place(10, 0, 10);
+    Object.assign(session.actor.position, { x: 10, y: 0, z: 10 });
     await expect(session.sleep()).resolves.toMatchObject({ ok: false, reason: 'not-home' });
   });
 
@@ -1031,7 +1028,7 @@ describe('sleep and props', () => {
     const session = new SimSession(10);
     const outcome = await settle(session.sleep(), session, 40, 60);
     expect(outcome).toMatchObject({ ok: true, action: 'sleep', home: true });
-    expect(Math.abs(session.spider.heightSet)).toBeLessThan(0.05);
+    expect(Math.abs(session.actor.heightSet)).toBeLessThan(0.05);
   });
 
   it('grows a replacement apple as the simulation runs', () => {
@@ -1094,7 +1091,7 @@ describe('sleep and props', () => {
 it('applies gravity to slack cargo and tension to taut cargo', () => {
   const session = new SimSession(3);
   session.world.entities = indexEntities([session.actor.entity]);
-  const back = session.spider.root.position;
+  const back = session.actor.position;
   const cargo = fakeEntity({ x: back.x, z: back.z + 1.66, y: back.y + 10 });
   attachCargo(session.world, cargo);
   session.world.tethers.set(cargo.id, {

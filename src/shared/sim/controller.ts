@@ -2,7 +2,7 @@ import { BODY_RADIUS, moveCircle, type MotionSolver } from '@/src/shared/collisi
 import { CONTACT } from '@/src/shared/config';
 import { initialControl, type ControlSpec, type ControlState } from '@/src/shared/control';
 import { kindOf } from '@/src/shared/kinds';
-import type { EntityState, Vec3 } from '@/src/shared/state';
+import type { ActorState, EntityState, Vec3 } from '@/src/shared/state';
 import { WORLD_RADIUS } from '@/src/shared/terrain';
 import { IDLE_CONTROLS, type Controls } from '@/src/shared/types';
 import { floatHeight, WATER, waterPace, type Water } from '@/src/shared/water';
@@ -95,6 +95,17 @@ export class Controller {
   get swimming(): boolean {
     const water = this.water;
     return water.depth > 0 && floatHeight(water) > this.#ground(this.entity.x, this.entity.z);
+  }
+
+  capture(): ActorState {
+    return {
+      time: this.time,
+      position: { x: this.entity.x, y: this.entity.y, z: this.entity.z },
+      yaw: this.yaw,
+      speed: this.speed,
+      height: this.heightSet,
+      lamp: this.lamp,
+    };
   }
 
   bindGround(ground: (x: number, z: number) => number, limit = WORLD_RADIUS): void {

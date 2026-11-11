@@ -214,7 +214,7 @@ describe('cloud sync', () => {
     const uploads = () =>
       cloud.calls.filter(({ url, init }) => url.includes('world.json') && init.method === 'PUT');
     const started = uploads().length;
-    session.spider.position.x += 1;
+    session.actor.position.x += 1;
     flushWorld('poke');
     await writesDone();
     await vi.waitFor(() => expect(uploads().length).toBeGreaterThan(started));

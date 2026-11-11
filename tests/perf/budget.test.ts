@@ -1,7 +1,9 @@
+import { ActorPresenter } from '@/src/client/rig/presenter';
+import { drive } from '@/tests/simHelpers';
 import { describe, expect, it } from 'vitest';
 import { parseInlineCalls } from '@/src/client/agent/inline';
 import { islandGroup } from '@/src/client/groundView';
-import { islandBuffers } from '@/src/shared/island';
+import { islandBuffers } from '@/src/client/islandMesh';
 import {
   blankSession,
   planCompaction,
@@ -105,24 +107,45 @@ describe('frame and boot budgets', () => {
 describe('driven frames', () => {
   it('steps 120 driven frames in under 120 ms', () => {
     const session = new SimSession(SEED);
-    const home = session.spider.capture();
+    const home = session.actor.capture();
+    const initial = structuredClone(session.actor.entity);
     expect(
       bestOf(
         3,
         () => stepDriven(session),
-        () => session.spider.settle(home),
+        () => Object.assign(session.actor.entity, structuredClone(initial)),
       ),
     ).toBeLessThan(120);
 
-    session.spider.settle(home);
+    Object.assign(session.actor.entity, structuredClone(initial));
     stepDriven(session);
     const moved = Math.hypot(
-      session.spider.root.position.x - home.position.x,
-      session.spider.root.position.z - home.position.z,
+      session.actor.position.x - home.position.x,
+      session.actor.position.z - home.position.z,
     );
     expect(moved).toBeGreaterThan(1);
-    expect(session.spider.halt).toBe('clear');
+    expect(session.actor.halt).toBe('clear');
   });
+});
+
+it('steps the world and browser rig together for 120 frames in under 120 ms', () => {
+  let session: SimSession;
+  let presenter: ActorPresenter;
+  const reset = () => {
+    session = new SimSession(SEED);
+    presenter = new ActorPresenter(session);
+  };
+  const run = () => {
+    void drive(session, 4, { throttle: 1 });
+    try {
+      for (let i = 0; i < 120; i++) presenter.step(1 / 60);
+    } finally {
+      session.cancel();
+    }
+  };
+  expect(bestOf(3, run, reset)).toBeLessThan(120);
+  expect(presenter!.model.root.position.z).toBe(session!.actor.position.z);
+  expect(presenter!.model.root.position.z).toBeLessThan(-1);
 });
 
 describe('route around the nest', () => {

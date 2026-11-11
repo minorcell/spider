@@ -50,6 +50,17 @@ vi.mock('@/src/client/stars', () => ({
 
 vi.mock('@/src/client/cloud/sync', () => cloud);
 
+vi.mock('@/src/client/rig/presenter', () => ({
+  ActorPresenter: class {
+    model = { tag: 'browser-owned-rig' };
+    constructor(readonly session: { frame(dt: number): void }) {}
+    step(dt: number) {
+      this.session.frame(dt);
+    }
+    sync() {}
+  },
+}));
+
 vi.mock('@/src/client/stage', () => ({
   Stage: class {
     bind = control.bind;
@@ -82,7 +93,6 @@ vi.mock('@/src/client/worldStore', () => ({
 
 vi.mock('@/src/shared/sim/session', () => ({
   SimSession: class {
-    spider = { tag: 'spider' };
     world = { tag: 'world' };
     frame = vi.fn();
     cancel = vi.fn();
@@ -148,9 +158,9 @@ describe('main', () => {
     await import('@/src/client/main');
     await Promise.resolve();
 
-    const session = control.sessions[0] as { spider: unknown; world: unknown; frame: unknown };
+    const session = control.sessions[0] as { world: unknown; frame: unknown };
     const stage = control.stages[0];
-    expect(control.stageArgs[0]).toEqual([host, session.spider]);
+    expect(control.stageArgs[0]).toEqual([host, { tag: 'browser-owned-rig' }]);
     expect(control.bind).toHaveBeenCalledTimes(1);
     expect(control.start).toHaveBeenCalledTimes(1);
     expect(control.placeIsland).toHaveBeenCalledTimes(1);

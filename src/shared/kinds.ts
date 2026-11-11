@@ -61,6 +61,7 @@ export interface TetherSpec {
 }
 
 export interface KindSpec {
+  rig?: string;
   control?: ControlSpec;
   properties?: readonly string[];
   carryable?: { anchor: Vec3 };
@@ -88,6 +89,7 @@ const EMPTY_PROPERTIES: readonly string[] = Object.freeze([]);
 export const KINDS: Record<string, KindSpec> = {
   spider: {
     label: '蜘蛛',
+    rig: 'spider',
     tether: {
       anchor: { x: 0, y: 0.82, z: 1.66 },
       limit: 7,

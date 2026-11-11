@@ -1,10 +1,11 @@
+import { meshGeometry } from '@/src/client/meshGeometry';
 import { BufferGeometry, Float32BufferAttribute, Group, Mesh, Vector3 } from 'three';
 import {
   NEST_DETAILS,
   NEST_PEBBLE_SKIN,
   NEST_ROOT_SKIN,
-  nestPebbleGeometry,
-  nestRootGeometry,
+  nestPebbleMesh,
+  nestRootMesh,
 } from '@/src/shared/nestDetails';
 import { NEST_RO, NEST_SCALE_XZ, NEST_SCALE_Y, nestLocalHeight } from '@/src/shared/nestShape';
 import {
@@ -14,7 +15,7 @@ import {
   soilMat,
   stemMat,
   stoneMat,
-} from '@/src/shared/sim/parts';
+} from '@/src/client/rig/parts';
 import { buildGrass } from '@/src/client/grassMesh';
 import { lineFrom, pushLine } from '@/src/client/models/geometry';
 
@@ -58,18 +59,18 @@ export function buildNest(): Group {
   group.add(floor);
 
   for (const pebble of NEST_DETAILS.pebbles) {
-    const geometry = nestPebbleGeometry();
+    const geometry = meshGeometry(nestPebbleMesh());
     const stone = new Mesh(geometry, stoneMat);
     stone.name = 'pebble';
     stone.scale.copy(pebble.scale);
     stone.position.copy(pebble.position);
-    stone.rotation.copy(pebble.rotation);
+    stone.rotation.set(pebble.rotation.x, pebble.rotation.y, pebble.rotation.z);
     stone.add(new Mesh(growShell(geometry, NEST_PEBBLE_SKIN), inkSolidMat));
     group.add(stone);
   }
 
   for (const spine of NEST_DETAILS.roots) {
-    const geometry = nestRootGeometry(spine);
+    const geometry = meshGeometry(nestRootMesh(spine));
     const root = new Mesh(geometry, stemMat);
     root.name = 'bank-root';
     root.add(new Mesh(growShell(geometry, NEST_ROOT_SKIN), inkSolidMat));

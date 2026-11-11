@@ -18,8 +18,8 @@ import {
 } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { PALETTE } from '@/src/shared/config';
-import { islandBuffers } from '@/src/shared/island';
-import { groundMat } from '@/src/shared/sim/parts';
+import { islandBuffers } from '@/src/client/islandMesh';
+import { groundMat } from '@/src/client/rig/parts';
 import { enableWorldShadows } from '@/src/client/ecologyView';
 import { buildProp, drapeGrass } from '@/src/client/props';
 import { buildStone } from '@/src/client/models/stone';

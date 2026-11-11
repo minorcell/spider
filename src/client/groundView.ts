@@ -28,8 +28,8 @@ import {
 } from 'three/tsl';
 import { MeshBasicNodeMaterial, type Node } from 'three/webgpu';
 import { PALETTE } from '@/src/shared/config';
-import { groundAttributes, islandBuffers, type IslandBuffers } from '@/src/shared/island';
-import { groundMat } from '@/src/shared/sim/parts';
+import { groundAttributes, islandBuffers, type IslandBuffers } from '@/src/client/islandMesh';
+import { groundMat } from '@/src/client/rig/parts';
 import { TERRAIN } from '@/src/shared/terrain';
 import {
   applyWaterMotion,

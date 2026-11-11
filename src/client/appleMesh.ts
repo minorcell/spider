@@ -19,7 +19,7 @@ import {
   leafMat,
   paperMat,
   stemMat,
-} from '@/src/shared/sim/parts';
+} from '@/src/client/rig/parts';
 
 function appleProfile(): Vector2[] {
   const raw: readonly (readonly [number, number])[] = [

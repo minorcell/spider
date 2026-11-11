@@ -10,7 +10,7 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PALETTE } from '@/src/shared/config';
 import { mulberry32 } from '@/src/shared/noise';
-import { growShell, inkMat, inkSolidMat, stemMat } from '@/src/shared/sim/parts';
+import { growShell, inkMat, inkSolidMat, stemMat } from '@/src/client/rig/parts';
 import { groupHeight, lineFrom, pushLine, tubeGeometry } from '@/src/client/models/geometry';
 
 const TAU = Math.PI * 2;

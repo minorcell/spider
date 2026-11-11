@@ -9,7 +9,7 @@ import {
   type Observation,
   type PlaceMark,
   type Sense,
-  type SpiderState,
+  type ActorState,
   type WorldInfo,
   type WorldState,
 } from '@/src/shared/state';
@@ -48,11 +48,10 @@ import {
 } from '@/src/shared/sim/goals';
 import { planRoute } from '@/src/shared/route';
 import { applyBody, type SimBody } from '@/src/shared/sim/snapshot';
-import { bindWorld } from '@/src/shared/sim/bindWorld';
+import { bindController } from '@/src/shared/sim/bindController';
 import { fitsPlacement, stepPhysics } from '@/src/shared/sim/physics';
 import { carriedItems, attachTether, attachmentFailure, heldBy } from '@/src/shared/sim/tether';
-import type { Controller } from '@/src/shared/sim/controller';
-import { Spider } from '@/src/shared/sim/Spider';
+import { Controller } from '@/src/shared/sim/controller';
 import { localDate } from '@/src/shared/dates';
 import { visualRange, worldClock } from '@/src/shared/ecology';
 import { viewDistance } from '@/src/shared/vision';
@@ -86,19 +85,17 @@ interface ActiveGoal {
 }
 
 export class SimSession {
-  readonly spider: Spider;
+  readonly actor: Controller;
+  activity: Readonly<{ kind: 'pick-up'; targetId: string }> | null = null;
+  input = IDLE_CONTROLS;
   readonly world: WorldState;
 
   constructor(seed?: number, terrain?: Terrain) {
     this.world = terrain ? createWorld(terrain.seed, terrain) : createWorld(seed);
     const actor = addEntity(this.world, islandActor.kind, islandActor, 0);
     this.world.controlledId = actor.id;
-    this.spider = new Spider(actor);
-    bindWorld(this.spider, this.world);
-  }
-
-  get actor(): Controller {
-    return this.spider.controller;
+    this.actor = new Controller(actor);
+    bindController(this.actor, this.world);
   }
 
   #active: ActiveGoal | null = null;
@@ -128,8 +125,8 @@ export class SimSession {
     active.finish({ ok: false, reason: 'cancelled', ...active.goal.result() });
   }
 
-  snapshot(): { state: SpiderState; world: WorldState } {
-    return { state: this.spider.capture(), world: this.world };
+  snapshot(): { state: ActorState; world: WorldState } {
+    return { state: this.actor.capture(), world: this.world };
   }
 
   worldInfo(now = new Date()): WorldInfo {
@@ -162,15 +159,15 @@ export class SimSession {
   observe(distance = VIEW_DISTANCE): Observation {
     const { x, z } = this.actor.position;
     const view = viewDistance(this.world, x, z, this.actor.heightSet, this.actor.lamp, distance);
-    return toObservation(this.spider.capture(), this.world, REACH, view, REACH_Y);
+    return toObservation(this.actor.capture(), this.world, REACH, view, REACH_Y);
   }
 
   sense(withWays = false): Sense {
-    return toSense(this.spider.capture(), this.world, withWays);
+    return toSense(this.actor.capture(), this.world, withWays);
   }
 
   near(): NearEntity[] {
-    return toNear(this.spider.capture(), this.world, REACH, REACH_Y);
+    return toNear(this.actor.capture(), this.world, REACH, REACH_Y);
   }
 
   mark(name: string, note?: string): GoalOutcome {
@@ -410,10 +407,7 @@ export class SimSession {
     const result = () => ({ action: 'pick-up', target: entity.id });
     const promise = this.run({
       timeout: 3,
-      controls: () => {
-        this.spider.setInteraction(entity, 'reach');
-        return IDLE_CONTROLS;
-      },
+      controls: () => IDLE_CONTROLS,
       done: () => this.actor.time - startedAt >= 0.35,
       result,
       commit: () => {
@@ -425,9 +419,11 @@ export class SimSession {
         if (!attached.ok) return { ok: false, reason: attached.reason, id: entity.id };
         return { ok: true, ...result(), carrying: carriedItems(this.world).map((item) => item.id) };
       },
-      cleanup: () => this.spider.setInteraction(null),
+      cleanup: () => {
+        this.activity = null;
+      },
     });
-    this.spider.setInteraction(entity, 'reach');
+    this.activity = { kind: 'pick-up', targetId: entity.id };
     return promise;
   }
 
@@ -677,7 +673,7 @@ export class SimSession {
       dt,
     );
     this.actor.commit(committed, from, stuckBefore, dt, controls);
-    this.spider.present(dt, controls);
+    this.input = controls;
     if (!active) return;
 
     const reached = active.goal.done();

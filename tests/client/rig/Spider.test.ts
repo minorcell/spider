@@ -7,8 +7,8 @@ import { BONES, CONTACT, GAIT } from '@/src/shared/config';
 import { NEST_SCALE_XZ, NEST_SCALE_Y, nestSurface } from '@/src/shared/nestShape';
 import { nestSolidSurface } from '@/src/shared/nestCollision';
 import { NEST_DETAILS } from '@/src/shared/nestDetails';
-import { bindLegWorld } from '@/src/shared/sim/bindWorld';
-import { Spider } from '@/src/shared/sim/Spider';
+import { bindLegWorld } from '@/src/client/rig/bindWorld';
+import { AnimatedActor as Spider } from '@/tests/rigHelpers';
 import { createWorld } from '@/src/shared/world';
 import { Terrain, TERRAIN } from '@/src/shared/terrain';
 import { floatHeight, WATER, waterAt } from '@/src/shared/water';
@@ -100,44 +100,6 @@ describe('Spider', () => {
     const spider = new Spider();
     spider.update(0, IDLE);
     expect(spider.time).toBe(0);
-  });
-
-  it('stands still after a saved pose is settled', () => {
-    const spider = new Spider();
-    spider.bindGround(() => 0);
-    spider.update(0.2, { throttle: 1, turn: 0.2, lift: 0, boost: 0 });
-    const saved = spider.capture();
-    saved.position.x = 2;
-    saved.position.z = -1;
-    saved.speed = 3;
-    spider.settle(saved);
-    const parked = spider.root.position.clone();
-    spider.update(0.016, IDLE);
-    expect(spider.speed).toBe(0);
-    expect(spider.root.position.distanceTo(parked)).toBeLessThan(1e-6);
-    expect(spider.legs.every((leg) => leg.lifted === false)).toBe(true);
-  });
-
-  it('adopts an authoritative state', () => {
-    const spider = new Spider();
-    const feet = Array.from({ length: 8 }, (_, i) => ({ x: i, y: 0.2, z: -i }));
-    spider.applyState({
-      time: 2,
-      position: { x: 1, y: 0.5, z: 2 },
-      yaw: 0.5,
-      speed: 1.25,
-      height: 0.2,
-      chassisPitch: 0.1,
-      chassisRoll: 0.2,
-      headYaw: 0.3,
-      feet,
-    });
-    expect(spider.time).toBe(2);
-    expect(spider.yaw).toBe(0.5);
-    expect(spider.speed).toBe(1.25);
-    expect(spider.heightSet).toBe(0.2);
-    expect(spider.root.position.toArray()).toEqual([1, 0.5, 2]);
-    expect(spider.legs[3].foot.toArray()).toEqual([3, 0.2, -3]);
   });
 
   it('steers, lifts, and pitches with the input', () => {
@@ -466,9 +428,9 @@ describe('Spider', () => {
     }
     expect(lowest, where).toBeGreaterThan(CONTACT - 0.02);
     expect(lowest).toBeLessThan(CONTACT + 0.03);
-    const saved = spider.capture();
-    spider.applyState(saved);
-    expect(spider.legs[0].foot.y).toBeCloseTo(saved.feet[0].y);
+    const foot = spider.legs[0].foot.clone();
+    spider.present();
+    expect(spider.legs[0].foot).toEqual(foot);
   });
 
   it('plants on the nest mound without growing a bone', () => {
