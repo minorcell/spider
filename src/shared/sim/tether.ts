@@ -1,3 +1,4 @@
+import { recordWorldChange, type ReleaseCause } from '@/src/shared/changes';
 import { kindOf } from '@/src/shared/kinds';
 import { sphereVolume } from '@/src/shared/water';
 import type { EntityState, TetherRelation, Vec3, WorldState } from '@/src/shared/state';
@@ -91,7 +92,16 @@ export function attachTether(world: WorldState, sourceId: string, targetId: stri
     Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z),
   );
   world.tethers.set(targetId, relation);
+  recordWorldChange(world, { kind: 'tetherChanged', tether: relation, attached: true });
   return { ok: true as const, relation };
+}
+
+export function detachTether(world: WorldState, targetId: string, cause: ReleaseCause): boolean {
+  const relation = world.tethers.get(targetId);
+  if (!relation) return false;
+  world.tethers.delete(targetId);
+  recordWorldChange(world, { kind: 'tetherChanged', tether: relation, attached: false, cause });
+  return true;
 }
 
 function velocityAt(entity: EntityState, point: Vec3): Vec3 {

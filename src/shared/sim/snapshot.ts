@@ -1,3 +1,5 @@
+import { recordWorldChange } from '@/src/shared/changes';
+import { captureWorldData, type WorldData } from '@/src/shared/worldView';
 import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
 import type { ControlSpec, ControlState } from '@/src/shared/control';
 import { kindOf } from '@/src/shared/kinds';
@@ -26,15 +28,8 @@ const MAX_TOOL = 32;
 const PLACE_M = 1_000_000;
 const PLACE_Y = 1_000;
 
-export interface SimBody {
-  seed: number;
-  clock: WorldTime;
+export interface SimBody extends WorldData {
   controlledId: string;
-  populations: Record<string, PopulationState>;
-  entitySerials: Record<string, number>;
-  entities: EntityState[];
-  marks: PlaceMark[];
-  tethers: TetherRelation[];
   pending: { text: string; tool: string | null } | null;
 }
 
@@ -76,14 +71,8 @@ export function bodyOfRecord(record: WorldRecord): SimBody {
 export function captureBody(session: Restorable, pending: SimBody['pending']): SimBody {
   const world = session.world;
   return {
-    seed: world.seed,
-    clock: { ...world.clock },
+    ...captureWorldData(world),
     controlledId: world.controlledId!,
-    populations: structuredClone(Object.fromEntries(world.populations)),
-    entitySerials: Object.fromEntries(world.entitySerials),
-    entities: structuredClone([...world.entities.values()]),
-    marks: structuredClone(world.marks),
-    tethers: structuredClone([...world.tethers.values()]),
     pending: cleanPending(pending),
   };
 }
@@ -119,6 +108,7 @@ export function applyBody(
   Object.assign(session.world, candidate);
   session.actor.bindEntity(actor);
   bindController(session.actor, session.world);
+  recordWorldChange(session.world, { kind: 'restored' });
 }
 
 export function chooseRecord(ls: unknown, idb: unknown, today: string): WorldRecord | null {

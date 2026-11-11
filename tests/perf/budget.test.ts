@@ -12,6 +12,7 @@ import {
   type ChatSession,
   type CompactLimits,
 } from '@/src/client/journal/session';
+import { onWorldCommit, type WorldCommit } from '@/src/shared/changes';
 import { localDate } from '@/src/shared/dates';
 import {
   applyBody,
@@ -101,6 +102,48 @@ describe('frame and boot budgets', () => {
         for (let i = 0; i < 120; i++) session.frame(1 / 60);
       }),
     ).toBeLessThan(120);
+  });
+});
+
+describe('world event budgets', () => {
+  it('publishes 120 island mutations to two readers in under 120 ms', () => {
+    const session = new SimSession(SEED);
+    const actorId = session.actor.entity.id;
+    const readLamp = ({ view }: WorldCommit) =>
+      view.entities.find(({ id }) => id === actorId)?.control?.lamp;
+    const first: { receipt: WorldCommit; lamp: boolean | undefined }[] = [];
+    const second: { receipt: WorldCommit; lamp: boolean | undefined }[] = [];
+    const stopFirst = onWorldCommit(session.world, (receipt) => {
+      first.push({ receipt, lamp: readLamp(receipt) });
+    });
+    const stopSecond = onWorldCommit(session.world, (receipt) => {
+      second.push({ receipt, lamp: readLamp(receipt) });
+    });
+
+    const elapsed = bestOf(
+      3,
+      () => {
+        for (let i = 0; i < 120; i++) session.setLamp(i % 2 === 0);
+      },
+      () => {
+        first.length = 0;
+        second.length = 0;
+      },
+    );
+    stopFirst();
+    stopSecond();
+
+    expect(elapsed).toBeLessThan(120);
+    expect(first).toHaveLength(120);
+    expect(second).toHaveLength(120);
+    for (const [index, { receipt, lamp }] of first.entries()) {
+      const on = index % 2 === 0;
+      expect(receipt.events).toEqual([{ kind: 'lampChanged', actor: actorId, on }]);
+      expect(second[index].receipt).toBe(receipt);
+      expect(second[index].lamp).toBe(on);
+      expect(lamp).toBe(on);
+      expect(readLamp(receipt)).toBe(on);
+    }
   });
 });
 

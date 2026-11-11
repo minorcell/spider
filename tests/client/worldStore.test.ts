@@ -18,7 +18,7 @@ import {
 } from '@/src/client/worldStore';
 import { localDate } from '@/src/shared/dates';
 import { SimSession } from '@/src/shared/sim/session';
-import { captureBody, type WorldRecord } from '@/src/shared/sim/snapshot';
+import { applyBody, captureBody, type WorldRecord } from '@/src/shared/sim/snapshot';
 import { Terrain } from '@/src/shared/terrain';
 import type { SnapshotStore } from '@/src/client/storage/snapshot';
 
@@ -1459,6 +1459,109 @@ describe('injected snapshot store', () => {
 });
 
 describe('write cadence and leases', () => {
+  it('debounces completed bites before the meal ends and saves partial progress on cancellation', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    const { x, z } = session.actor.position;
+    const food = session.addEntity('apple', x, z);
+    installWorldStore(session, store);
+
+    const eating = session.eat(food.id);
+    const step = (ticks: number) => {
+      for (let i = 0; i < ticks; i++) session.frame(1 / 60, Date.now());
+    };
+    step(29);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(store.calls).not.toContain('put');
+
+    step(1);
+    expect(food.stage).toBe(1);
+    await vi.advanceTimersByTimeAsync(399);
+    expect(store.calls).not.toContain('put');
+    await vi.advanceTimersByTimeAsync(1);
+    await writesDone();
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(1);
+    expect((store.value as WorldRecord).entities.find(({ id }) => id === food.id)?.stage).toBe(1);
+
+    step(30);
+    expect(food.stage).toBe(2);
+    session.cancel();
+    await expect(eating).resolves.toMatchObject({ ok: false, reason: 'cancelled', stage: 2 });
+    await vi.advanceTimersByTimeAsync(400);
+    await writesDone();
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(2);
+    expect((store.value as WorldRecord).entities.find(({ id }) => id === food.id)?.stage).toBe(2);
+    vi.useRealTimers();
+  });
+
+  it('keeps a restore notification from scheduling a write for expired entities', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    const food = session.addEntity('apple', 0, 0);
+    const saved = captureBody(session, null);
+    installWorldStore(session, store);
+
+    applyBody(session, saved, undefined, Date.now() + 720_000);
+    expect(session.world.entities.has(food.id)).toBe(false);
+    await vi.advanceTimersByTimeAsync(400);
+    await writesDone();
+    expect(store.calls).not.toContain('put');
+    vi.useRealTimers();
+  });
+
+  it('honors a foreign lease when an event schedules a write', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    session.mark('here');
+    localStorage.setItem(LEASE, JSON.stringify({ owner: 'other', until: Date.now() + 60_000 }));
+
+    await vi.advanceTimersByTimeAsync(400);
+    await writesDone();
+    expect(store.calls).not.toContain('put');
+    expect(localStorage.getItem(KEY)).toBeNull();
+    expect(JSON.parse(localStorage.getItem(LEASE) ?? '')).toMatchObject({ owner: 'other' });
+    vi.useRealTimers();
+  });
+
+  it('clears world event subscriptions on reinstall and reset', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const first = new SimSession(2);
+    const next = new SimSession(3);
+    await restoreWorld(first, new Date(), store);
+    installWorldStore(first, store);
+    first.mark('queued in the old world');
+    installWorldStore(next, store);
+
+    await vi.advanceTimersByTimeAsync(400);
+    await writesDone();
+    expect(store.calls).not.toContain('put');
+
+    const idleTimers = vi.getTimerCount();
+    first.mark('old');
+    expect(vi.getTimerCount()).toBe(idleTimers);
+    next.mark('current');
+    await vi.advanceTimersByTimeAsync(400);
+    await writesDone();
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(1);
+    expect((store.value as WorldRecord).marks).toEqual(next.world.marks);
+
+    next.mark('queued');
+    resetWorldStore();
+    next.mark('detached');
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
   it('coalesces quick pokes into one write', async () => {
     vi.useFakeTimers();
     const store = memoryStore();

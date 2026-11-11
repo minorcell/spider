@@ -1,3 +1,4 @@
+import { batchWorldChanges, recordWorldChange } from '@/src/shared/changes';
 import {
   toHeading,
   toNear,
@@ -12,6 +13,7 @@ import {
   type ActorState,
   type WorldInfo,
   type WorldState,
+  type WorldTime,
 } from '@/src/shared/state';
 import { islandActor } from '@/src/shared/islandContent';
 import { kindOf } from '@/src/shared/kinds';
@@ -56,7 +58,13 @@ import { planRoute } from '@/src/shared/route';
 import { applyBody, type SimBody } from '@/src/shared/sim/snapshot';
 import { bindController } from '@/src/shared/sim/bindController';
 import { fitsPlacement, stepPhysics } from '@/src/shared/sim/physics';
-import { carriedItems, attachTether, attachmentFailure, heldBy } from '@/src/shared/sim/tether';
+import {
+  carriedItems,
+  attachTether,
+  attachmentFailure,
+  detachTether,
+  heldBy,
+} from '@/src/shared/sim/tether';
 import { Controller } from '@/src/shared/sim/controller';
 import { localDate } from '@/src/shared/dates';
 import { visualRange, worldClock } from '@/src/shared/ecology';
@@ -157,7 +165,9 @@ export class SimSession {
   }
 
   setLamp(on: boolean): void {
+    if (this.actor.lamp === on) return;
     this.actor.lamp = on;
+    recordWorldChange(this.world, { kind: 'lampChanged', actor: this.actor.entity.id, on });
   }
 
   adopt(body: SimBody): void {
@@ -192,6 +202,7 @@ export class SimSession {
     const mark: PlaceMark = { name: clean, x: round3(x), z: round3(z) };
     if (line) mark.note = line;
     this.world.marks.push(mark);
+    recordWorldChange(this.world, { kind: 'marksChanged' });
     return {
       ok: true,
       action: 'mark',
@@ -227,6 +238,7 @@ export class SimSession {
     const index = this.world.marks.findIndex((mark) => mark.name === clean);
     if (index === -1) return { ok: false, reason: 'not-found', name: clean };
     this.world.marks.splice(index, 1);
+    recordWorldChange(this.world, { kind: 'marksChanged' });
     return { ok: true, action: 'forget', name: clean };
   }
 
@@ -249,18 +261,22 @@ export class SimSession {
     this.#stepBank = Math.min(SIMULATION_STEP_SECONDS * 3, this.#stepBank + dt);
     const steps = Math.floor((this.#stepBank + 1e-9) / SIMULATION_STEP_SECONDS);
     this.#stepBank = Math.max(0, this.#stepBank - steps * SIMULATION_STEP_SECONDS);
-    for (let i = 0; i < steps; i++) this.#step(SIMULATION_STEP_SECONDS);
+    for (let i = 0; i < steps; i++)
+      batchWorldChanges(this.world, () => this.#step(SIMULATION_STEP_SECONDS));
   }
 
   /** Resume/reload expiry without advancing physics, hunger, actions or populations. */
   reconcileWallTime(wallNowMs: number): void {
     if (!Number.isFinite(wallNowMs) || wallNowMs < 0) return;
-    this.world.clock.wallNowMs = wallNowMs;
-    this.#expire();
+    batchWorldChanges(this.world, () => {
+      const previous = { ...this.world.clock };
+      this.world.clock.wallNowMs = wallNowMs;
+      this.#expire(previous);
+    });
   }
 
-  #expire(): void {
-    const removed = expireEntities(this.world);
+  #expire(previous: WorldTime): void {
+    const removed = expireEntities(this.world, previous);
     const active = this.#active;
     if (active?.goal.targets?.some((id) => removed.includes(id)))
       active.finish({ ...active.goal.result(), ok: false, reason: 'expired' });
@@ -428,12 +444,19 @@ export class SimSession {
         }
         nutrition += gained;
         target.stage = completed;
+        recordWorldChange(this.world, {
+          kind: 'bite',
+          actor: this.actor.entity.id,
+          target: target.id,
+          completedBites: completed,
+          nutrition: gained,
+        });
         return completed === meal.bites;
       },
       result,
       commit: () => {
         if (failure) return { ...result(), ...failure };
-        if (meal.removes) removeEntity(this.world, target);
+        if (meal.removes) removeEntity(this.world, target, 'eaten', this.actor.entity.id);
         return { ...result(), ok: true, reason: 'reached', removed: meal.removes };
       },
     });
@@ -482,7 +505,7 @@ export class SimSession {
   release(id?: string): GoalOutcome {
     const item = this.#carried(id);
     if (!item) return { ok: false, reason: 'not-carrying', id };
-    this.world.tethers.delete(item.id);
+    detachTether(this.world, item.id, 'released');
     return {
       ok: true,
       action: 'release',
@@ -689,13 +712,14 @@ export class SimSession {
     item.z = z;
     item.y = restingY(this.world.terrain, item.kind, x, z, item.footprint);
     item.vx = item.vy = item.vz = 0;
-    this.world.tethers.delete(item.id);
+    detachTether(this.world, item.id, 'placed');
   }
 
   #step(dt: number): void {
+    const previous = { ...this.world.clock };
     this.world.clock.tick += 1;
     this.world.clock.simSeconds += dt;
-    this.#expire();
+    this.#expire(previous);
     tickMetabolism(this.world, dt);
     const alive =
       this.world.controlledId === this.actor.entity.id &&
@@ -715,6 +739,7 @@ export class SimSession {
       z: this.actor.position.z,
     };
     const stuckBefore = this.actor.stuckFor;
+    const haltBefore = this.actor.halt;
     const controls = active ? active.goal.controls() : IDLE_CONTROLS;
     this.actor.update(dt, controls);
     const position = this.actor.position;
@@ -731,6 +756,12 @@ export class SimSession {
     );
     this.actor.commit(committed, from, stuckBefore, dt, controls);
     this.input = controls;
+    if (haltBefore === 'clear' && this.actor.halt !== 'clear')
+      recordWorldChange(this.world, {
+        kind: 'blocked',
+        actor: this.actor.entity.id,
+        by: this.actor.halt,
+      });
     if (!active) return;
 
     const reached = active.goal.done();

@@ -1,3 +1,4 @@
+import { onWorldCommit } from '@/src/shared/changes';
 import { localDate } from '@/src/shared/dates';
 import { canonicalText } from '@/src/client/cloud/bytes';
 import type { SnapshotStore } from '@/src/client/storage/snapshot';
@@ -45,6 +46,7 @@ export interface BootNote {
 
 type Reason = 'interval' | 'hide' | 'poke';
 
+let stopWorldChanges: (() => void) | null = null;
 let installed = false;
 let readonly = false;
 let dbDeferred = false;
@@ -161,6 +163,8 @@ export function writesDone(): Promise<void> {
 }
 
 export function resetWorldStore(): void {
+  stopWorldChanges?.();
+  stopWorldChanges = null;
   if (timer) clearInterval(timer);
   timer = undefined;
   if (pokeTimer) clearTimeout(pokeTimer);
@@ -236,6 +240,22 @@ export async function restoreWorld(
 
 export function installWorldStore(session: Restorable, store?: SnapshotStore): void {
   if (store) providedStore = store;
+  if (sessionRef !== session && pokeTimer) {
+    clearTimeout(pokeTimer);
+    pokeTimer = undefined;
+  }
+  stopWorldChanges?.();
+  stopWorldChanges = onWorldCommit(session.world, ({ events }) => {
+    if (
+      events.some(
+        (event) =>
+          event.kind !== 'restored' &&
+          event.kind !== 'blocked' &&
+          event.kind !== 'freshnessChanged',
+      )
+    )
+      flushSoon('poke');
+  });
   sessionRef = session;
   installed = true;
   if (!owner) owner = pageOwner();

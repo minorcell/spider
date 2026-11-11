@@ -2,6 +2,8 @@ import { groundSupport } from '@/src/shared/contact';
 import { PHYSICS } from '@/src/shared/config';
 import { kindOf } from '@/src/shared/kinds';
 import { initialControl } from '@/src/shared/control';
+import { batchWorldChanges, recordWorldChange, type RemovalCause } from '@/src/shared/changes';
+import { detachTether } from '@/src/shared/sim/tether';
 import { deadlineAt, freshnessOf } from '@/src/shared/life';
 import {
   initialPopulations,
@@ -135,31 +137,47 @@ export function addEntity(
   );
   world.entities.set(id, entity);
   world.blocks.push(...propBlocks([entity]));
+  recordWorldChange(world, { kind: 'spawned', entity: entity.id });
   return entity;
 }
 
-export function removeEntity(world: WorldState, entity: EntityState): void {
-  const serial = serialOf(entity.id, entity.kind);
-  if (serial > (world.entitySerials.get(entity.kind) ?? 0)) {
-    world.entitySerials.set(entity.kind, serial);
-  }
-  world.entities.delete(entity.id);
-  if (world.controlledId === entity.id) delete world.controlledId;
-  for (const [targetId, relation] of world.tethers) {
-    if (relation.sourceId === entity.id || targetId === entity.id) world.tethers.delete(targetId);
-  }
-  world.blocks = world.blocks.filter((block) => (block.owner ?? block.id) !== entity.id);
+export function removeEntity(
+  world: WorldState,
+  entity: EntityState,
+  cause: RemovalCause = 'despawned',
+  actor?: string,
+): void {
+  if (world.entities.get(entity.id) !== entity) return;
+  batchWorldChanges(world, () => {
+    const serial = serialOf(entity.id, entity.kind);
+    if (serial > (world.entitySerials.get(entity.kind) ?? 0)) {
+      world.entitySerials.set(entity.kind, serial);
+    }
+    world.entities.delete(entity.id);
+    if (world.controlledId === entity.id) delete world.controlledId;
+    for (const [targetId, relation] of world.tethers) {
+      if (relation.sourceId === entity.id || targetId === entity.id)
+        detachTether(world, targetId, 'removed');
+    }
+    world.blocks = world.blocks.filter((block) => (block.owner ?? block.id) !== entity.id);
+    recordWorldChange(world, { kind: 'removed', entity: entity.id, cause, actor });
+  });
 }
 
-export function expireEntities(world: WorldState): string[] {
-  const removed: string[] = [];
-  for (const entity of world.entities.values()) {
-    if (freshnessOf(entity, world.clock) === 'expired') {
-      removeEntity(world, entity);
-      removed.push(entity.id);
+export function expireEntities(world: WorldState, previous?: WorldTime): string[] {
+  return batchWorldChanges(world, () => {
+    const removed: string[] = [];
+    for (const entity of world.entities.values()) {
+      const freshness = freshnessOf(entity, world.clock);
+      if (freshness === 'expired') {
+        removeEntity(world, entity, 'expired');
+        removed.push(entity.id);
+      } else if (previous && freshnessOf(entity, previous) !== freshness) {
+        recordWorldChange(world, { kind: 'freshnessChanged', entity: entity.id, to: freshness });
+      }
     }
-  }
-  return removed;
+    return removed;
+  });
 }
 
 function makeEntity(
@@ -188,6 +206,10 @@ function makeEntity(
 }
 
 export function grow(world: WorldState, dt: number, avoid?: { x: number; z: number }): void {
+  batchWorldChanges(world, () => advancePopulations(world, dt, avoid));
+}
+
+function advancePopulations(world: WorldState, dt: number, avoid?: { x: number; z: number }): void {
   for (const rule of populationRules) {
     const clock = world.populations.get(rule.id);
     if (!clock) continue;

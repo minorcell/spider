@@ -1,3 +1,4 @@
+import { onWorldCommit, type WorldCommit } from '@/src/shared/changes';
 import {
   Group,
   BufferGeometry,
@@ -30,7 +31,7 @@ import { ObserveOverlay } from '@/src/client/observeView';
 import { buildProp, propDrape, showFreshness } from '@/src/client/props';
 import { freshnessOf } from '@/src/shared/life';
 import { createSound } from '@/src/client/sound';
-import { carriedItems, tetherEndpoints } from '@/src/shared/sim/tether';
+import { tetherEndpoints } from '@/src/shared/sim/tether';
 
 const STEP_SECONDS = SIMULATION_STEP_SECONDS;
 const STEP_MS = STEP_SECONDS * 1000;
@@ -78,7 +79,7 @@ export class Stage {
   #islandPending = false;
   #islandRequest = 0;
   #islandSource: ((seed: number) => Promise<Group>) | null = null;
-  /** Last drawn action stage, so a new bite can make a sound. */
+  /** Last drawn progress, used only to rebuild geometry. */
   readonly #stages = new Map<string, number>();
   readonly #drapedProps = new Map<
     string,
@@ -97,11 +98,9 @@ export class Stage {
   });
   #heard = false;
   readonly #wasLifted: boolean[] = [];
-  /** Ids on the back last frame. Null until the first sync, so birth is silent. */
-  #carried: Set<string> | null = null;
   /** Reused so an idle frame does not allocate a set of ids. */
   readonly #alive = new Set<string>();
-  #halt: 'clear' | 'solid' | 'steep' = 'clear';
+  #stopWorld: (() => void) | null = null;
 
   #yaw: number = VIEW.yaw;
   #pitch: number = VIEW.pitch;
@@ -175,7 +174,9 @@ export class Stage {
   /** The render loop steps this once, then draws the same spider. */
   bind(step: (dt: number, wallNowMs: number) => void, world: () => WorldState): void {
     this.#step = step;
+    this.#stopWorld?.();
     this.#world = world;
+    this.#stopWorld = onWorldCommit(world(), (commit) => this.#worldFeedback(commit));
   }
 
   /** Freeze the simulation while another computer holds the spider or a choice is open. */
@@ -252,9 +253,7 @@ export class Stage {
       this.#stages.delete(id);
     }
     this.#drapedProps.clear();
-    this.#carried = null;
     this.#heard = false;
-    this.#halt = 'clear';
     this.#observe.reset();
     this.#syncWorld();
   }
@@ -267,17 +266,6 @@ export class Stage {
       enableWorldShadows(this.#island);
       this.#scene.add(this.#island);
     }
-
-    const held = new Set(carriedItems(world).map((item) => item.id));
-    if (this.#carried) {
-      for (const id of held) if (!this.#carried.has(id)) this.#sound.grasp();
-      for (const id of this.#carried) {
-        if (!held.has(id) && world.entities.has(id)) this.#sound.place();
-      }
-    }
-    const carried = (this.#carried ??= new Set());
-    carried.clear();
-    for (const id of held) carried.add(id);
 
     const alive = this.#alive;
     alive.clear();
@@ -295,7 +283,6 @@ export class Stage {
       this.#props.delete(id);
       this.#stages.delete(id);
       this.#drapedProps.delete(id);
-      this.#sound.take();
     }
   }
 
@@ -353,7 +340,6 @@ export class Stage {
       this.#props.delete(entity.id);
       this.#drapedProps.delete(entity.id);
       prop = undefined;
-      if (previous != null && entity.stage > previous) this.#sound.bite();
     }
     const spec = kindOf(entity.kind);
     const roll = spec?.physics?.rolls ? spec.physics.radius : 0;
@@ -404,6 +390,8 @@ export class Stage {
   dispose(): void {
     this.#islandRequest += 1;
     this.#stopLocal();
+    this.#stopWorld?.();
+    this.#stopWorld = null;
     this.#host.ownerDocument.removeEventListener('visibilitychange', this.#resetStepClock);
     this.#renderer.setAnimationLoop(null);
     this.#resizeObserver.disconnect();
@@ -603,7 +591,23 @@ export class Stage {
     this.#clock = applyEcologyLighting(this.#renderer, new Date(epochSecond * 1000));
   }
 
-  /** One tick when any foot lands, and one when an apple disappears. */
+  /** World effects are delivered even on animation frames that skip drawing. */
+  #worldFeedback(commit: WorldCommit): void {
+    const actor = commit.controlledId;
+    if (actor === undefined) return;
+    for (const event of commit.events) {
+      if (event.kind === 'bite' && event.actor === actor) this.#sound.bite();
+      if (event.kind === 'removed' && event.cause === 'eaten' && event.actor === actor)
+        this.#sound.take();
+      if (event.kind === 'blocked' && event.actor === actor) this.#sound.knock();
+      if (event.kind === 'tetherChanged' && event.tether.sourceId === actor) {
+        if (event.attached) this.#sound.grasp();
+        else if (event.cause === 'released' || event.cause === 'placed') this.#sound.place();
+      }
+    }
+  }
+
+  /** Footfall timing belongs to the browser's cosmetic gait animation. */
   #feedback(): void {
     const legs = this.#spider.legs;
     if (!this.#heard) {
@@ -618,9 +622,6 @@ export class Stage {
       this.#wasLifted[i] = lifted;
     }
     if (landed) this.#sound.step(this.#spider.speed);
-    const halt = this.#spider.halt;
-    if (halt !== 'clear' && this.#halt === 'clear') this.#sound.knock();
-    this.#halt = halt;
   }
 
   /** A point above the shell, or null when it is behind the camera. */
