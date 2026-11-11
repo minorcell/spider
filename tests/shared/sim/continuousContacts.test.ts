@@ -127,7 +127,7 @@ describe('continuous body contacts', () => {
 
   it('commits a blocked controller position before the session completes its action', async () => {
     const session = scene();
-    session.world.blocks = [block('wall', 0.65, 0.66, -1, 1)];
+    session.world.blocks = [block('wall', 0.65, 0.66, -1, 1, 0.4)];
     const item = addEntity(session.world, 'light', { x: 0.6, z: 0 });
     Object.assign(session.actor.position, { x: 0, y: 0, z: 0 });
     session.actor.state.yaw = -Math.PI / 2;

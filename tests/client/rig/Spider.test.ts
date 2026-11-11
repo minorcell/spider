@@ -1,9 +1,10 @@
 import { BODY_RADIUS, moveCircle } from '@/src/shared/collision';
 import { block } from '@/tests/helpers';
-import { indexEntities } from '@/src/shared/world';
+import { indexEntities, propBlocks } from '@/src/shared/world';
 import { describe, expect, it } from 'vitest';
-import { Matrix4, Vector3 } from 'three';
+import { Matrix4, Mesh, Vector3 } from 'three';
 import { BONES, CONTACT, GAIT } from '@/src/shared/config';
+import { KINDS } from '@/src/shared/kinds';
 import { NEST_SCALE_XZ, NEST_SCALE_Y, nestSurface } from '@/src/shared/nestShape';
 import { nestSolidSurface } from '@/src/shared/nestCollision';
 import { NEST_DETAILS } from '@/src/shared/nestDetails';
@@ -474,7 +475,8 @@ describe('Spider', () => {
       const world = createWorld(1);
       const nest = [...world.entities.values()].find((entity) => entity.kind === 'nest')!;
       world.entities = indexEntities([nest]);
-      const at = kind === 'pebble' ? NEST_DETAILS.pebbles[0].position : NEST_DETAILS.roots[0][4];
+      const at =
+        kind === 'pebble' ? NEST_DETAILS.pebbles[0].position : NEST_DETAILS.roots[0].spine[4];
       const x = nest.x + at.x * NEST_SCALE_XZ;
       const z = nest.z + at.z * NEST_SCALE_XZ;
       const spider = new Spider();
@@ -501,16 +503,17 @@ describe('Spider', () => {
     const pebble = NEST_DETAILS.pebbles[0].position;
     const origin = { x: 0, y: 0.02, z: 0 };
     spider.place(pebble.x * NEST_SCALE_XZ, 0, pebble.z * NEST_SCALE_XZ);
-    spider.bindLegs(
-      (into) => {
-        into.length = 0;
-      },
-      (x, z) => nestSolidSurface(origin, x, z),
-    );
     for (let i = 0; i < 120; i++) spider.update(1 / 60);
-    expect(shellClearance(spider, (x, z) => nestSolidSurface(origin, x, z))).toBeGreaterThan(-0.03);
+    const unboundHeight = spider.root.position.y;
+    const solidAt = (x: number, z: number) => nestSolidSurface(origin, x, z);
+    expect(shellClearance(spider, solidAt)).toBeLessThan(-0.03);
+    spider.bindLegs((into) => {
+      into.length = 0;
+    }, solidAt);
+    for (let i = 0; i < 120; i++) spider.update(1 / 60);
+    expect(shellClearance(spider, solidAt)).toBeGreaterThan(-0.03);
     const raised = spider.root.position.y;
-    expect(raised).toBeGreaterThan(0.1);
+    expect(raised).toBeGreaterThan(unboundHeight + 0.05);
     spider.bindLegs(
       (into) => {
         into.length = 0;
@@ -518,7 +521,78 @@ describe('Spider', () => {
       () => Number.NEGATIVE_INFINITY,
     );
     for (let i = 0; i < 120; i++) spider.update(1 / 60);
-    expect(spider.root.position.y).toBeLessThan(raised - 0.1);
+    expect(spider.root.position.y).toBeCloseTo(unboundHeight, 2);
+  });
+
+  it.each(['tree', 'stone'] as const)('keeps the front leg out of a registered %s', (kind) => {
+    const spider = new Spider();
+    spider.bindGround(FLAT);
+    spider.update(1 / 60);
+    const leg = spider.legs[0];
+    const target = leg.claw.position.clone();
+    const obstacle = {
+      id: `${kind}-2`,
+      kind,
+      x: target.x,
+      y: 0,
+      z: target.z,
+      stage: 0,
+      footprint: { kind: 'circle', r: 0.26 } as const,
+    };
+    const world = createWorld(1);
+    world.entities = indexEntities([obstacle]);
+    world.terrain = { height: FLAT };
+    world.blocks = propBlocks(world.entities.values());
+    expect(
+      world.blocks.some(
+        (shape) =>
+          target.x > shape.minX &&
+          target.x < shape.maxX &&
+          target.z > shape.minZ &&
+          target.z < shape.maxZ &&
+          target.y < shape.height,
+      ),
+    ).toBe(true);
+    bindLegWorld(spider, world);
+    for (let i = 0; i < 60; i++) spider.update(1 / 60);
+
+    const foot = leg.claw.position;
+    leg.claw.updateWorldMatrix(true, true);
+    const clawVertices: Vector3[] = [];
+    leg.claw.traverse((node) => {
+      if (!(node instanceof Mesh)) return;
+      const positions = node.geometry.getAttribute('position');
+      for (let i = 0; i < positions.count; i++) {
+        clawVertices.push(
+          new Vector3().fromBufferAttribute(positions, i).applyMatrix4(node.matrixWorld),
+        );
+      }
+    });
+    expect(clawVertices.length).toBeGreaterThan(0);
+    const surface = KINDS[kind].support;
+    const chain = [...leg.joints.map((joint) => joint.position), foot];
+    for (let i = 0; i < BONES.length; i++) {
+      expect(chain[i].distanceTo(chain[i + 1])).toBeLessThanOrEqual(BONES[i].len + 1e-3);
+    }
+    if (surface) {
+      const gaps = clawVertices.map((point) => point.y - surface(obstacle, point.x, point.z));
+      const gap = Math.min(...gaps);
+      expect(gap).toBeGreaterThanOrEqual(-0.004);
+      expect(gap).toBeLessThan(CONTACT + 0.01);
+    } else
+      for (const shape of world.blocks) {
+        const isInside = (point: Vector3) =>
+          point.x > shape.minX + 1e-3 &&
+          point.x < shape.maxX - 1e-3 &&
+          point.z > shape.minZ + 1e-3 &&
+          point.z < shape.maxZ - 1e-3 &&
+          point.y < shape.height - 1e-3;
+        expect(isInside(foot), JSON.stringify({ shape, foot, target })).toBe(false);
+        expect(clawVertices.some(isInside)).toBe(false);
+        for (let i = 0; i < BONES.length; i++) {
+          expect(isInside(chain[i].clone().lerp(chain[i + 1], 0.5))).toBe(false);
+        }
+      }
   });
 
   it('re-solves a planted leg when a loose body moves', () => {

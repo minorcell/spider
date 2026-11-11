@@ -19,6 +19,7 @@ export class Controller {
   #water: (x: number, z: number) => Water = () => NO_WATER;
   #mound: (x: number, z: number) => number = () => Number.NEGATIVE_INFINITY;
   #limit = WORLD_RADIUS;
+  #turn: (from: number, to: number) => number = (_from, to) => to;
   #cache = { x: NaN, z: NaN, yaw: NaN, ground: 0 };
   #move: MotionSolver = (x, z, dx, dz) =>
     moveCircle(x, z, dx, dz, this.radius, {
@@ -116,6 +117,10 @@ export class Controller {
   bindMotion(move: MotionSolver): void {
     this.#move = move;
   }
+
+  bindTurn(turn: (from: number, to: number) => number): void {
+    this.#turn = turn;
+  }
   bindWater(water: (x: number, z: number) => Water): void {
     this.#water = water;
   }
@@ -149,7 +154,9 @@ export class Controller {
     const yawTarget =
       turn * (input.boost ? spec.yawBoost : spec.yaw) * (water.depth > 0 ? WATER.turnPace : 1);
     state.yawRate += clamp(yawTarget - state.yawRate, -spec.yawAccel * dt, spec.yawAccel * dt);
-    state.yaw -= state.yawRate * dt;
+    const yaw = state.yaw - state.yawRate * dt;
+    state.yaw = this.#turn(state.yaw, yaw);
+    if (Math.abs(state.yaw - yaw) > 1e-8) state.yawRate = 0;
     state.halt = 'clear';
     const cruise = (input.boost ? spec.cruiseBoost : spec.cruise) * waterPace(water.depth);
     const ease = spec.speedEase + (water.depth > 0 ? WATER.spiderDrag : 0);

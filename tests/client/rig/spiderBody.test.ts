@@ -1,8 +1,7 @@
-import { Box3, Mesh, Vector3, type Object3D } from 'three';
+import { Box3, LineSegments, Mesh, MeshStandardMaterial, Vector3, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
-import { BONES } from '@/src/shared/config';
 import { AnimatedActor as Spider } from '@/tests/rigHelpers';
-import { clawGeo, tubeCrest, tubeGeo } from '@/src/client/rig/parts';
+import { LEG_GEOMETRIES } from '@/src/client/rig/legGeometry';
 
 function find(root: Object3D, name: string): Object3D[] {
   const found: Object3D[] = [];
@@ -31,6 +30,30 @@ describe('spider body', () => {
     expect(find(spider.chassis, 'pedicel')).toHaveLength(1);
   });
 
+  it('batches visible body markings and short setae on each shell', () => {
+    const spider = new Spider();
+    for (const name of ['cephalothorax', 'abdomen']) {
+      const shell = find(spider.chassis, name)[0] as Mesh;
+      const color = shell.geometry.getAttribute('color');
+      expect(color.count).toBe(shell.geometry.getAttribute('position').count);
+      expect(new Set(color.array).size).toBeGreaterThan(100);
+
+      const coat = shell.getObjectByName(`${name}-setae`) as LineSegments;
+      expect(coat).toBeInstanceOf(LineSegments);
+      const position = coat.geometry.getAttribute('position');
+      expect(position.count).toBeGreaterThan(0);
+      const base = new Vector3();
+      const tip = new Vector3();
+      for (let i = 0; i < position.count; i += 2) {
+        base.fromBufferAttribute(position, i);
+        tip.fromBufferAttribute(position, i + 1);
+        const length = base.distanceTo(tip);
+        expect(length).toBeGreaterThan(0);
+        expect(length).toBeLessThan(0.05);
+      }
+    }
+  });
+
   it('puts eight eyes and the palps on the face, and the spinnerets on the rear', () => {
     const spider = new Spider();
     spider.root.updateMatrixWorld(true);
@@ -39,6 +62,15 @@ describe('spider body', () => {
     const abdomen = box(find(spider.chassis, 'abdomen')[0]);
     const eyes = find(spider.chassis, 'eye');
     expect(eyes).toHaveLength(8);
+    const glints = find(spider.chassis, 'eye-glint');
+    expect(glints).toHaveLength(eyes.length);
+    for (const [index, eye] of eyes.entries()) {
+      const material = (eye as Mesh).material as MeshStandardMaterial;
+      expect(material.roughness).toBeLessThan(0.5);
+      const glint = glints[index];
+      expect(glint.scale.x).toBeLessThan(eye.scale.x);
+      expect(glint.position.z).toBeLessThan(eye.position.z);
+    }
     const eyeZ = eyes.reduce((sum, eye) => sum + eye.getWorldPosition(at).z, 0) / eyes.length;
     expect(eyeZ).toBeLessThan((ceph.min.z + ceph.max.z) / 2);
 
@@ -67,32 +99,89 @@ describe('spider body', () => {
     expect(find(spider.chassis, 'coxa')).toHaveLength(8);
   });
 
-  it('draws a round tapered leg and a claw that hooks down', () => {
+  it('renders distinct leg segments with taper and outward-facing surface normals', () => {
     const spider = new Spider();
-    const bone = spider.legs[0].bones[0].children[0] as Mesh;
-    expect(bone.children.some((child) => child instanceof Mesh)).toBe(true);
-    expect(bone.children.some((child) => child.type === 'LineSegments')).toBe(true);
-    expect(tubeGeo.parameters.radialSegments).toBe(12);
-    expect(tubeGeo.parameters.radiusTop).toBeLessThan(tubeGeo.parameters.radiusBottom);
-    expect(tubeCrest.getAttribute('position').count).toBeGreaterThanOrEqual(2);
-    expect(BONES[0].radius).toBeLessThan(0.06);
-    expect(BONES[3].radius).toBeGreaterThan(0.02);
-    expect(BONES[3].radius).toBeLessThan(BONES[2].radius);
-    const claw = clawGeo.getAttribute('position');
-    let clawMinY = Number.POSITIVE_INFINITY;
-    let clawMinZ = Number.POSITIVE_INFINITY;
-    let clawNear = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < claw.count; i++) {
-      const x = claw.getX(i);
-      const y = claw.getY(i);
-      const z = claw.getZ(i);
-      clawMinY = Math.min(clawMinY, y);
-      clawMinZ = Math.min(clawMinZ, z);
-      clawNear = Math.min(clawNear, Math.hypot(x, y, z));
+    spider.update(1 / 60);
+    const leg = spider.legs[0];
+    const radial = new Vector3();
+    const normal = new Vector3();
+    const a = new Vector3();
+    const b = new Vector3();
+    const c = new Vector3();
+    const taperedWidths: number[] = [];
+    for (const [section, bone] of leg.bones.entries()) {
+      const mesh = bone.children[0] as Mesh;
+      const { shell } = LEG_GEOMETRIES[section];
+      expect(mesh.geometry).toBe(shell);
+      expect(mesh.material).not.toBe(leg.joints[section].material);
+      expect(mesh.children.some((child) => child instanceof Mesh)).toBe(true);
+      expect(mesh.children.some((child) => child instanceof LineSegments)).toBe(true);
+      const position = shell.getAttribute('position');
+      const normals = shell.getAttribute('normal');
+      const rings = new Map<number, Box3>();
+      for (let i = 0; i < position.count; i++) {
+        a.fromBufferAttribute(position, i);
+        const ring = rings.get(a.z) ?? new Box3();
+        ring.expandByPoint(a);
+        rings.set(a.z, ring);
+      }
+      for (let i = 0; i < position.count; i++) {
+        a.fromBufferAttribute(position, i);
+        rings.get(a.z)!.getCenter(radial);
+        radial.subVectors(a, radial);
+        normal.fromBufferAttribute(normals, i);
+        expect(normal.dot(radial)).toBeGreaterThan(0);
+      }
+      const triangles = shell.index!;
+      for (let i = 0; i < triangles.count; i += 3) {
+        a.fromBufferAttribute(position, triangles.getX(i));
+        b.fromBufferAttribute(position, triangles.getX(i + 1));
+        c.fromBufferAttribute(position, triangles.getX(i + 2));
+        rings.get(a.z)!.getCenter(radial);
+        radial.subVectors(a, radial);
+        normal.subVectors(b, a).cross(c.sub(a));
+        expect(normal.dot(radial)).toBeGreaterThan(0);
+      }
+      const base = rings.get(0)!.getSize(a).x;
+      const tip = rings.get(-1)!.getSize(a).x;
+      expect(tip).toBeLessThan(base);
+      expect(bone.scale.x).toBeGreaterThan(0);
+      taperedWidths.push(tip * bone.scale.x);
     }
-    expect(clawMinY).toBeLessThan(0);
-    expect(clawMinZ).toBeLessThan(0);
-    expect(clawNear).toBeLessThan(0.012);
-    expect(spider.legs[0].claw.children).toHaveLength(3);
+    expect(taperedWidths.at(-1)).toBeLessThan(taperedWidths.at(-2)! * 0.6);
+  });
+
+  it('ends in a compact pair of claws that hook down', () => {
+    const spider = new Spider();
+    const foot = spider.legs[0].claw;
+    const pretarsus = foot.getObjectByName('pretarsus') as Mesh;
+    expect(pretarsus).toBeInstanceOf(Mesh);
+    pretarsus.geometry.computeBoundingBox();
+    const tipSize = pretarsus.geometry
+      .boundingBox!.getSize(new Vector3())
+      .multiply(pretarsus.scale);
+    expect(tipSize.x).toBeLessThan(0.02);
+    expect(tipSize.y).toBeLessThan(0.02);
+    const hooks = foot.children.filter((child) => child instanceof Mesh && child !== pretarsus);
+    expect(hooks).toHaveLength(2);
+    expect(hooks[0].position.x).toBeLessThan(0);
+    expect(hooks[1].position.x).toBeGreaterThan(0);
+    const vertex = new Vector3();
+    for (const hook of hooks) {
+      const positions = hook.geometry.getAttribute('position');
+      const bounds = new Box3();
+      let nearest = Infinity;
+      for (let i = 0; i < positions.count; i++) {
+        vertex.fromBufferAttribute(positions, i);
+        bounds.expandByPoint(vertex);
+        nearest = Math.min(nearest, vertex.length());
+      }
+      expect(bounds.min.y).toBeLessThan(0);
+      expect(bounds.min.z).toBeLessThan(0);
+      expect(nearest).toBeLessThan(0.012);
+      const size = bounds.getSize(vertex);
+      expect(size.x).toBeLessThan(size.length() * 0.5);
+      expect(size.length()).toBeLessThan(0.06);
+    }
   });
 });

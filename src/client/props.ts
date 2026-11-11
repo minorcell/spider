@@ -4,8 +4,10 @@ import type { Footprint } from '@/src/shared/state';
 import { buildApple } from '@/src/client/appleMesh';
 import { buildGrass, drapeGrass, type GrassStyle } from '@/src/client/grassMesh';
 import { buildStone } from '@/src/client/models/stone';
+import { treeForm } from '@/src/shared/treeForm';
 import { buildTree } from '@/src/client/models/tree';
 import { buildNest } from '@/src/client/nest';
+import { buildBerry, buildPebble } from '@/src/client/models/smallItems';
 
 export { drapeGrass } from '@/src/client/grassMesh';
 
@@ -78,19 +80,21 @@ export function buildProp(
     group.scale.setScalar(spec.modelScale ?? 1);
     return group;
   }
-  const group = modelOf(model)?.build(progress, footprint, id);
+  const group = modelOf(model)?.build(progress, footprint, id, spec.physics?.radius ?? 0.2);
   if (!group) return null;
   group.scale.multiplyScalar(spec.modelScale ?? 1);
   return group;
 }
 
 interface ModelSpec {
-  build(stage: number, footprint: Footprint | undefined, id: string): Group;
+  build(stage: number, footprint: Footprint | undefined, id: string, radius: number): Group;
   drape?: typeof drapeGrass;
 }
 
 /** Presentation assets are registered separately from gameplay capabilities. */
 export const MODELS: Record<string, ModelSpec> = {
+  berry: { build: (progress, _footprint, _id, radius) => buildBerry(progress, radius) },
+  pebble: { build: (_progress, _footprint, id, radius) => buildPebble(propSeed(id, 71), radius) },
   apple: { build: (stage) => buildApple(stage) },
   nest: { build: () => buildNest() },
   grass: {
@@ -101,16 +105,16 @@ export const MODELS: Record<string, ModelSpec> = {
     drape: drapeGrass,
   },
   tree: {
-    build: (_stage, footprint, id) =>
-      buildTree(propSeed(id, 13), 2.55 + circleRadius(footprint, 0.4) * 3.3),
+    build: (_stage, footprint, id) => {
+      const form = treeForm(id, footprint);
+      return buildTree(form.seed, form.height, form);
+    },
   },
   stone: {
-    build: (_stage, footprint, id) =>
-      buildStone(propSeed(id, 29), circleRadius(footprint, 0.8) / 0.82, false),
+    build: (_stage, footprint, id) => buildStone(id, footprint, false),
   },
   'bog-stone': {
-    build: (_stage, footprint, id) =>
-      buildStone(propSeed(id, 41), circleRadius(footprint, 0.75) / 0.82, true),
+    build: (_stage, footprint, id) => buildStone(id, footprint, true),
   },
 };
 

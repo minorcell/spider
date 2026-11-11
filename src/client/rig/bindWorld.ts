@@ -1,16 +1,28 @@
 import { waterAt } from '@/src/shared/water';
 import { kindOf, type KindSpec } from '@/src/shared/kinds';
-import type { EntityState, WorldState } from '@/src/shared/state';
+import type { Block, EntityState, WorldState } from '@/src/shared/state';
 import type { LegSphere } from '@/src/client/rig/legPose';
 import type { Spider } from '@/src/client/rig/Spider';
 
 export function bindLegWorld(spider: Spider, world: WorldState): void {
   const pool: LegSphere[] = [];
+  const nearBlocks: Block[] = [];
   const supports: { entity: EntityState; surface: NonNullable<KindSpec['support']> }[] = [];
   spider.bindLegs(
     (into) => {
       let count = 0;
       supports.length = 0;
+      nearBlocks.length = 0;
+      const origin = spider.source.position;
+      for (const block of world.blocks) {
+        if (
+          origin.x + 3.5 >= block.minX &&
+          origin.x - 3.5 <= block.maxX &&
+          origin.z + 3.5 >= block.minZ &&
+          origin.z - 3.5 <= block.maxZ
+        )
+          nearBlocks.push(block);
+      }
       for (const entity of world.entities.values()) {
         const spec = kindOf(entity.kind);
         if (spec?.support) supports.push({ entity, surface: spec.support });
@@ -31,6 +43,12 @@ export function bindLegWorld(spider: Spider, world: WorldState): void {
       let height = Number.NEGATIVE_INFINITY;
       for (const { entity, surface } of supports) height = Math.max(height, surface(entity, x, z));
       return height;
+    },
+    () => nearBlocks,
+    (block, x, z) => {
+      const entity = world.entities.get(block.owner ?? block.id);
+      const surface = entity && kindOf(entity.kind)?.support;
+      return entity && surface ? surface(entity, x, z) : block.height;
     },
   );
 }

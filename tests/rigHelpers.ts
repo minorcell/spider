@@ -1,6 +1,6 @@
 import { Spider as Model } from '@/src/client/rig/Spider';
 import { Controller } from '@/src/shared/sim/controller';
-import type { EntityState } from '@/src/shared/state';
+import type { Block, EntityState } from '@/src/shared/state';
 import type { Controls } from '@/src/shared/types';
 import { IDLE_CONTROLS } from '@/src/shared/types';
 import type { MotionSolver } from '@/src/shared/collision';
@@ -77,9 +77,14 @@ export class AnimatedActor extends Model {
     this.controller.bindWater(water);
     super.bindWater(water);
   }
-  override bindLegs(fill: (into: LegSphere[]) => void, mound: (x: number, z: number) => number) {
+  override bindLegs(
+    fill: (into: LegSphere[]) => void,
+    mound: (x: number, z: number) => number,
+    blocks?: () => readonly Block[],
+    blockHeight?: (block: Block, x: number, z: number) => number,
+  ) {
     this.controller.bindSupport(mound);
-    super.bindLegs(fill, mound);
+    super.bindLegs(fill, mound, blocks, blockHeight);
   }
   update(dt: number, input: Controls = IDLE_CONTROLS) {
     this.controller.update(dt, input);

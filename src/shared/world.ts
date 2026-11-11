@@ -263,7 +263,8 @@ export function propBlocks(entities: Iterable<EntityState>): Block[] {
   for (const entity of entities) {
     const kind = kindOf(entity.kind);
     if (kind?.physics?.solid === false) continue;
-    for (const box of kind?.boxes ?? []) {
+    const boxes = typeof kind?.boxes === 'function' ? kind.boxes(entity) : kind?.boxes;
+    for (const box of boxes ?? []) {
       blocks.push({
         id: `${entity.id}/${box.id}`,
         owner: entity.id,
@@ -275,7 +276,7 @@ export function propBlocks(entities: Iterable<EntityState>): Block[] {
         height: entity.y + box.height,
       });
     }
-    const spec = kind?.block;
+    const spec = typeof kind?.block === 'function' ? kind.block(entity) : kind?.block;
     if (!spec) continue;
     const footprint = entity.footprint;
     const radius =

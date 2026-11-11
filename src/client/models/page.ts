@@ -196,7 +196,11 @@ function createExhibits(round: number): Exhibit[] {
   ];
   stones.forEach((item, index) => {
     const at = spot(item.at[0], item.at[1]);
-    const group = buildStone(5 + index * 14 + seedBase, item.size, false);
+    const group = buildStone(
+      `stone-${5 + index * 14 + seedBase}`,
+      { kind: 'circle', r: item.size * 0.82 },
+      false,
+    );
     group.position.set(at.x, at.y, at.z);
     group.rotation.y = index * 2.1 + round * 0.4;
     exhibits.push({
@@ -213,7 +217,11 @@ function createExhibits(round: number): Exhibit[] {
   ];
   bogs.forEach((item, index) => {
     const at = pondSpot(item.angle);
-    const group = buildStone(41 + index * 16 + seedBase, item.size, true);
+    const group = buildStone(
+      `bog-stone-${41 + index * 16 + seedBase}`,
+      { kind: 'circle', r: item.size * 0.82 },
+      true,
+    );
     group.position.set(at.x, at.y + 0.12, at.z);
     group.rotation.y = index * 1.3 + round * 0.5;
     exhibits.push({

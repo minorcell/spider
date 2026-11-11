@@ -68,14 +68,29 @@ export const MOUNTS: readonly MountSpec[] = [
 export interface BoneSpec {
   readonly len: number;
   readonly radius: number;
+  readonly profile: readonly number[];
+  readonly curve: number;
 }
 
 export const BONES: readonly BoneSpec[] = [
-  { len: 0.34, radius: 0.048 },
-  { len: 0.86, radius: 0.036 },
-  { len: 0.98, radius: 0.026 },
-  { len: 0.46, radius: 0.024 },
+  { len: 0.25, radius: 0.09, profile: [0.5, 0.72, 0.66, 0.5, 0.35], curve: -0.11 },
+  { len: 0.88, radius: 0.098, profile: [0.38, 0.76, 0.72, 0.55, 0.32], curve: 0.2 },
+  { len: 0.89, radius: 0.072, profile: [0.52, 0.62, 0.53, 0.35, 0.19], curve: -0.11 },
+  { len: 0.51, radius: 0.042, profile: [0.46, 0.38, 0.28, 0.2, 0.14], curve: -0.11 },
 ];
+
+export function boneRadius(section: number, t: number): number {
+  const bone = BONES[section];
+  const at = Math.min(3, Math.floor(t * 4));
+  const f = t * 4 - at;
+  return (
+    bone.radius *
+    (bone.profile[at] * (1 - f) +
+      bone.profile[at + 1] * f +
+      Math.abs(Math.sin(t * Math.PI) * bone.curve) +
+      0.035)
+  );
+}
 
 export const GAIT = {
   heightMin: -0.35,

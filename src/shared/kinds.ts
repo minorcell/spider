@@ -1,7 +1,8 @@
 import { grassClumps, grassSeed, grassRadius, grassOnDryGround } from '@/src/shared/grass';
-import { nestSolidSurface } from '@/src/shared/nestCollision';
-import { ringBoxes } from '@/src/shared/shapes';
+import { nestBankBoxes, nestSolidSurface } from '@/src/shared/nestCollision';
 import { GAIT } from '@/src/shared/config';
+import { stoneBoxes, stoneSupport } from '@/src/shared/stoneForm';
+import { treeBlock } from '@/src/shared/treeForm';
 import type { ControlSpec } from '@/src/shared/control';
 import type { LifetimeSpec, MetabolismSpec } from '@/src/shared/life';
 import type { Block, EntityState, Footprint, Vec3, WorldState } from '@/src/shared/state';
@@ -76,8 +77,8 @@ export interface KindSpec {
   eat?: EatSpec;
   rest: number;
   physics?: PhysicsSpec;
-  block?: BlockSpec;
-  boxes?: readonly Block[];
+  block?: BlockSpec | ((entity: EntityState) => BlockSpec);
+  boxes?: readonly Block[] | ((entity: EntityState) => readonly Block[]);
   support?: (origin: EntityState, x: number, z: number) => number;
   cover?: CoverSpec;
   placement?: PlacementSpec;
@@ -126,13 +127,13 @@ export const KINDS: Record<string, KindSpec> = {
   pebble: {
     carryable: { anchor: { x: 0, y: 0.19, z: 0 } },
     label: '石子',
-    model: { color: 0x8793a4, segments: 8 },
+    model: 'pebble',
     rest: 0,
     physics: { solid: true, radius: 0.19, loose: true, rolls: true, mass: 0.07 },
   },
   berry: {
     label: '浆果',
-    model: { color: 0xa05f9d, segments: 14 },
+    model: 'berry',
     lifetime: { clock: 'simulation', lifetimeSeconds: 180, rottenSeconds: 30 },
     eat: { bites: 2, secondsPerBite: 0.5, nutritionPerBite: 4, removes: true },
     rest: 0,
@@ -159,15 +160,7 @@ export const KINDS: Record<string, KindSpec> = {
   nest: {
     home: { half: 2.15, storage: { start: 1.15, step: 0.45 }, landmark: '巢穴' },
     fixedElevation: true,
-    boxes: ringBoxes({
-      segments: 22,
-      radius: 2.62,
-      half: 0.42,
-      thickness: 0.24,
-      door: -Math.PI / 2,
-      gap: 0.62,
-      height: 0.98,
-    }),
+    boxes: nestBankBoxes(),
     support: nestSolidSurface,
     label: '巢',
     model: 'nest',
@@ -179,14 +172,15 @@ export const KINDS: Record<string, KindSpec> = {
     model: 'tree',
     rest: -0.05,
     physics: { solid: true, radius: 0.3, loose: false, rolls: false },
-    block: { radius: 0.62, height: 2.2 },
+    block: treeBlock,
   },
   stone: {
     label: '石',
     model: 'stone',
     rest: 0,
     physics: { solid: true, radius: 0.8, loose: false, rolls: false },
-    block: { radius: 0.82, height: 0.7 },
+    boxes: (entity) => stoneBoxes(entity),
+    support: (entity, x, z) => stoneSupport(entity, x, z),
   },
   'bog-stone': {
     label: '沼石',
@@ -194,7 +188,8 @@ export const KINDS: Record<string, KindSpec> = {
     rest: -0.1,
     wet: true,
     physics: { solid: true, radius: 0.8, loose: false, rolls: false },
-    block: { radius: 0.82, height: 0.42 },
+    boxes: (entity) => stoneBoxes(entity, true),
+    support: (entity, x, z) => stoneSupport(entity, x, z, true),
   },
 };
 

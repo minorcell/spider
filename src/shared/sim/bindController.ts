@@ -1,4 +1,4 @@
-import { moveCircle } from '@/src/shared/collision';
+import { moveRegisteredBody, turnRegisteredBody } from '@/src/shared/registeredBodyMotion';
 import { insideLand, WORLD_RADIUS } from '@/src/shared/terrain';
 import { floatHeight, waterAt } from '@/src/shared/water';
 import { kindOf } from '@/src/shared/kinds';
@@ -16,17 +16,35 @@ export function bindController(controller: Controller, world: WorldState): void 
   });
   controller.bindGround((x, z) => world.terrain.height(x, z));
   controller.bindWater((x, z) => waterAt(world.terrain, x, z));
+  controller.bindTurn((from, to) =>
+    turnRegisteredBody(
+      controller.position,
+      from,
+      to,
+      controller.spec.clearance,
+      world.blocks,
+      controller.radius,
+    ),
+  );
   controller.bindMotion((x, z, dx, dz) =>
-    moveCircle(x, z, dx, dz, controller.radius, {
-      blocks: world.blocks,
-      inside: (px, pz) =>
-        Math.hypot(px, pz) <= WORLD_RADIUS && insideLand(world.terrain, px, pz, controller.radius),
-      surface: (px, pz) => {
-        const water = waterAt(world.terrain, px, pz);
-        const ground = world.terrain.height(px, pz);
-        return water.depth > 0 ? Math.max(ground, floatHeight(water)) : ground;
+    moveRegisteredBody(
+      { x, y: controller.position.y, z },
+      controller.yaw,
+      controller.spec.clearance,
+      dx,
+      dz,
+      {
+        blocks: world.blocks,
+        insideRadius: (px, pz, radius) =>
+          Math.hypot(px, pz) <= WORLD_RADIUS - radius && insideLand(world.terrain, px, pz, radius),
+        surface: (px, pz) => {
+          const water = waterAt(world.terrain, px, pz);
+          const ground = world.terrain.height(px, pz);
+          return water.depth > 0 ? Math.max(ground, floatHeight(water)) : ground;
+        },
+        maxSlope: controller.spec.maxSlope,
       },
-      maxSlope: controller.spec.maxSlope,
-    }),
+      controller.radius,
+    ),
   );
 }

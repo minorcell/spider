@@ -325,6 +325,28 @@ describe('stepPhysics', () => {
     expect(Math.hypot(b.x - a.x, b.z - a.z)).toBeGreaterThanOrEqual(2 * APPLE_RADIUS - 1e-6);
   });
 
+  it('stops a moving loose body whose radius already crosses the shore', () => {
+    const loose = apple({ x: 3 - APPLE_RADIUS / 2, y: CONTACT, vx: -2, vy: 3, vz: 1 });
+    const shore = world({
+      entities: indexEntities([loose]),
+      terrain: {
+        height: () => 0,
+        inside: (x, z, margin = 0) => Math.hypot(x, z) < 3 - margin,
+      },
+    });
+
+    stepPhysics(shore, undefined, 1 / 60);
+
+    expect(loose).toMatchObject({
+      x: 3 - APPLE_RADIUS / 2,
+      y: CONTACT,
+      z: 0,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+    });
+  });
+
   it('resolves a collision toward the side with room at a shore', () => {
     const land = (x: number, z: number, margin = 0): boolean => Math.hypot(x, z) < 6 - margin;
     const shore = world({

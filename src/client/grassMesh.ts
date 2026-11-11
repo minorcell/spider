@@ -1,5 +1,9 @@
 import {
   BufferAttribute,
+  Color,
+  DoubleSide,
+  MeshLambertMaterial,
+  LineBasicMaterial,
   BufferGeometry,
   Float32BufferAttribute,
   Group,
@@ -9,7 +13,8 @@ import {
 } from 'three';
 import { grassClumps } from '@/src/shared/grass';
 import { mulberry32 } from '@/src/shared/noise';
-import { grassMat, inkMat } from '@/src/client/rig/parts';
+const grassMat = new MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: DoubleSide });
+const inkMat = new LineBasicMaterial({ color: 0x60714c, transparent: true, opacity: 0.35 });
 
 const TAU = Math.PI * 2;
 const UP = new Vector3(0, 1, 0);
@@ -28,6 +33,7 @@ interface BladeRecord {
 
 interface Batch {
   readonly paper: number[];
+  readonly colors: number[];
   readonly indices: number[];
   readonly ink: number[];
   readonly blades: BladeRecord[];
@@ -68,7 +74,7 @@ function addBlade(batch: Batch, options: BladeOptions): Vector3[] {
       .multiplyScalar(length * lean)
       .addScaledVector(UP, length * (0.82 - droop * 0.62)),
   );
-  const steps = 5;
+  const steps = 8;
   const paperFrom = batch.paper.length / 3;
   const inkFrom = batch.ink.length / 3;
   const left: Vector3[] = [];
@@ -83,15 +89,45 @@ function addBlade(batch: Batch, options: BladeOptions): Vector3[] {
     const cross = side.clone().applyAxisAngle(tangent, twist * t);
     left.push(point.clone().addScaledVector(cross, half).add(base));
     right.push(point.clone().addScaledVector(cross, -half).add(base));
-    spine.push(point.clone().add(base));
+    spine.push(
+      point
+        .clone()
+        .add(base)
+        .addScaledVector(UP, half * 0.24),
+    );
   }
+  const rootColor = new Color(0x647d4a);
+  const tipColor = new Color(0xb7bd88);
+  const tint = new Color();
+  const variation = 0.88 + 0.14 * Math.sin(yaw * 7 + base.x * 3);
   for (let i = 0; i <= steps; i++) {
-    batch.paper.push(left[i].x, left[i].y, left[i].z, right[i].x, right[i].y, right[i].z);
+    tint
+      .copy(rootColor)
+      .lerp(tipColor, Math.pow(i / steps, 1.3))
+      .multiplyScalar(variation);
+    for (const [at, point] of [left[i], spine[i], right[i]].entries()) {
+      batch.paper.push(point.x, point.y, point.z);
+      const foldLight = at === 1 ? 1.08 : 1;
+      batch.colors.push(tint.r * foldLight, tint.g * foldLight, tint.b * foldLight);
+    }
   }
   const start = paperFrom;
   for (let i = 0; i < steps; i++) {
-    const a = start + i * 2;
-    batch.indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    const a = start + i * 3;
+    batch.indices.push(
+      a,
+      a + 1,
+      a + 3,
+      a + 1,
+      a + 4,
+      a + 3,
+      a + 1,
+      a + 2,
+      a + 4,
+      a + 2,
+      a + 5,
+      a + 4,
+    );
   }
   for (let i = 0; i < steps; i++) {
     segment(batch.ink, left[i], left[i + 1]);
@@ -176,7 +212,7 @@ function addHead(
 
 export function buildGrass(radius: number, seed: number, style: GrassStyle): Group {
   const rand = mulberry32(seed);
-  const batch: Batch = { paper: [], indices: [], ink: [], blades: [] };
+  const batch: Batch = { paper: [], colors: [], indices: [], ink: [], blades: [] };
   const broad = style === 'broad';
   const clumps = grassClumps(radius, seed);
 
@@ -197,9 +233,9 @@ export function buildGrass(radius: number, seed: number, style: GrassStyle): Gro
         base: new Vector3(cx + Math.cos(a) * d, BASE_Y, cz + Math.sin(a) * d),
         yaw: a + (rand() - 0.5) * 1.7,
         length: (broad ? 0.46 + rand() * 0.38 : 0.42 + rand() * 0.58) * (0.8 + scale * 0.5),
-        lean: 0.14 + rand() * (broad ? 0.66 : 0.48) + scale * 0.08,
+        lean: 0.25 + rand() * (broad ? 0.8 : 0.66) + scale * 0.08,
         droop: rand() * (broad ? 0.85 : 0.55),
-        width: broad ? 0.035 + rand() * 0.02 : 0.012 + rand() * 0.009,
+        width: broad ? 0.045 + rand() * 0.025 : 0.019 + rand() * 0.014,
         twist: (rand() - 0.5) * 1.1,
         veins: broad ? 2 : 0,
         midrib: broad,
@@ -252,6 +288,7 @@ export function buildGrass(radius: number, seed: number, style: GrassStyle): Gro
 
   const paper = new BufferGeometry();
   paper.setAttribute('position', new Float32BufferAttribute(batch.paper, 3));
+  paper.setAttribute('color', new Float32BufferAttribute(batch.colors, 3));
   paper.setIndex(batch.indices);
   paper.computeVertexNormals();
   const ink = new BufferGeometry();

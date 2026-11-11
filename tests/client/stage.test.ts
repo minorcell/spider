@@ -1,14 +1,17 @@
 import { initialControl } from '@/src/shared/control';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BufferGeometry, Group, Line } from 'three';
+import { BufferGeometry, Group, Line, Mesh, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { KINDS } from '@/src/shared/kinds';
 import { AnimatedActor as RealSpider } from '@/tests/rigHelpers';
+import { ActorPresenter } from '@/src/client/rig/presenter';
+import { drive } from '@/tests/simHelpers';
 import type { EntityState, WorldState } from '@/src/shared/state';
 import { Stage } from '@/src/client/stage';
 import { SimSession } from '@/src/shared/sim/session';
 import { applyBody, captureBody } from '@/src/shared/sim/snapshot';
 import { attachTether, detachTether, tetherAnchor } from '@/src/shared/sim/tether';
-import { indexEntities, removeEntity } from '@/src/shared/world';
+import { indexEntities, propBlocks, removeEntity } from '@/src/shared/world';
+import { NEST_RO, NEST_SCALE_XZ } from '@/src/shared/nestShape';
 import { flat } from '@/tests/helpers';
 import { setLocalBusy } from '@/src/client/local/activity';
 import { ResizeObserverStub } from '@/tests/stubs';
@@ -858,6 +861,209 @@ describe('feedback', () => {
     expect(renderer().render).not.toHaveBeenCalled();
   });
 
+  it('moves the painted spider at 120 Hz and projects its bubble from the same pose', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    const food = entity({ id: 'apple-carried' });
+    const world = makeWorld([], [food]);
+    const actor = world.entities.get(world.controlledId!)!;
+    const spider = new RealSpider(actor);
+    const stage = new Stage(makeHost(), spider);
+    let authoritativeX = 0;
+    const step = vi.fn(() => {
+      expect(spider.root.position.x).toBeCloseTo(authoritativeX);
+      authoritativeX += 0.12;
+      spider.yaw += 0.16;
+      spider.place(authoritativeX, 0, 0);
+    });
+    stage.bind(step, () => world);
+    const drawX: number[] = [];
+    const projected: { x: number; y: number }[] = [];
+    const silk: Vector3[] = [];
+    const expectedSilk: Vector3[] = [];
+    const localAnchor = KINDS.spider.tether!.anchor;
+    threeControl.onRender = (camera) => {
+      drawX.push(spider.root.position.x);
+      const view = camera as PerspectiveCamera;
+      view.updateMatrixWorld();
+      const point = spider.root.position
+        .clone()
+        .add(new Vector3(0, 1.45, 0))
+        .project(view);
+      projected.push({ x: (point.x * 0.5 + 0.5) * 800, y: (-point.y * 0.5 + 0.5) * 600 });
+      const scene = renderer().render.mock.calls.at(-1)![0] as Group;
+      const line = scene.getObjectByName(food.id) as Line;
+      silk.push(new Vector3().fromBufferAttribute(line.geometry.getAttribute('position'), 0));
+      expectedSilk.push(
+        new Vector3(localAnchor.x, localAnchor.y, localAnchor.z)
+          .applyQuaternion(spider.root.quaternion)
+          .add(spider.root.position),
+      );
+    };
+    const anchors: ({ x: number; y: number } | null)[] = [];
+    stage.follow((point) => anchors.push(point));
+    stage.start();
+    for (let i = 0; i <= 8; i++) renderer().loop!((i * 1000) / 120);
+
+    expect(step).toHaveBeenCalledTimes(4);
+    expect(authoritativeX).toBeCloseTo(0.48);
+    expect(drawX).toHaveLength(9);
+    for (let i = 3; i < drawX.length; i++) {
+      expect(drawX[i] - drawX[i - 1]).toBeCloseTo(0.06, 4);
+      expect(anchors[i]?.x).toBeCloseTo(projected[i].x, 4);
+      expect(anchors[i]?.y).toBeCloseTo(projected[i].y, 4);
+      expect(silk[i].distanceTo(expectedSilk[i])).toBeLessThan(1e-4);
+    }
+    stage.dispose();
+  });
+
+  it('keeps the moving camera and bubble continuous as the real spider leaves the nest', async () => {
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    const session = new SimSession(7);
+    const world = session.world;
+    const nest = [...world.entities.values()].find(({ kind }) => kind === 'nest')!;
+    world.entities = indexEntities([session.actor.entity, nest]);
+    world.blocks = propBlocks(world.entities.values());
+    world.populations.clear();
+    const presenter = new ActorPresenter(session);
+    const stage = new Stage(makeHost(), presenter.model);
+    const root = presenter.model.root;
+    const authority: Vector3[] = [];
+    stage.bind(
+      (dt, wall) => {
+        presenter.step(dt, wall);
+        const { x, y, z } = session.actor.position;
+        authority.push(new Vector3(x, y, z));
+      },
+      () => world,
+    );
+    const drawn: Vector3[] = [];
+    const cameraMatrices: number[][] = [];
+    const projected: Vector3[] = [];
+    threeControl.onRender = (camera) => {
+      const view = camera as PerspectiveCamera;
+      drawn.push(root.position.clone());
+      cameraMatrices.push(view.matrixWorld.elements.slice());
+      projected.push(
+        root.position
+          .clone()
+          .add(new Vector3(0, 1.45, 0))
+          .project(view),
+      );
+    };
+    const anchors: Vector3[] = [];
+    stage.follow((point) => {
+      expect(point).not.toBeNull();
+      anchors.push(new Vector3(point!.x, point!.y, 0));
+    });
+    stage.start();
+    const loop = renderer().loop!;
+    for (let i = 0; i <= 24; i++) loop((i * 1000) / 120);
+    const walking = drive(session, 3.4, { throttle: 1 });
+    for (let i = 25; i <= 450; i++) loop((i * 1000) / 120);
+
+    await expect(walking).resolves.toMatchObject({ ok: true });
+    expect(session.actor.position.z).toBeLessThan(nest.z - NEST_RO * NEST_SCALE_XZ);
+    expect(authority).toHaveLength(225);
+    for (let i = 26; i < drawn.length; i++) {
+      const current = drawn[i];
+      const previous = drawn[i - 1];
+      expect(current.distanceTo(previous)).toBeLessThan(0.12);
+      const endpoint = authority[Math.floor(i / 2) - 1];
+      const start = authority[Math.floor(i / 2) - 2];
+      const interpolated = start.clone().lerp(endpoint, (i % 2) / 2);
+      expect(current.distanceTo(interpolated)).toBeLessThan(1e-4);
+      const matrixChange = Math.max(
+        ...cameraMatrices[i].map((value, index) => Math.abs(value - cameraMatrices[i - 1][index])),
+      );
+      expect(matrixChange).toBeLessThan(0.15);
+      expect(anchors[i].distanceTo(anchors[i - 1])).toBeLessThan(8);
+      expect(anchors[i].x).toBeCloseTo((projected[i].x * 0.5 + 0.5) * 800, 4);
+      expect(anchors[i].y).toBeCloseTo((-projected[i].y * 0.5 + 0.5) * 600, 4);
+    }
+    stage.dispose();
+  });
+
+  it('keeps the spider, camera and bubble stable through multiple turns and a reversal', async () => {
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    const session = simScene();
+    const presenter = new ActorPresenter(session);
+    const stage = new Stage(makeHost(), presenter.model);
+    const root = presenter.model.root;
+    const vertical = new Vector3(0, 1, 0);
+    const expected = new Quaternion();
+    const previous = new Quaternion();
+    const current = new Quaternion();
+    let minYaw = 0;
+    let maxYaw = 0;
+    stage.bind(
+      (dt, wall) => {
+        presenter.step(dt, wall);
+        const yaw = session.actor.yaw;
+        minYaw = Math.min(minYaw, yaw);
+        maxYaw = Math.max(maxYaw, yaw);
+        previous.copy(current);
+        current.setFromAxisAngle(vertical, yaw);
+        expect(root.quaternion.angleTo(current)).toBeLessThan(1e-5);
+      },
+      () => session.world,
+    );
+
+    let index = 0;
+    let projected: Vector3 | undefined;
+    let lastAnchor: Vector3 | undefined;
+    let lastCamera: Quaternion | undefined;
+    threeControl.onRender = (camera) => {
+      const view = camera as PerspectiveCamera;
+      expected.slerpQuaternions(previous, current, (index % 2) / 2);
+      expect(root.quaternion.angleTo(expected)).toBeLessThan(1e-5);
+      if (lastCamera) expect(view.quaternion.angleTo(lastCamera)).toBeLessThan(0.06);
+      lastCamera = view.quaternion.clone();
+      projected = root.position
+        .clone()
+        .add(new Vector3(0, 1.45, 0))
+        .project(view);
+    };
+    stage.follow((point) => {
+      expect(point).not.toBeNull();
+      const anchor = new Vector3(point!.x, point!.y, 0);
+      if (lastAnchor) expect(anchor.distanceTo(lastAnchor)).toBeLessThan(8);
+      lastAnchor = anchor;
+      expect(anchor.x).toBeCloseTo((projected!.x * 0.5 + 0.5) * 800, 4);
+      expect(anchor.y).toBeCloseTo((-projected!.y * 0.5 + 0.5) * 600, 4);
+    });
+    stage.start();
+    const walking = session.run({
+      timeout: 14,
+      controls: () => ({ throttle: 0.45, turn: index < 480 ? 1 : -1, boost: 0, lift: 0 }),
+      done: () => session.actor.time >= 12.1,
+      result: () => ({}),
+    });
+    for (index = 0; index <= 1460; index++) renderer().loop!((index * 1000) / 120);
+    await expect(walking).resolves.toMatchObject({ ok: true });
+    expect(minYaw).toBeLessThan(-2 * Math.PI);
+    expect(maxYaw).toBeGreaterThan(2 * Math.PI);
+    stage.dispose();
+  });
+
+  it('snaps to a restored spider pose without blending across the island', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    const spider = new RealSpider();
+    const stage = new Stage(makeHost(), spider);
+    const world = makeWorld();
+    const step = vi.fn(() => spider.place(0.2, 0, 0));
+    stage.bind(step, () => world);
+    stage.start();
+    renderer().loop!(25);
+    expect(spider.root.position.x).toBeCloseTo(0.1);
+
+    spider.place(-12, 0, 0);
+    stage.retile();
+    renderer().loop!(26);
+    expect(step).toHaveBeenCalledOnce();
+    expect(spider.root.position.x).toBeCloseTo(-12);
+    stage.dispose();
+  });
+
   it('reports the anchor and hides a behind-camera point', () => {
     const stage = new Stage(makeHost(), new RealSpider());
     const anchor = vi.fn();
@@ -917,13 +1123,13 @@ it('draws the registered models and updates their silk until release', () => {
   expect(points.getY(0)).toBeCloseTo(anchor.y);
   expect(points.getZ(0)).toBeCloseTo(anchor.z);
   expect(points.getY(4)).toBeLessThan((points.getY(0) + points.getY(8)) / 2);
-  const propColors = new Set<number>();
-  scene.traverse((node) => {
-    const material = (node as { material?: { color?: { getHex(): number } } }).material;
-    if (material?.color) propColors.add(material.color.getHex());
-  });
-  expect(propColors).toContain(0x8793a4);
-  expect(propColors).toContain(0xa05f9d);
+  for (const name of ['river-pebble', 'berry-skin']) {
+    const mesh = scene.getObjectByName(name) as Mesh;
+    expect(mesh).toBeInstanceOf(Mesh);
+    const positions = mesh.geometry.getAttribute('position');
+    expect(positions.count).toBeGreaterThan(0);
+    expect(mesh.geometry.getAttribute('color').count).toBe(positions.count);
+  }
 
   stone.x += 1;
   frame();

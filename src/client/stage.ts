@@ -32,6 +32,7 @@ import { buildProp, propDrape, showFreshness } from '@/src/client/props';
 import { freshnessOf } from '@/src/shared/life';
 import { createSound } from '@/src/client/sound';
 import { tetherEndpoints } from '@/src/shared/sim/tether';
+import { PoseInterpolation } from '@/src/client/poseInterpolation';
 
 const STEP_SECONDS = SIMULATION_STEP_SECONDS;
 const STEP_MS = STEP_SECONDS * 1000;
@@ -73,6 +74,7 @@ export class Stage {
   readonly #scene = new Scene();
   readonly #camera: PerspectiveCamera;
   readonly #spider: Spider;
+  readonly #poses: PoseInterpolation;
   readonly #props = new Map<string, Group>();
   #island: Group | null = null;
   /** While set, a restored seed waits for the world worker instead of meshing here. */
@@ -133,6 +135,7 @@ export class Stage {
   constructor(host: HTMLElement, spider: Spider) {
     this.#host = host;
     this.#spider = spider;
+    this.#poses = new PoseInterpolation(spider.poseNodes());
 
     // WebGPURenderer defaults to a transparent canvas. The paper sky is opaque.
     this.#renderer = new WebGPURenderer({
@@ -174,6 +177,7 @@ export class Stage {
   /** The render loop steps this once, then draws the same spider. */
   bind(step: (dt: number, wallNowMs: number) => void, world: () => WorldState): void {
     this.#step = step;
+    this.#poses.reset();
     this.#stopWorld?.();
     this.#world = world;
     this.#stopWorld = onWorldCommit(world(), (commit) => this.#worldFeedback(commit));
@@ -224,6 +228,7 @@ export class Stage {
 
   /** The ground mesh is baked once. A restored seed needs a new island. */
   retile(): void {
+    this.#poses.reset();
     const seed = this.#world?.().seed;
     if (this.#islandSource && seed != null) {
       const request = ++this.#islandRequest;
@@ -299,6 +304,28 @@ export class Stage {
       const ends = tetherEndpoints(world, relation);
       if (!ends) continue;
       const { from: anchor, to: target } = ends;
+      // Attach to the same presented pose used by camera and bubble, not the next tick.
+      const pose = this.#spider.root.position;
+      const state = this.#spider.source.position;
+      for (const [id, point] of [
+        [relation.sourceId, anchor],
+        [relation.targetId, target],
+      ] as const) {
+        if (id !== world.controlledId) continue;
+        const q = this.#spider.root.quaternion;
+        const presentedYaw = Math.atan2(
+          2 * (q.w * q.y + q.x * q.z),
+          1 - 2 * (q.y * q.y + q.z * q.z),
+        );
+        const angle = presentedYaw - this.#spider.source.yaw;
+        const c = Math.cos(angle),
+          s = Math.sin(angle);
+        const x = point.x - state.x,
+          z = point.z - state.z;
+        point.x = pose.x + x * c + z * s;
+        point.y += pose.y - state.y;
+        point.z = pose.z - x * s + z * c;
+      }
       let silk = this.#silks.get(id);
       if (!silk) {
         const geometry = new BufferGeometry().setAttribute(
@@ -519,6 +546,7 @@ export class Stage {
     }
     this.#camera.position.copy(this.#camPos);
     this.#camera.lookAt(this.#lookPos);
+    this.#camera.updateMatrixWorld();
   }
 
   #resize(): void {
@@ -542,6 +570,7 @@ export class Stage {
   #resetStepClock = (): void => {
     this.#last = performance.now();
     this.#stepBank = 0;
+    this.#poses.reset();
   };
 
   #frame = (now: number): void => {
@@ -554,7 +583,7 @@ export class Stage {
       const steps = Math.floor((this.#stepBank + 1e-7) / STEP_MS);
       this.#stepBank = Math.max(0, this.#stepBank - steps * STEP_MS);
       const wallNowMs = Date.now();
-      for (let i = 0; i < steps; i++) step(STEP_SECONDS, wallNowMs);
+      for (let i = 0; i < steps; i++) this.#poses.step(() => step(STEP_SECONDS, wallNowMs));
     }
     const contact = waterContact(this.#spider, this.#wasLifted, this.#world?.() ?? null);
     this.#feedback();
@@ -564,6 +593,7 @@ export class Stage {
       ? Math.min(0.05, (now - this.#lastPaint) / 1000)
       : dt;
     this.#lastPaint = now;
+    if (step && !this.#held) this.#poses.present(this.#stepBank / STEP_MS);
     this.#syncEcology();
     tickWater(now * 0.001, contact);
     this.#syncWorld();

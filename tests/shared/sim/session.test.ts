@@ -1,4 +1,4 @@
-import { indexEntities } from '@/src/shared/world';
+import { indexEntities, propBlocks } from '@/src/shared/world';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { kindOf, KINDS } from '@/src/shared/kinds';
 import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
@@ -181,6 +181,9 @@ describe('SimSession basics', () => {
 
   it('stops at the round shore instead of the square map edge', async () => {
     const session = new SimSession(4);
+    session.world.entities = indexEntities([session.actor.entity]);
+    session.world.blocks = [];
+    session.world.populations.clear();
     session.world.terrain = {
       height: () => 0,
       inside: (x, z, margin = 0) => Math.hypot(x, z) < 3 - margin,
@@ -189,7 +192,10 @@ describe('SimSession basics', () => {
     session.actor.state.yaw = -Math.PI / 2;
     const outcome = await settle(drive(session, 2, { throttle: 1 }), session);
     expect(outcome).toMatchObject({ ok: false, reason: 'blocked', halt: 'solid' });
-    expect(session.actor.position.x).toBeLessThan(3);
+    const front = Math.max(
+      ...session.actor.spec.clearance.map(({ c, r }) => -c[2] + Math.max(r[0], r[2])),
+    );
+    expect(session.actor.position.x).toBeCloseTo(3 - front, 2);
   });
 });
 
@@ -370,11 +376,15 @@ describe('goals', () => {
 
   it('drives for a fixed time and stops against a solid', async () => {
     const session = new SimSession(4);
+    session.world.entities = indexEntities([session.actor.entity]);
+    session.world.blocks = [];
+    session.world.populations.clear();
+    session.world.terrain = { height: () => 0 };
     await expect(settle(drive(session, 0.3, { throttle: 1 }), session)).resolves.toMatchObject({
       ok: true,
     });
-    Object.assign(session.actor.position, { x: 0, y: 0, z: 1.8 });
-    session.actor.state.yaw = Math.PI;
+    const { x, z } = session.actor.position;
+    session.world.blocks = [block('wall', x - 2, x + 2, z - 3, z - 2)];
     const blocked = await settle(drive(session, 2, { throttle: 1 }), session);
     expect(blocked).toMatchObject({ ok: false, reason: 'blocked', halt: 'solid' });
     await expect(settle(drive(session, 0.1, { turn: 1 }), session)).resolves.toMatchObject({
@@ -1034,8 +1044,11 @@ describe('sleep and props', () => {
   it('grows a replacement apple as the simulation runs', () => {
     const session = new SimSession(4);
     session.world.entities = indexEntities(
-      [...session.world.entities.values()].filter((entity) => entity.kind !== 'apple'),
+      [...session.world.entities.values()].filter(
+        (entity) => entity.kind === 'nest' || entity === session.actor.entity,
+      ),
     );
+    session.world.blocks = propBlocks(session.world.entities.values());
     session.world.populations.get('apple')!.remaining = 0.02;
     session.frame(1 / 60);
     expect([...session.world.entities.values()].some((entity) => entity.kind === 'apple')).toBe(

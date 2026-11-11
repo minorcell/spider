@@ -1,6 +1,6 @@
 import { Color, MathUtils } from 'three';
 import { PALETTE } from '@/src/shared/config';
-import { mulberry32 } from '@/src/shared/noise';
+import { createNoise, mulberry32 } from '@/src/shared/noise';
 import { TERRAIN } from '@/src/shared/terrain';
 
 const water = new Color(PALETTE.water);
@@ -8,8 +8,12 @@ const lowland = new Color(PALETTE.ground);
 const earth = new Color(PALETTE.earth);
 const stone = new Color(PALETTE.stone);
 const scratch = new Color();
+const pigment = createNoise(0x67726f75);
+const meadow = new Color(0xa1b18a);
+const dryGrass = new Color(0xbec19a);
+const dampEarth = new Color(0xa79c86);
 
-function terrainColor(h: number, slope: number, out: Color): void {
+function terrainColor(x: number, z: number, h: number, slope: number, out: Color): void {
   if (h < -1) out.copy(water);
   else if (h < -0.2) out.copy(water).lerp(lowland, MathUtils.smoothstep(h, -1, -0.2));
   else if (h < 1.8) out.copy(lowland).lerp(earth, MathUtils.smoothstep(h, 0.2, 1.8) * 0.35);
@@ -17,6 +21,19 @@ function terrainColor(h: number, slope: number, out: Color): void {
   else out.copy(stone);
   const steep = MathUtils.smoothstep(slope, 0.65, 1.25) * 0.35;
   if (steep > 0) out.lerp(stone, steep);
+  if (h > TERRAIN.water) {
+    const patch = pigment(x * 0.17, z * 0.17);
+    const detail = pigment(x * 1.1, z * 1.1);
+    const growth =
+      (1 - MathUtils.smoothstep(slope, 0.4, 1.2)) *
+      MathUtils.smoothstep(h, TERRAIN.water, TERRAIN.water + 0.55);
+    out.lerp(patch > 0 ? meadow : dryGrass, growth * (0.3 + Math.abs(patch) * 0.55));
+    out.lerp(
+      dampEarth,
+      (1 - MathUtils.smoothstep(h, TERRAIN.water + 0.05, TERRAIN.water + 0.55)) * 0.4,
+    );
+    out.multiplyScalar(0.97 + detail * 0.055);
+  }
 }
 
 export interface IslandBuffers {
@@ -63,7 +80,7 @@ export function groundAttributes(
           height(x, z + cell) - height(x, z - cell),
         ) /
         (2 * cell);
-      terrainColor(y, slope, scratch);
+      terrainColor(x, z, y, slope, scratch);
       scratch.toArray(color, vertex);
       vertex += 3;
     }
@@ -94,18 +111,18 @@ function groundCover(
   const rand = mulberry32(0x6d6f7373);
   const positions: number[] = [];
   const colors: number[] = [];
-  const moss = new Color(PALETTE.moss);
-  const grass = new Color(PALETTE.grass);
+  const moss = new Color(0x87966e);
+  const grass = new Color(0xacb992);
   const soil = new Color(PALETTE.earth);
   const tint = new Color();
   const triangle = (points: readonly number[], color: Color): void => {
     positions.push(...points);
     for (let i = 0; i < 3; i++) colors.push(color.r, color.g, color.b);
   };
-  for (let gx = -half; gx < half; gx += 0.85) {
-    for (let gz = -half; gz < half; gz += 0.85) {
-      const x = gx + rand() * 0.85;
-      const z = gz + rand() * 0.85;
+  for (let gx = -half; gx < half; gx += 0.65) {
+    for (let gz = -half; gz < half; gz += 0.65) {
+      const x = gx + rand() * 0.65;
+      const z = gz + rand() * 0.65;
       const y = height(x, z);
       if (
         Math.hypot(x, z) > TERRAIN.island * 0.86 ||

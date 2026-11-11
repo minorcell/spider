@@ -79,7 +79,8 @@ export const soilMat = new MeshLambertMaterial({
   polygonOffsetUnits: 1,
 });
 
-export const tubeGeo = new CylinderGeometry(0.62, 1, 1, 12);
+export const jointMat = new MeshLambertMaterial({ color: 0x9b876f });
+export const tubeGeo = new CylinderGeometry(0.44, 1, 1, 12, 6);
 tubeGeo.rotateX(-Math.PI / 2);
 tubeGeo.translate(0, 0, -0.5);
 export const tubeShell = growShell(tubeGeo, 0.1, true);
@@ -88,10 +89,33 @@ export const tubeCrest = crestLine(tubeGeo);
 export const ballGeo = new SphereGeometry(1, 16, 12);
 export const ballShell = growShell(ballGeo, 0.08);
 
-export const clawGeo = new CylinderGeometry(0.0022, 0.009, 0.08, 8);
-clawGeo.translate(0, 0.04, 0);
-clawGeo.rotateX(-2);
-export const clawShell = growShell(clawGeo, 0.0025);
+// Short, continuously tapered hooks curl down from the narrow tarsal tip.
+export const clawGeo = new BufferGeometry();
+const clawPositions: number[] = [];
+const clawIndices: number[] = [];
+for (let ring = 0; ring <= 10; ring++) {
+  const t = ring / 10;
+  const radius = 0.005 * Math.pow(1 - t, 1.4) + 0.0004;
+  for (let side = 0; side <= 8; side++) {
+    const angle = (side / 8) * Math.PI * 2;
+    clawPositions.push(
+      Math.cos(angle) * radius,
+      Math.sin(angle) * radius - 0.014 * t * t,
+      -0.037 * t,
+    );
+  }
+}
+for (let ring = 0; ring < 10; ring++) {
+  for (let side = 0; side < 8; side++) {
+    const a = ring * 9 + side;
+    const b = a + 9;
+    clawIndices.push(a, b, a + 1, a + 1, b, b + 1);
+  }
+}
+clawGeo.setAttribute('position', new Float32BufferAttribute(clawPositions, 3));
+clawGeo.setIndex(clawIndices);
+clawGeo.computeVertexNormals();
+export const clawShell = growShell(clawGeo, 0.0007);
 
 export function growShell(
   geometry: BufferGeometry,

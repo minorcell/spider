@@ -1,19 +1,52 @@
 import { describe, expect, it } from 'vitest';
-import { Box3, Group, LineSegments, Mesh, Vector3 } from 'three';
+import { Box3, DataTexture, Group, LineSegments, Mesh, MeshLambertMaterial, Vector3 } from 'three';
 import { buildProp, drapeGrass, MODELS, propDrape, showFreshness } from '@/src/client/props';
 import { KINDS } from '@/src/shared/kinds';
 import { nestSurface } from '@/src/shared/nestShape';
+import { treeForm } from '@/src/shared/treeForm';
 
-const bounds = (group: Group) => new Box3().setFromObject(group).getSize(new Vector3());
+const bounds = (group: Group | Mesh) => new Box3().setFromObject(group).getSize(new Vector3());
+
+const crownSize = (model: Group) =>
+  (model.getObjectByName('crown') as Mesh).geometry.getAttribute('position').count;
+const trunkAspect = (model: Group) => {
+  const size = bounds(model.getObjectByName('trunk') as Mesh);
+  return size.y / Math.max(size.x, size.z);
+};
 
 describe('buildProp', () => {
-  it('batches a tree into four draws while retaining crown and trunk detail', () => {
-    const tree = buildProp('tree', 0, { kind: 'circle', r: 0.5 }, 'tree-1')!;
+  it('batches leafy and bare trees while retaining their different silhouettes', () => {
+    const ids = Array.from({ length: 40 }, (_, index) => `tree-${index}`);
+    const idOf = (name: string) => ids.find((id) => treeForm(id).name === name)!;
+    const footprint = { kind: 'circle', r: 0.5 } as const;
+    const spreading = idOf('spreading');
+    const tree = buildProp('tree', 0, footprint, spreading)!;
     expect(tree.children).toHaveLength(4);
     expect(tree.getObjectByName('trunk')).toBeInstanceOf(Mesh);
     expect(tree.getObjectByName('crown')).toBeInstanceOf(Mesh);
     expect(tree.getObjectByName('outline')).toBeInstanceOf(Mesh);
-    expect((tree.getObjectByName('crown') as Mesh).geometry.index!.count).toBeGreaterThan(1000);
+    const crown = tree.getObjectByName('crown') as Mesh;
+    expect(crown.geometry.index!.count).toBeGreaterThan(1000);
+    const color = crown.geometry.getAttribute('color');
+    expect(color.count).toBe(crown.geometry.getAttribute('position').count);
+    expect(new Set(color.array).size).toBeGreaterThan(100);
+    expect((crown.material as MeshLambertMaterial).vertexColors).toBe(true);
+
+    const trunk = tree.getObjectByName('trunk') as Mesh;
+    const uv = trunk.geometry.getAttribute('uv');
+    expect(uv.count).toBe(trunk.geometry.getAttribute('position').count);
+    expect((trunk.material as MeshLambertMaterial).map).toBeInstanceOf(DataTexture);
+
+    const bare = buildProp('tree', 0, footprint, idOf('bare'))!;
+    const sparse = buildProp('tree', 0, footprint, idOf('sparse'))!;
+    const slender = buildProp('tree', 0, footprint, idOf('slender'))!;
+    const old = buildProp('tree', 0, footprint, idOf('old'))!;
+    expect(crownSize(bare)).toBe(0);
+    expect((bare.getObjectByName('trunk') as Mesh).geometry.index!.count).toBeGreaterThan(0);
+    expect(crownSize(sparse)).toBeGreaterThan(0);
+    expect(crownSize(sparse)).toBeLessThan(crownSize(tree));
+    expect(bounds(slender).y).toBeGreaterThan(bounds(old).y);
+    expect(trunkAspect(slender)).toBeGreaterThan(trunkAspect(old));
   });
 
   it.each(['tree', 'stone', 'bog-stone'])(
@@ -39,6 +72,23 @@ describe('buildProp', () => {
     },
   );
 
+  it.each(['stone', 'bog-stone'])('applies mineral tint and grain to each %s cluster', (kind) => {
+    const rock = buildProp(kind, 0, { kind: 'circle', r: 1 }, `${kind}-1`)!;
+    expect(rock.children.length).toBeGreaterThan(1);
+    for (const boulder of rock.children) {
+      const mesh = boulder.children[0] as Mesh;
+      const position = mesh.geometry.getAttribute('position');
+      const color = mesh.geometry.getAttribute('color');
+      const uv = mesh.geometry.getAttribute('uv');
+      expect(color.count).toBe(position.count);
+      expect(uv.count).toBe(position.count);
+      expect(new Set(color.array).size).toBeGreaterThan(20);
+      expect((mesh.material as MeshLambertMaterial).vertexColors).toBe(true);
+      expect((mesh.material as MeshLambertMaterial).map).toBeInstanceOf(DataTexture);
+      expect(boulder.children.some((child) => child instanceof LineSegments)).toBe(true);
+    }
+  });
+
   it('builds an apple at each bite stage', () => {
     for (const stage of [0, 1, 2, 3, 4, 5]) {
       const apple = buildProp('apple', stage);
@@ -46,6 +96,31 @@ describe('buildProp', () => {
       expect(apple!.children.length).toBeGreaterThan(1);
       expect(apple!.scale.x).toBe(0.54);
     }
+  });
+
+  it('shows a paler cut face than the adjacent apple skin', () => {
+    const apple = buildProp('apple', 3)!;
+    const skin = apple.getObjectByName('fruit-skin') as Mesh;
+    const positions = skin.geometry.getAttribute('position');
+    const color = skin.geometry.getAttribute('color');
+    skin.geometry.computeBoundingBox();
+    const cut = skin.geometry.boundingBox!.max.x;
+    const flesh: number[] = [];
+    const peel: number[] = [];
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i);
+      const y = positions.getY(i);
+      if (y < 0.2 || y > 0.5) continue;
+      if (Math.abs(x - cut) < 1e-5) flesh.push(color.getY(i));
+      else if (x < cut - 0.05) peel.push(color.getY(i));
+    }
+    expect(flesh.length).toBeGreaterThan(0);
+    expect(peel.length).toBeGreaterThan(0);
+    expect(Math.max(...flesh)).toBeGreaterThan(Math.max(...peel) + 0.1);
+    const leaf = apple.getObjectByName('fruit-leaf') as Mesh;
+    expect(leaf).toBeInstanceOf(Mesh);
+    leaf.geometry.computeBoundingBox();
+    expect(leaf.geometry.boundingBox!.getSize(new Vector3()).z).toBeGreaterThan(0.015);
   });
 
   it('colors rotten items through shared palette variants without changing fresh neighbours', () => {
@@ -103,8 +178,12 @@ describe('buildProp', () => {
     const nest = buildProp('nest', 0)!;
     nest.position.set(0, 0.02, 0);
     nest.updateMatrixWorld(true);
-    const soil = nest.children.find((child) => child instanceof Mesh) as Mesh;
+    const soil = nest.getObjectByName('chamber-floor') as Mesh;
     const position = soil.geometry.getAttribute('position');
+    const color = soil.geometry.getAttribute('color');
+    expect(color.count).toBe(position.count);
+    expect(new Set(color.array).size).toBeGreaterThan(20);
+    expect((soil.material as MeshLambertMaterial).map).toBeInstanceOf(DataTexture);
     const point = new Vector3();
     const origin = { x: 0, y: 0.02, z: 0 };
     for (let i = 0; i < position.count; i += 80) {
@@ -142,19 +221,33 @@ describe('buildProp', () => {
     expect(buildProp('grass', 0, undefined, 'grass-x')).toBeInstanceOf(Group);
   });
 
-  it('draws registered round models at their physical size and reuses the berry material', () => {
+  it('uses registered radii for a flattened pebble and shrinks a bitten berry', () => {
     const pebble = buildProp('pebble', 0)!;
     const berry = buildProp('berry', 0)!;
     const bitten = buildProp('berry', 1)!;
-    expect(bounds(pebble).y).toBeCloseTo(2 * KINDS.pebble.physics!.radius);
+    const rockSize = bounds(pebble);
+    const diameter = 2 * KINDS.pebble.physics!.radius;
+    expect(rockSize.x).toBeGreaterThan(diameter * 0.85);
+    expect(rockSize.x).toBeLessThan(diameter * 1.05);
+    expect(rockSize.y).toBeLessThan(rockSize.x * 0.85);
+    const freshSkin = berry.getObjectByName('berry-skin') as Mesh;
+    const bittenSkin = bitten.getObjectByName('berry-skin') as Mesh;
+    const color = freshSkin.geometry.getAttribute('color');
+    expect(new Set(color.array).size).toBeGreaterThan(20);
+    expect(freshSkin.getObjectByName('berry-calyx')).toBeInstanceOf(Mesh);
     expect(bounds(bitten).y).toBeLessThan(bounds(berry).y);
-    expect((bitten.children[0] as Mesh).material).toBe((berry.children[0] as Mesh).material);
+    expect(bittenSkin.material).toBe(freshSkin.material);
+    showFreshness(bitten, true);
+    expect(bittenSkin.material).not.toBe(freshSkin.material);
   });
 
-  it('uses the default visual size for a registered round decoration', () => {
+  it('uses the default size and shares material for registered round decorations', () => {
     KINDS.decoration = { rest: 0, model: { color: 0x9bc9a8, segments: 8 } };
     try {
-      expect(bounds(buildProp('decoration', 0)!).y).toBeCloseTo(0.4);
+      const first = buildProp('decoration', 0)!;
+      const second = buildProp('decoration', 0)!;
+      expect(bounds(first).y).toBeCloseTo(0.4);
+      expect((first.children[0] as Mesh).material).toBe((second.children[0] as Mesh).material);
     } finally {
       delete KINDS.decoration;
     }

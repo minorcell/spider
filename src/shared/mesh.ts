@@ -90,10 +90,10 @@ export function tubeMesh(
   }
   const positions = Float32Array.from(position);
   const indices = Uint32Array.from(index);
-  return { position: positions, index: indices, normal: normals(positions, indices) };
+  return { position: positions, index: indices, normal: meshNormals(positions, indices) };
 }
 
-function normals(position: Float32Array, index: Uint32Array): Float32Array {
+export function meshNormals(position: Float32Array, index: Uint32Array): Float32Array {
   const result = new Float32Array(position.length);
   for (let i = 0; i < index.length; i += 3) {
     const a = index[i] * 3,

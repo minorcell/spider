@@ -11,6 +11,7 @@ import {
 } from 'three';
 import {
   abs,
+  attribute,
   clamp,
   cos,
   exp,
@@ -27,7 +28,6 @@ import {
   vec3,
 } from 'three/tsl';
 import { MeshBasicNodeMaterial, type Node } from 'three/webgpu';
-import { PALETTE } from '@/src/shared/config';
 import { groundAttributes, islandBuffers, type IslandBuffers } from '@/src/client/islandMesh';
 import { groundMat } from '@/src/client/rig/parts';
 import { TERRAIN } from '@/src/shared/terrain';
@@ -44,8 +44,10 @@ import {
 } from '@/src/client/waterMotion';
 
 const waterTime = uniform(0);
-const waterShallow = uniform(new Color(PALETTE.water));
-const waterDeep = uniform(new Color(PALETTE.water).multiplyScalar(0.78));
+const shallowBase = new Color(0xb4c9bc);
+const deepBase = new Color(0x71959d);
+const waterShallow = uniform(shallowBase.clone());
+const waterDeep = uniform(deepBase.clone());
 const waterOpacity = uniform(0.74);
 
 const TAU = 6.283185307179586;
@@ -137,14 +139,38 @@ const painted = gerstner(paintedX, paintedZ, waterTime);
 const ripples = radialWakes(paintedX, paintedZ, waterTime);
 const crest = smoothstep(0.008, 0.018, painted.dy);
 const shade = clamp(painted.dy.mul(7).add(0.42).add(ripples.mul(0.28)), 0, 1);
+// Depth comes from the same baked terrain; this is pigment, never buoyancy or collision.
+const depth = max(attribute('waterDepth', 'float'), 0);
+const depthMix = smoothstep(0.05, 2.4, depth);
+const capillary = sin(
+  paintedX
+    .mul(3.1)
+    .add(sin(paintedZ.mul(1.9)))
+    .add(waterTime.mul(0.75)),
+).mul(sin(paintedZ.mul(2.7).sub(waterTime.mul(0.45))));
+const glimmer = smoothstep(0.78, 1, capillary).mul(0.24);
+const shore = smoothstep(0, 0.08, depth)
+  .mul(float(1).sub(smoothstep(0.12, 0.36, depth)))
+  .mul(
+    sin(paintedX.mul(1.8).add(paintedZ).sub(waterTime.mul(1.2)))
+      .mul(0.2)
+      .add(0.65),
+  );
+const lakeColor = mix(waterShallow, waterDeep, depthMix.mul(0.85).add(shade.mul(0.15)));
 
 const waterMaterial = new MeshBasicNodeMaterial({
   transparent: true,
   depthWrite: false,
   fog: true,
   side: DoubleSide,
-  colorNode: mix(mix(waterDeep, waterShallow, shade), waterShallow, crest.mul(0.8)),
-  opacityNode: clamp(waterOpacity.add(crest.mul(0.1)).add(ripples.mul(0.04)), 0.4, 0.92),
+  colorNode: mix(
+    lakeColor,
+    waterShallow.mul(1.12),
+    glimmer.add(crest.mul(0.12)).add(shore.mul(0.42)),
+  ),
+  opacityNode: clamp(waterOpacity.add(depthMix.mul(0.16)).add(ripples.mul(0.04)), 0.4, 0.92).mul(
+    smoothstep(0, 0.16, depth).mul(0.75).add(0.25),
+  ),
 });
 waterMaterial.positionNode = vec3(
   sheetX.add(sheetSwell.dx),
@@ -153,16 +179,11 @@ waterMaterial.positionNode = vec3(
 );
 waterMaterial.userData.uTime = waterTime;
 
-const waterBase = new Color(PALETTE.water);
 const coverMaterial = new MeshLambertMaterial({ vertexColors: true, side: DoubleSide });
 
 export function setGroundLight(red: number, green: number, blue: number): void {
-  waterShallow.value
-    .copy(waterBase)
-    .setRGB(waterBase.r * red, waterBase.g * green, waterBase.b * blue);
-  waterDeep.value
-    .copy(waterBase)
-    .setRGB(waterBase.r * red * 0.78, waterBase.g * green * 0.78, waterBase.b * blue * 0.78);
+  waterShallow.value.setRGB(shallowBase.r * red, shallowBase.g * green, shallowBase.b * blue);
+  waterDeep.value.setRGB(deepBase.r * red, deepBase.g * green, deepBase.b * blue);
 }
 
 let waterClock = Number.NaN;
@@ -196,10 +217,27 @@ export function islandGroup(buffers: IslandBuffers): Group {
   vegetation.name = 'ground-cover';
   group.add(vegetation);
 
-  const water = new Mesh(
-    new PlaneGeometry(TERRAIN.half * 2, TERRAIN.half * 2, 112, 112),
-    waterMaterial,
-  );
+  const waterGeometry = new PlaneGeometry(TERRAIN.half * 2, TERRAIN.half * 2, 112, 112);
+  const waterPosition = waterGeometry.getAttribute('position');
+  const depthValues = new Float32Array(waterPosition.count);
+  const ground = buffers.groundPosition;
+  const columns = Math.sqrt(ground.length / 3);
+  const min = ground[0];
+  const cell = ground[3] - min;
+  for (let i = 0; i < waterPosition.count; i++) {
+    const gx = Math.max(0, Math.min(columns - 1.000001, (waterPosition.getX(i) - min) / cell));
+    const gz = Math.max(0, Math.min(columns - 1.000001, (-waterPosition.getY(i) - min) / cell));
+    const ix = Math.floor(gx),
+      iz = Math.floor(gz);
+    const tx = gx - ix,
+      tz = gz - iz;
+    const at = (x: number, z: number) => ground[(z * columns + x) * 3 + 1];
+    const front = at(ix, iz) * (1 - tx) + at(ix + 1, iz) * tx;
+    const back = at(ix, iz + 1) * (1 - tx) + at(ix + 1, iz + 1) * tx;
+    depthValues[i] = TERRAIN.water - (front * (1 - tz) + back * tz);
+  }
+  waterGeometry.setAttribute('waterDepth', new Float32BufferAttribute(depthValues, 1));
+  const water = new Mesh(waterGeometry, waterMaterial);
   water.name = 'water';
   water.renderOrder = 1;
   water.rotation.x = -Math.PI / 2;

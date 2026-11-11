@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { PHYSICS } from '@/src/shared/config';
 import { KINDS } from '@/src/shared/kinds';
 import { BODY_RADIUS, blockedAt } from '@/src/shared/collision';
+import { moveRegisteredBody } from '@/src/shared/registeredBodyMotion';
 import { planRoute } from '@/src/shared/route';
 import { SimSession } from '@/src/shared/sim/session';
 import { fitsPlacement, stepPhysics } from '@/src/shared/sim/physics';
@@ -49,10 +50,63 @@ describe('registered bodies share continuous collision', () => {
 
     session.actor.state.yaw = -Math.PI / 2;
     session.actor.update(0.5, { throttle: 1, turn: 0, lift: 0, boost: 1 });
-    expect(session.actor.position.x).toBeCloseTo(0.8 - BODY_RADIUS, 6);
+    const front = Math.max(
+      ...session.actor.spec.clearance.map(({ c, r }) => -c[2] + Math.max(r[0], r[2])),
+    );
+    expect(session.actor.position.x).toBeCloseTo(0.8 - front, 6);
     expect(
       blockedAt(session.actor.position.x, session.actor.position.z, session.world.blocks),
     ).toBe(false);
+  });
+
+  it('stops a reversing actor at the abdomen, before the origin reaches a wall', () => {
+    const session = scene();
+    session.world.blocks = [
+      { id: 'rear-wall', minX: -3, maxX: 3, minZ: 2.2, maxZ: 2.3, height: 2 },
+    ];
+    Object.assign(session.actor.position, { x: 0, y: 0, z: 0 });
+    session.actor.state.yaw = 0;
+
+    session.actor.update(1, { throttle: -1, turn: 0, lift: 0, boost: 0 });
+
+    const rear = Math.max(
+      ...session.actor.spec.clearance.map(({ c, r }) => c[2] + Math.max(r[0], r[2])),
+    );
+    expect(session.actor.position.z).toBeCloseTo(2.2 - rear, 6);
+    expect(session.actor.position.z + BODY_RADIUS).toBeLessThan(2.2);
+  });
+
+  it('limits a turn whose swept abdomen would cross a nearby wall', () => {
+    const session = scene();
+    session.world.blocks = [
+      { id: 'side-wall', minX: 1.4, maxX: 1.5, minZ: -2, maxZ: 2, height: 2 },
+    ];
+    Object.assign(session.actor.position, { x: 0, y: 0, z: 0 });
+    session.actor.state.yaw = 0;
+
+    session.actor.update(1, { throttle: 0, turn: -1, lift: 0, boost: 0 });
+
+    const yaw = session.actor.yaw;
+    const rearEdge = (angle: number) =>
+      Math.max(
+        ...session.actor.spec.clearance.map(
+          ({ c, r }) => c[0] * Math.cos(angle) + c[2] * Math.sin(angle) + Math.max(r[0], r[2]),
+        ),
+      );
+    expect(yaw).toBeGreaterThan(0);
+    expect(yaw).toBeLessThan(Math.PI / 2);
+    expect(rearEdge(yaw)).toBeLessThanOrEqual(1.4);
+    expect(rearEdge(yaw + 0.03)).toBeGreaterThan(1.4);
+    expect(session.actor.position).toMatchObject({ x: 0, z: 0 });
+  });
+
+  it('honors a shared center-boundary callback without a radius-specific callback', () => {
+    const reached = moveRegisteredBody({ x: 0, y: 0, z: 0 }, 0, [], 4, 0, {
+      blocks: [],
+      inside: (x) => x < 2,
+    });
+    expect(reached.halt).toBe('solid');
+    expect(reached.x).toBeCloseTo(2, 6);
   });
 
   it('sweeps an actor push instead of teleporting an item to the far side of a wall', () => {
@@ -107,13 +161,16 @@ describe('registered bodies share continuous collision', () => {
     expect(session.actor.halt).toBe('clear');
   });
 
-  it('binds the same world boundary after the controller emits a long intent', () => {
+  it('keeps the complete registered body within the world boundary during a long intent', () => {
     const session = scene();
-    Object.assign(session.actor.position, { x: WORLD_RADIUS - 0.01, y: 0, z: 0 });
+    const front = Math.max(
+      ...session.actor.spec.clearance.map(({ c, r }) => -c[2] + Math.max(r[0], r[2])),
+    );
+    Object.assign(session.actor.position, { x: WORLD_RADIUS - front - 0.01, y: 0, z: 0 });
     session.actor.state.yaw = -Math.PI / 2;
     session.actor.update(0.2, { throttle: 1, turn: 0, lift: 0, boost: 1 });
-    expect(session.actor.position.x).toBeLessThanOrEqual(WORLD_RADIUS);
-    expect(session.actor.position.x).toBeCloseTo(WORLD_RADIUS, 6);
+    expect(session.actor.position.x + front).toBeCloseTo(WORLD_RADIUS, 6);
+    expect(session.actor.position.x + front).toBeLessThanOrEqual(WORLD_RADIUS);
   });
 
   it('plans around the same shape and reports the owning entity instead of collider pieces', () => {

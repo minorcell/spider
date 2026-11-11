@@ -4,6 +4,8 @@ import { attachCargo } from '@/tests/simHelpers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { groundSupport } from '@/src/shared/contact';
 import { KINDS } from '@/src/shared/kinds';
+import { nestSurface } from '@/src/shared/nestShape';
+import { treeForm } from '@/src/shared/treeForm';
 import { blockedAt } from '@/src/shared/sight';
 import { Terrain, TERRAIN } from '@/src/shared/terrain';
 import {
@@ -141,31 +143,30 @@ describe('registered collision shapes', () => {
         footprint: { kind: 'box', hx: 1, hz: 2 },
       },
     ]);
-    expect(blocks[0].height).toBeCloseTo(6.2);
-    expect(blocks[0].maxX).toBeCloseTo(0.4 * 0.62);
-    expect(blocks[1].maxX).toBeCloseTo(5.82);
+    const form = treeForm('tree');
+    expect(blocks[0].height).toBeCloseTo(4 + form.height * 0.68);
+    expect(blocks[0].maxX).toBeCloseTo(form.trunkRadius + form.height * 0.018);
+    const stones = blocks.filter((wall) => wall.owner === 'stone');
+    expect(stones.length).toBeGreaterThan(1);
+    expect(stones.every((wall) => wall.height > -2)).toBe(true);
+    expect(stones.some((wall) => wall.minX < 5 && wall.maxX > 5)).toBe(true);
   });
 
-  it('builds a ring of walls with a door at -Z', () => {
+  it('registers distinct collision boxes along the rear bank', () => {
     const blocks = propBlocks(islandPlacements);
-    expect(blocks.length).toBeGreaterThan(12);
-    expect(blocks.length).toBeLessThan(24);
-    expect(blocks.every((wall) => wall.height === 1)).toBe(true);
+    expect(blocks.length).toBeGreaterThan(1);
+    expect(new Set(blocks.map((wall) => wall.id)).size).toBe(blocks.length);
+    expect(new Set(blocks.map((wall) => wall.height)).size).toBeGreaterThan(1);
+    const nest = islandPlacements.find((placement) => placement.kind === 'nest')!;
     for (const wall of blocks) {
-      const cx = (wall.minX + wall.maxX) / 2;
-      const cz = (wall.minZ + wall.maxZ) / 2;
-      expect(Math.hypot(cx, cz)).toBeCloseTo(2.62, 1);
-      const away = Math.abs(
-        Math.atan2(
-          Math.sin(Math.atan2(cz, cx) + Math.PI / 2),
-          Math.cos(Math.atan2(cz, cx) + Math.PI / 2),
-        ),
-      );
-      expect(away).toBeGreaterThan(0.6);
+      const x = (wall.minX + wall.maxX) / 2;
+      const z = (wall.minZ + wall.maxZ) / 2;
+      expect(wall.owner).toBe(nest.id);
+      expect(z).toBeGreaterThan(nest.z);
+      expect(wall.height).toBeGreaterThanOrEqual(nestSurface(nest, x, z));
       expect(wall.maxX).toBeGreaterThan(wall.minX);
       expect(wall.maxZ).toBeGreaterThan(wall.minZ);
     }
-    expect(new Set(blocks.map((wall) => wall.id)).size).toBe(blocks.length);
   });
 
   it('leaves a body-wide door on -Z', () => {
