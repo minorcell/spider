@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { GAIT } from '@/src/shared/config';
-import type { Spider } from '@/src/shared/sim/Spider';
+import type { MotionActor } from '@/src/shared/sim/goals';
 import { heightGoal, routeGoal, STUCK_LIMIT, turnGoal, walkGoal } from '@/src/shared/sim/goals';
 
 interface Fake {
-  root: { position: { x: number; z: number } };
+  position: { x: number; y: number; z: number };
   yaw: number;
   speed: number;
   yawRate: number;
@@ -13,9 +13,10 @@ interface Fake {
   halt: 'clear' | 'solid' | 'steep';
 }
 
-function fake(over: Partial<Fake> = {}): Spider {
+function fake(over: Partial<Fake> = {}): MotionActor {
   return {
-    root: { position: { x: 0, z: 0 } },
+    position: { x: 0, y: 0, z: 0 },
+    spec: GAIT,
     yaw: 0,
     speed: 0,
     yawRate: 0,
@@ -23,7 +24,7 @@ function fake(over: Partial<Fake> = {}): Spider {
     stuckFor: 0,
     halt: 'clear',
     ...over,
-  } as unknown as Spider;
+  } as unknown as MotionActor;
 }
 
 describe('walkGoal', () => {
@@ -56,7 +57,7 @@ describe('walkGoal', () => {
   it('finishes within the tolerance and reports the distance covered', () => {
     const spider = fake();
     const goal = walkGoal(spider, 10);
-    spider.root.position.z = -10;
+    spider.position.z = -10;
     expect(goal.done()).toBe(true);
     const result = goal.result();
     expect(result.target).toBe(10);
@@ -66,7 +67,7 @@ describe('walkGoal', () => {
   it('does not finish while still fast', () => {
     const spider = fake({ speed: 1 });
     const goal = walkGoal(spider, 10);
-    spider.root.position.z = -10;
+    spider.position.z = -10;
     expect(goal.done()).toBe(false);
   });
 
@@ -83,7 +84,7 @@ describe('walkGoal', () => {
   it('backs up and reports the signed distance', () => {
     const spider = fake();
     const goal = walkGoal(spider, -10);
-    spider.root.position.z = 10;
+    spider.position.z = 10;
     const result = goal.result();
     expect(result.target).toBe(-10);
     expect(result.achieved).toBeCloseTo(-10);
@@ -136,7 +137,7 @@ describe('routeGoal', () => {
   });
 
   it('drives toward the next waypoint', () => {
-    const spider = fake({ root: { position: { x: 0, z: -5 } } });
+    const spider = fake({ position: { x: 0, y: 0, z: -5 } });
     const goal = routeGoal(spider, [
       { x: 0, z: 0 },
       { x: 0, z: -10 },
@@ -148,7 +149,7 @@ describe('routeGoal', () => {
   });
 
   it('runs the route when asked', () => {
-    const spider = fake({ root: { position: { x: 0, z: -5 } } });
+    const spider = fake({ position: { x: 0, y: 0, z: -5 } });
     const goal = routeGoal(
       spider,
       [
@@ -172,7 +173,7 @@ describe('routeGoal', () => {
   });
 
   it('drives toward an intermediate waypoint', () => {
-    const spider = fake({ root: { position: { x: 0, z: -1 } } });
+    const spider = fake({ position: { x: 0, y: 0, z: -1 } });
     const goal = routeGoal(spider, [
       { x: 0, z: 0 },
       { x: 0, z: -5 },
@@ -183,7 +184,7 @@ describe('routeGoal', () => {
   });
 
   it('advances past a reached intermediate waypoint', () => {
-    const spider = fake({ root: { position: { x: 0, z: -4.9 } } });
+    const spider = fake({ position: { x: 0, y: 0, z: -4.9 } });
     const goal = routeGoal(spider, [
       { x: 0, z: 0 },
       { x: 0, z: -5 },
@@ -194,7 +195,7 @@ describe('routeGoal', () => {
   });
 
   it('finishes on the last point when slow', () => {
-    const spider = fake({ root: { position: { x: 0, z: -9.9 } } });
+    const spider = fake({ position: { x: 0, y: 0, z: -9.9 } });
     const goal = routeGoal(spider, [
       { x: 0, z: 0 },
       { x: 0, z: -10 },

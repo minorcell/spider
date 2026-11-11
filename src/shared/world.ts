@@ -1,6 +1,7 @@
 import { groundSupport } from '@/src/shared/contact';
 import { PHYSICS } from '@/src/shared/config';
 import { kindOf } from '@/src/shared/kinds';
+import { initialControl } from '@/src/shared/control';
 import {
   initialPopulations,
   islandFamilies,
@@ -138,6 +139,7 @@ export function removeEntity(world: WorldState, entity: EntityState): void {
     world.entitySerials.set(entity.kind, serial);
   }
   world.entities.delete(entity.id);
+  if (world.controlledId === entity.id) delete world.controlledId;
   world.tethers.delete(entity.id);
   world.blocks = world.blocks.filter((block) => (block.owner ?? block.id) !== entity.id);
 }
@@ -165,6 +167,7 @@ function makeEntity(
     stage: 0,
   };
   const lifetime = kindOf(kind)?.lifetime;
+  if (kindOf(kind)?.control) entity.control = initialControl();
   if (lifetime !== undefined) entity.expiresAt = time + lifetime;
   if (footprint !== undefined) entity.footprint = footprint;
   return entity;
@@ -263,37 +266,6 @@ export function propBlocks(entities: Iterable<EntityState>): Block[] {
     });
   }
   return blocks;
-}
-
-export function populateScenery(
-  world: WorldState,
-  avoid: { x: number; z: number },
-  capacity: number,
-): void {
-  const rng = mulberry32(world.seed ^ 0x7363656e);
-  const placed = [...world.entities.values(), avoid];
-  for (const family of islandFamilies) {
-    if (!family.repair) continue;
-    const existing = [...world.entities.values()].filter(
-      (entity) => entity.kind === family.kind,
-    ).length;
-    const count = Math.min(family.count - existing, capacity - world.entities.size);
-    const added = scatter(
-      rng,
-      world.terrain,
-      placed,
-      world.blocks,
-      family.kind,
-      count,
-      family.home,
-      family,
-    );
-    for (const entity of added) {
-      entity.id = nextPropId(world, family.kind);
-      world.entities.set(entity.id, entity);
-    }
-    world.blocks.push(...propBlocks(added));
-  }
 }
 
 function scatter(

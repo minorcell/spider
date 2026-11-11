@@ -1,5 +1,7 @@
 import type { EntityState } from '@/src/shared/state';
 
+export const islandActor = { kind: 'spider', x: 0, z: 0 };
+
 export const islandPlacements: readonly EntityState[] = [
   { id: 'home', kind: 'nest', x: 0, y: 0.02, z: 0, stage: 0 },
 ];
@@ -16,11 +18,6 @@ interface IslandFamily extends ScatterOptions {
   readonly kind: string;
   readonly count: number;
   readonly home: number;
-  readonly repair: boolean;
-  readonly legacy?: {
-    cap: readonly (number | undefined)[];
-    footprint?: readonly (number | undefined)[];
-  };
 }
 
 export interface PopulationRule extends Pick<ScatterOptions, 'gap'> {
@@ -80,21 +77,17 @@ export const islandFamilies: readonly IslandFamily[] = [
     count: GRASS,
     home: 6.5,
     gap: 5,
-    repair: true,
-    legacy: { cap: [2], footprint: [undefined, 1, 2, 3] },
   },
-  { ...applePopulation, repair: false },
+  { ...applePopulation },
   {
     kind: 'tree',
     count: TREES,
     home: 8.5,
     gap: 2.6,
     radius: [0.32, 0.56],
-    repair: true,
-    legacy: { cap: [undefined, 1, 2, 3, 4] },
   },
-  { kind: 'stone', count: 10, home: 6.2, gap: 2.8, radius: [0.5, 1.15], repair: true },
-  { kind: 'bog-stone', count: 5, home: 7, gap: 2.4, radius: [0.55, 0.95], repair: true },
-  { ...pebblePopulation, repair: false },
-  { ...berryPopulation, repair: false },
+  { kind: 'stone', count: 10, home: 6.2, gap: 2.8, radius: [0.5, 1.15] },
+  { kind: 'bog-stone', count: 5, home: 7, gap: 2.4, radius: [0.55, 0.95] },
+  { ...pebblePopulation },
+  { ...berryPopulation },
 ];

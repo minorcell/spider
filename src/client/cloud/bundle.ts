@@ -4,7 +4,7 @@ import { bodyOfRecord, classify, type SimBody } from '@/src/shared/sim/snapshot'
 import { canonicalBytes } from '@/src/client/cloud/bytes';
 
 export interface CloudBundle {
-  format: 1;
+  format: 2;
   deviceId: string;
   world: SimBody;
   memories: MemoryPage[];
@@ -31,7 +31,7 @@ export function parseBundle(bytes: Uint8Array | null): CloudBundle | null {
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const raw = value as Partial<CloudBundle>;
-  if (raw.format !== 1 || typeof raw.deviceId !== 'string' || raw.deviceId === '') return null;
+  if (raw.format !== 2 || typeof raw.deviceId !== 'string' || raw.deviceId === '') return null;
   if (!raw.world || typeof raw.world !== 'object') return null;
   const world = worldOfRecord(raw.world);
   if (!world) return null;
@@ -42,7 +42,7 @@ export function parseBundle(bytes: Uint8Array | null): CloudBundle | null {
     if (!parsed) return null;
     memories.push(parsed);
   }
-  return { format: 1, deviceId: raw.deviceId, world, memories };
+  return { format: 2, deviceId: raw.deviceId, world, memories };
 }
 
 export function parseLease(bytes: Uint8Array | null): CloudLease | null {
@@ -61,7 +61,7 @@ function worldOfRecord(world: SimBody): SimBody | null {
   const record = classify({
     ...world,
     id: 'current',
-    format: 3,
+    format: 4,
     savedAt: 1,
     day: localDate(new Date()),
     owner: 'cloud',

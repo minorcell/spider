@@ -1,20 +1,11 @@
-import { BODY_RADIUS, moveCircle, type MotionSolver } from '@/src/shared/collision';
-import {
-  BufferGeometry,
-  Euler,
-  Group,
-  MathUtils,
-  Matrix4,
-  Mesh,
-  Object3D,
-  Quaternion,
-  Vector3,
-} from 'three';
+import type { MotionSolver } from '@/src/shared/collision';
+import { Controller } from '@/src/shared/sim/controller';
+import { BufferGeometry, Group, MathUtils, Matrix4, Mesh, Object3D, Vector3 } from 'three';
 import { BONES, CONTACT, GAIT, MOUNTS } from '@/src/shared/config';
 import { WORLD_RADIUS } from '@/src/shared/terrain';
-import type { SpiderState } from '@/src/shared/state';
+import type { EntityState, SpiderState, Vec3 } from '@/src/shared/state';
 import { IDLE_CONTROLS, type Controls } from '@/src/shared/types';
-import { floatHeight, WATER, waterPace, type Water } from '@/src/shared/water';
+import { floatHeight, WATER, type Water } from '@/src/shared/water';
 import { Leg } from '@/src/shared/sim/Leg';
 import { solveLeg, supportY, type LegSphere } from '@/src/shared/sim/legPose';
 import { ballGeo, ballShell, inkSolidMat, spiderMat } from '@/src/shared/sim/parts';
@@ -37,36 +28,6 @@ const axisY = new Vector3();
 const axisZ = new Vector3();
 const basisM = new Matrix4();
 
-/**
- * Clearance shells. The head shell covers the face, eyes, fangs, and palps,
- * which sit ahead of the belly. Samples run over the whole shell, including
- * the top, so a slope cannot leave the upper body in the ground.
- */
-const SHELLS: readonly {
-  c: readonly [number, number, number];
-  r: readonly [number, number, number];
-}[] = [
-  { c: [0, 0.78, -0.12], r: [0.55, 0.18, 0.46] },
-  { c: [0, 0.84, 1.08], r: [0.46, 0.32, 0.62] },
-  { c: [0, 0.76, -0.48], r: [0.24, 0.18, 0.26] },
-];
-const SHELL_PHI = [-1.35, -0.9, -0.45, 0, 0.45, 0.9, 1.35];
-const SHELL_THETA = 12;
-const SHELL_POINTS = SHELLS.flatMap((shell) =>
-  SHELL_PHI.flatMap((phi) =>
-    Array.from({ length: SHELL_THETA }, (_, i) => {
-      const theta = (i / SHELL_THETA) * Math.PI * 2;
-      return new Vector3(
-        shell.c[0] + shell.r[0] * Math.cos(phi) * Math.cos(theta),
-        shell.c[1] + shell.r[1] * Math.sin(phi),
-        shell.c[2] + shell.r[2] * Math.cos(phi) * Math.sin(theta),
-      );
-    }),
-  ),
-);
-const shellEuler = new Euler(0, 0, 0, 'XYZ');
-const shellRotation = new Quaternion();
-const shellPoint = new Vector3();
 const partWorld = new Matrix4();
 
 export class Spider {
@@ -76,47 +37,76 @@ export class Spider {
   readonly chassis = new Group();
 
   readonly legs: Leg[];
-  yaw = 0;
-  yawRate = 0;
+  readonly controller: Controller;
   headYaw = 0;
-  /** The spider turns this on. The sun does not. */
-  lamp = false;
-  heightSet = 0;
-  speed = 0;
-  time = 0;
-  /** Downward speed while the body is above the ground. */
-  fall = 0;
-  /** How long a commanded step has been held still by a solid or a slope. */
-  stuckFor = 0;
-  /** Why the last step failed to move. `clear` means it moved, or nothing was asked. */
-  halt: 'clear' | 'solid' | 'steep' = 'clear';
+  get position(): Vec3 {
+    return this.controller.entity;
+  }
+  get yaw(): number {
+    return this.controller.state.yaw;
+  }
+  set yaw(value: number) {
+    this.controller.state.yaw = value;
+  }
+  get yawRate(): number {
+    return this.controller.state.yawRate;
+  }
+  set yawRate(value: number) {
+    this.controller.state.yawRate = value;
+  }
+  get lamp(): boolean {
+    return this.controller.state.lamp;
+  }
+  set lamp(value: boolean) {
+    this.controller.state.lamp = value;
+  }
+  get heightSet(): number {
+    return this.controller.state.height;
+  }
+  set heightSet(value: number) {
+    this.controller.state.height = value;
+  }
+  get speed(): number {
+    return this.controller.state.speed;
+  }
+  set speed(value: number) {
+    this.controller.state.speed = value;
+  }
+  get time(): number {
+    return this.controller.state.time;
+  }
+  set time(value: number) {
+    this.controller.state.time = value;
+  }
+  get fall(): number {
+    return this.controller.state.fall;
+  }
+  set fall(value: number) {
+    this.controller.state.fall = value;
+  }
+  get stuckFor(): number {
+    return this.controller.state.stuckFor;
+  }
+  set stuckFor(value: number) {
+    this.controller.state.stuckFor = value;
+  }
+  get halt(): 'clear' | 'solid' | 'steep' {
+    return this.controller.state.halt;
+  }
+  set halt(value: 'clear' | 'solid' | 'steep') {
+    this.controller.state.halt = value;
+  }
   /** Temporary reach posture used while handling a nearby object. */
   interaction: { target: Vector3; phase: 'reach' | 'drag' | 'release' } | null = null;
 
   #head!: Group;
   #seeded = false;
   #ground: (x: number, z: number) => number = () => 0;
-  #move: MotionSolver = (x, z, dx, dz) =>
-    moveCircle(x, z, dx, dz, BODY_RADIUS, {
-      blocks: [],
-      inside: (px, pz) => Math.hypot(px, pz) <= this.#limit,
-      surface: (px, pz) => this.#travel(px, pz),
-      maxSlope: GAIT.maxSlope,
-    });
   #water: (x: number, z: number) => Water = () => NO_WATER;
-  #waterNow: Water = NO_WATER;
-  /** True while the water is deep enough that the feet leave the bottom. */
-  #swimming = false;
-  #limit = WORLD_RADIUS;
   /** Stays on while the body is still turning or walking, so feet are not glued mid-settle. */
   #stepping = false;
   /** How long the body has been fully still, in seconds. */
   #stillFor = 0;
-  /** Ground height under the shell, cached for one pose. */
-  #shellX = Number.NaN;
-  #shellZ = Number.NaN;
-  #shellYaw = Number.NaN;
-  #shellGround = 0;
   /** Loose bodies the legs must not pass through. Filled once per pose. */
   #spheres: LegSphere[] = [];
   /** Last inputs that produced the current leg pose. Idle frames reuse it. */
@@ -137,7 +127,8 @@ export class Spider {
   #mound: (x: number, z: number) => number = () => Number.NEGATIVE_INFINITY;
   readonly #chain = [0, 1, 2, 3, 4].map(() => new Vector3());
 
-  constructor() {
+  constructor(entity: EntityState = { id: 'preview', kind: 'spider', x: 0, y: 0, z: 0, stage: 0 }) {
+    this.controller = new Controller(entity);
     this.root.add(this.chassis);
     const mounts = this.#buildBody();
     this.legs = MOUNTS.map((spec, index) => new Leg(this.rig, spec, mounts[index], index));
@@ -147,16 +138,14 @@ export class Spider {
   /** The ground the feet plant on. Reseeds the stance for the new surface. */
   bindGround(ground: (x: number, z: number) => number, limit = WORLD_RADIUS): void {
     this.#ground = ground;
-    this.#limit = limit;
-    this.fall = 0;
+    this.controller.bindGround(ground, limit);
     this.#seeded = false;
-    this.#shellX = Number.NaN;
     this.update(0, IDLE_CONTROLS);
   }
 
   /** The world resolves a movement intent before the rig poses itself. */
   bindMotion(move: MotionSolver): void {
-    this.#move = move;
+    this.controller.bindMotion(move);
   }
 
   /**
@@ -166,72 +155,64 @@ export class Spider {
   bindLegs(fill: (into: LegSphere[]) => void, mound: (x: number, z: number) => number): void {
     this.#fillLegs = fill;
     this.#mound = mound;
-    this.#shellX = Number.NaN;
+    this.controller.bindSupport(mound);
     this.#held = null;
   }
 
   /** The water column the body floats or wades through. */
   bindWater(water: (x: number, z: number) => Water): void {
     this.#water = water;
-    this.#refreshWater();
+    this.controller.bindWater(water);
   }
 
   /** True while buoyancy, not the ground, is holding the body up. */
   get swimming(): boolean {
-    return this.#swimming;
+    return this.controller.swimming;
   }
 
   /** Water depth under the body right now. Zero on dry ground. */
   get waterDepth(): number {
-    return this.#waterNow.depth;
+    return this.controller.water.depth;
   }
 
-  update(dt: number, input: Controls = IDLE_CONTROLS): void {
+  /** Render the current entity pose; movement is resolved by its world capability. */
+  present(dt = 0, input: Controls = IDLE_CONTROLS): void {
     const throttle = input.throttle || 0;
     const turn = input.turn || 0;
-    const lift = input.lift || 0;
     const boost = input.boost ? 1 : 0;
-
+    this.root.position.copy(this.position);
     this.root.rotation.y = this.yaw;
     this.#readAxes();
-    this.#refreshWater();
     this.#refreshLegs();
     if (!this.#seeded) this.#seedFeet();
-
     if (dt <= 0) {
       this.#pose(true);
       return;
     }
-
-    this.time += dt;
-    this.#steer(dt, turn, boost);
-    const beforeX = this.root.position.x;
-    const beforeZ = this.root.position.z;
-    this.#drive(dt, throttle, boost);
-    this.#refreshWater();
-    const moved = Math.hypot(this.root.position.x - beforeX, this.root.position.z - beforeZ);
-    if (Math.abs(throttle) > 0.05 && this.halt !== 'clear' && moved < 1e-4) this.stuckFor += dt;
-    else this.stuckFor = 0;
-
-    this.heightSet = MathUtils.clamp(
-      this.heightSet + lift * GAIT.liftRate * dt,
-      GAIT.heightMin,
-      GAIT.heightMax,
-    );
-    this.#vertical(dt);
+    this.headYaw += (-turn * GAIT.headYaw - this.headYaw) * (1 - Math.exp(-GAIT.headEase * dt));
+    this.#head.rotation.y = this.headYaw;
     this.chassis.rotation.x = -throttle * GAIT.pitch;
     this.chassis.rotation.z = this.yawRate * GAIT.roll;
-
     this.#stepGait(dt, throttle, turn, boost);
     this.#applySlope();
     this.#applyInteraction();
-    // A moving body never reuses the last pose, so don't spend the frame recording one.
     const reuse =
       Math.abs(throttle) < 0.05 &&
       Math.abs(turn) < 0.5 &&
       Math.abs(this.speed) < 0.05 &&
       Math.abs(this.yawRate) < 0.25;
     this.#pose(reuse);
+  }
+
+  /** Standalone preview/test path. A world session advances the controller separately. */
+  update(dt: number, input: Controls = IDLE_CONTROLS): void {
+    this.controller.update(dt, input);
+    this.present(dt, input);
+  }
+
+  place(x: number, y: number, z: number): void {
+    Object.assign(this.position, { x, y, z });
+    this.present();
   }
 
   setInteraction(
@@ -257,7 +238,7 @@ export class Spider {
   capture(): SpiderState {
     return {
       time: this.time,
-      position: { x: this.root.position.x, y: this.root.position.y, z: this.root.position.z },
+      position: { x: this.position.x, y: this.position.y, z: this.position.z },
       yaw: this.yaw,
       speed: this.speed,
       height: this.heightSet,
@@ -275,15 +256,22 @@ export class Spider {
     this.yaw = state.yaw;
     this.speed = state.speed;
     this.heightSet = state.height;
-    this.root.position.set(state.position.x, state.position.y, state.position.z);
+    Object.assign(this.position, state.position);
+    this.root.position.copy(this.position);
     this.root.rotation.y = state.yaw;
     this.chassis.rotation.x = state.chassisPitch;
     this.chassis.rotation.z = state.chassisRoll;
+    this.headYaw = state.headYaw;
     this.#head.rotation.y = state.headYaw;
     this.lamp = state.lamp === true;
     for (let i = 0; i < this.legs.length; i++) {
       const foot = state.feet[i];
-      this.legs[i].foot.set(foot.x, foot.y, foot.z);
+      const leg = this.legs[i];
+      leg.foot.set(foot.x, foot.y, foot.z);
+      leg.plant.copy(leg.foot);
+      leg.swingFrom.copy(leg.foot);
+      leg.swingTo.copy(leg.foot);
+      leg.lifted = false;
     }
     this.#pose(true);
   }
@@ -328,123 +316,10 @@ export class Spider {
     worldRight.crossVectors(worldFwd, UP).normalize();
   }
 
-  /** Read the water column once where the body is, for steering and support. */
-  #refreshWater(): void {
-    const water = this.#water(this.root.position.x, this.root.position.z);
-    this.#waterNow = water;
-    this.#swimming =
-      water.depth > 0 &&
-      floatHeight(water) > this.#ground(this.root.position.x, this.root.position.z);
-  }
-
-  #steer(dt: number, turn: number, boost: number): void {
-    const pace = this.#waterNow.depth > 0 ? WATER.turnPace : 1;
-    const yawTarget = turn * (boost ? GAIT.yawBoost : GAIT.yaw) * pace;
-    this.yawRate += MathUtils.clamp(
-      yawTarget - this.yawRate,
-      -GAIT.yawAccel * dt,
-      GAIT.yawAccel * dt,
-    );
-    this.yaw -= this.yawRate * dt;
-    this.root.rotation.y = this.yaw;
-    this.headYaw += (-turn * GAIT.headYaw - this.headYaw) * (1 - Math.exp(-GAIT.headEase * dt));
-    this.#head.rotation.y = this.headYaw;
-  }
-
-  #drive(dt: number, throttle: number, boost: number): void {
-    this.halt = 'clear';
-    const water = this.#waterNow;
-    const cruise = (boost ? GAIT.cruiseBoost : GAIT.cruise) * waterPace(water.depth);
-    const ease = GAIT.speedEase + (water.depth > 0 ? WATER.spiderDrag : 0);
-    this.speed += (throttle * cruise - this.speed) * (1 - Math.exp(-ease * dt));
-    this.#readAxes();
-    const stepX = worldFwd.x * this.speed * dt;
-    const stepZ = worldFwd.z * this.speed * dt;
-    const run = Math.hypot(stepX, stepZ);
-    if (run < 1e-6) return;
-    const x = this.root.position.x;
-    const z = this.root.position.z;
-    const moved = this.#move(x, z, stepX, stepZ);
-    this.root.position.x = moved.x;
-    this.root.position.z = moved.z;
-    if (moved.halt === 'steep' || Math.hypot(moved.x - x, moved.z - z) <= 1e-6) {
-      this.speed = 0;
-      this.halt = moved.halt;
-    }
-  }
-
-  /** Ease onto the commanded deck height. A real drop falls into the water. */
-  #vertical(dt: number): void {
-    const support = this.#support();
-    const gap = this.root.position.y - support;
-    if (gap > GAIT.drop) {
-      this.fall = Math.min(GAIT.fallMax, this.fall + GAIT.fallAccel * dt);
-      this.root.position.y = Math.max(support, this.root.position.y - this.fall * dt);
-      return;
-    }
-    this.fall = 0;
-    // Buoyancy is softer than the leg lift on land, so entering water settles
-    // instead of snapping onto a hard plane.
-    const ease = this.#swimming ? WATER.buoyancyEase : GAIT.liftEase;
-    const follow = (support - this.root.position.y) * Math.min(1, ease * dt);
-    // Snap the last fraction so a standing body stops changing and can reuse its pose.
-    if (Math.abs(follow) < 1e-4) this.root.position.y = support;
-    else this.root.position.y += follow;
-  }
-
-  /** The ground, or the buoyant water line when the hollow is deep enough. */
-  #support(): number {
-    const float = this.#waterNow.depth > 0 ? floatHeight(this.#waterNow) : Number.NEGATIVE_INFINITY;
-    return Math.max(this.#shellGroundAt(), float) + this.heightSet;
-  }
-
-  /** The surface a step follows. Water is crossed at its line, not the seabed. */
-  #travel(x: number, z: number): number {
-    const water = this.#water(x, z);
-    const ground = this.#ground(x, z);
-    return water.depth > 0 ? Math.max(ground, floatHeight(water)) : ground;
-  }
-
-  /** Highest ground under the shell. One pose reuses the samples. */
-  #shellGroundAt(): number {
-    const x = this.root.position.x;
-    const z = this.root.position.z;
-    if (x === this.#shellX && z === this.#shellZ && this.yaw === this.#shellYaw) {
-      return this.#shellGround;
-    }
-    const center = this.#ground(x, z);
-    // Same tilt #applySlope adds, so the lift accounts for the belly dipping.
-    const ahead = this.#ground(x + worldFwd.x * 0.8, z + worldFwd.z * 0.8) - center;
-    const side = this.#ground(x + worldRight.x * 0.8, z + worldRight.z * 0.8) - center;
-    shellEuler.set(
-      -MathUtils.clamp(ahead / 0.8, -0.35, 0.35),
-      0,
-      -MathUtils.clamp(side / 0.8, -0.25, 0.25),
-      'XYZ',
-    );
-    const cos = Math.cos(this.yaw);
-    const sin = Math.sin(this.yaw);
-    shellRotation.setFromEuler(shellEuler);
-    let lift = 0;
-    for (const point of SHELL_POINTS) {
-      shellPoint.copy(point).applyQuaternion(shellRotation);
-      const wx = x + shellPoint.x * cos + shellPoint.z * sin;
-      const wz = z - shellPoint.x * sin + shellPoint.z * cos;
-      const surface = Math.max(this.#ground(wx, wz), this.#mound(wx, wz));
-      lift = Math.max(lift, surface - center - shellPoint.y);
-    }
-    this.#shellX = x;
-    this.#shellZ = z;
-    this.#shellYaw = this.yaw;
-    // The shared contact skin, so a slope does not grow its own hover.
-    this.#shellGround = center + (lift > 0 ? lift + CONTACT : 0);
-    return this.#shellGround;
-  }
-
   /** Tip the shell with the ground, on top of the gait's pitch and roll. */
   #applySlope(): void {
     // A floating body follows the water plane, not the unseen seabed.
-    if (this.#swimming) return;
+    if (this.swimming) return;
     const x = this.root.position.x;
     const z = this.root.position.z;
     const ahead = this.#ground(x + worldFwd.x * 0.8, z + worldFwd.z * 0.8) - this.#ground(x, z);
@@ -542,7 +417,7 @@ export class Spider {
       out.y = water.surface - WATER.footDraft;
       return;
     }
-    const airborne = this.root.position.y - this.#support() > GAIT.drop;
+    const airborne = this.root.position.y - this.controller.support() > GAIT.drop;
     const y = airborne
       ? this.root.position.y
       : supportY(out.x, out.z, this.#ground, this.#mound, this.#spheres);

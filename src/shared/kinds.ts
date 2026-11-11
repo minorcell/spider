@@ -1,6 +1,8 @@
 import { grassClumps, grassSeed, grassRadius, grassOnDryGround } from '@/src/shared/grass';
 import { nestSolidSurface } from '@/src/shared/nestCollision';
 import { ringBoxes } from '@/src/shared/shapes';
+import { GAIT } from '@/src/shared/config';
+import type { ControlSpec } from '@/src/shared/control';
 import type { Block, EntityState, Footprint, WorldState } from '@/src/shared/state';
 
 export interface CoverVolume {
@@ -50,6 +52,7 @@ export interface BlockSpec {
 export type PropModel = string | { readonly color: number; readonly segments: number };
 
 export interface KindSpec {
+  control?: ControlSpec;
   properties?: readonly string[];
   carryable?: true;
   label?: string;
@@ -73,6 +76,19 @@ export interface KindSpec {
 const EMPTY_PROPERTIES: readonly string[] = Object.freeze([]);
 
 export const KINDS: Record<string, KindSpec> = {
+  spider: {
+    label: '蜘蛛',
+    rest: 0,
+    physics: { solid: true, radius: 0.48, loose: false, rolls: false, mass: 1.2, volume: 2 },
+    control: {
+      ...GAIT,
+      clearance: [
+        { c: [0, 0.78, -0.12], r: [0.55, 0.18, 0.46] },
+        { c: [0, 0.84, 1.08], r: [0.46, 0.32, 0.62] },
+        { c: [0, 0.76, -0.48], r: [0.24, 0.18, 0.26] },
+      ],
+    },
+  },
   apple: {
     carryable: true,
     label: '苹果',

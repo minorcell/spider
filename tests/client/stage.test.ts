@@ -822,3 +822,27 @@ it('runs at most three fixed steps and clears hidden time on resume', () => {
   expect(step).toHaveBeenCalledTimes(4);
   stage.dispose();
 });
+
+it('draws the controlled rig once even when its kind also has a prop model', () => {
+  const spider = new RealSpider();
+  const stage = new Stage(makeHost(), spider);
+  const current = makeWorld();
+  stage.bind(
+    () => {},
+    () => current,
+  );
+  stage.start();
+  frame();
+  const scene = renderer().render.mock.calls.at(-1)![0] as Group;
+  const count = scene.children.length;
+  KINDS.spider.model = 'apple';
+  try {
+    current.controlledId = spider.controller.entity.id;
+    current.entities.set(current.controlledId, spider.controller.entity);
+    frame();
+    expect(scene.children).toContain(spider.root);
+    expect(scene.children.length).toBe(count);
+  } finally {
+    delete KINDS.spider.model;
+  }
+});

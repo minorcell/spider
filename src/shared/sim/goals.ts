@@ -1,5 +1,17 @@
-import { GAIT } from '@/src/shared/config';
-import type { Spider } from '@/src/shared/sim/Spider';
+import type { ControlSpec } from '@/src/shared/control';
+import type { Vec3 } from '@/src/shared/state';
+
+export interface MotionActor {
+  readonly spec: Pick<ControlSpec, 'heightMin' | 'heightMax'>;
+  readonly position: Vec3;
+  yaw: number;
+  yawRate: number;
+  speed: number;
+  time: number;
+  heightSet: number;
+  stuckFor: number;
+  halt: 'clear' | 'solid' | 'steep';
+}
 import { IDLE_CONTROLS, type Controls } from '@/src/shared/types';
 import type { PlanPoint } from '@/src/shared/route';
 
@@ -29,19 +41,19 @@ function wrapRadians(radians: number): number {
   return wrapped === -Math.PI ? Math.PI : wrapped;
 }
 
-function forwardOf(spider: Spider): { x: number; z: number } {
+function forwardOf(spider: MotionActor): { x: number; z: number } {
   return { x: -Math.sin(spider.yaw), z: -Math.cos(spider.yaw) };
 }
 
-export function walkGoal(spider: Spider, distance: number, fast = false): Goal {
+export function walkGoal(spider: MotionActor, distance: number, fast = false): Goal {
   const sign = Math.sign(distance) || 1;
-  const start = { x: spider.root.position.x, z: spider.root.position.z };
+  const start = { x: spider.position.x, z: spider.position.z };
   const forward = forwardOf(spider);
   const target = Math.abs(distance);
 
   const progress = () => {
-    const dx = spider.root.position.x - start.x;
-    const dz = spider.root.position.z - start.z;
+    const dx = spider.position.x - start.x;
+    const dz = spider.position.z - start.z;
     return (dx * forward.x + dz * forward.z) * sign;
   };
 
@@ -64,7 +76,7 @@ export function walkGoal(spider: Spider, distance: number, fast = false): Goal {
   };
 }
 
-export function turnGoal(spider: Spider, degrees: number): Goal {
+export function turnGoal(spider: MotionActor, degrees: number): Goal {
   const startYaw = spider.yaw;
   const targetYaw = startYaw - (degrees * Math.PI) / 180;
   const error = () => wrapRadians(targetYaw - spider.yaw);
@@ -96,7 +108,7 @@ function segmentLeft(points: readonly PlanPoint[], index: number, place: PlanPoi
   return len - proj;
 }
 
-export function routeGoal(spider: Spider, points: readonly PlanPoint[], fast = false): Goal {
+export function routeGoal(spider: MotionActor, points: readonly PlanPoint[], fast = false): Goal {
   let index = points.length > 1 ? 1 : 0;
   const length = points.reduce(
     (sum, point, i) =>
@@ -104,7 +116,7 @@ export function routeGoal(spider: Spider, points: readonly PlanPoint[], fast = f
     0,
   );
 
-  const here = () => ({ x: spider.root.position.x, z: spider.root.position.z });
+  const here = () => ({ x: spider.position.x, z: spider.position.z });
   const waypoint = () => points[Math.min(index, points.length - 1)];
   const remainingTo = (point: PlanPoint) => Math.hypot(point.x - here().x, point.z - here().z);
 
@@ -152,8 +164,8 @@ export function routeGoal(spider: Spider, points: readonly PlanPoint[], fast = f
   };
 }
 
-export function heightGoal(spider: Spider, level: number): Goal {
-  const target = clamp(level, GAIT.heightMin, GAIT.heightMax);
+export function heightGoal(spider: MotionActor, level: number): Goal {
+  const target = clamp(level, spider.spec.heightMin, spider.spec.heightMax);
   return {
     timeout: 6,
     controls() {

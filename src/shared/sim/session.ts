@@ -13,6 +13,7 @@ import {
   type WorldInfo,
   type WorldState,
 } from '@/src/shared/state';
+import { islandActor } from '@/src/shared/islandContent';
 import { kindOf, slicesOf } from '@/src/shared/kinds';
 import { IDLE_CONTROLS } from '@/src/shared/types';
 import {
@@ -55,6 +56,7 @@ import {
   tetherLength,
   type TetherMotion,
 } from '@/src/shared/sim/tether';
+import type { Controller } from '@/src/shared/sim/controller';
 import { Spider } from '@/src/shared/sim/Spider';
 import { localDate } from '@/src/shared/dates';
 import { visualRange, worldClock } from '@/src/shared/ecology';
@@ -89,12 +91,19 @@ interface ActiveGoal {
 }
 
 export class SimSession {
-  readonly spider = new Spider();
+  readonly spider: Spider;
   readonly world: WorldState;
 
   constructor(seed?: number, terrain?: Terrain) {
     this.world = terrain ? createWorld(terrain.seed, terrain) : createWorld(seed);
+    const actor = addEntity(this.world, islandActor.kind, islandActor, 0);
+    this.world.controlledId = actor.id;
+    this.spider = new Spider(actor);
     bindWorld(this.spider, this.world);
+  }
+
+  get actor(): Controller {
+    return this.spider.controller;
   }
 
   #active: ActiveGoal | null = null;
@@ -138,17 +147,17 @@ export class SimSession {
         phase: clock.period,
         daylight: round3(clock.daylight),
       },
-      lamp: this.spider.lamp,
-      view: round3(visualRange(clock, this.spider.lamp)),
+      lamp: this.actor.lamp,
+      view: round3(visualRange(clock, this.actor.lamp)),
     };
   }
 
   get lamp(): boolean {
-    return this.spider.lamp;
+    return this.actor.lamp;
   }
 
   setLamp(on: boolean): void {
-    this.spider.lamp = on;
+    this.actor.lamp = on;
   }
 
   adopt(body: SimBody): void {
@@ -156,8 +165,8 @@ export class SimSession {
   }
 
   observe(distance = VIEW_DISTANCE): Observation {
-    const { x, z } = this.spider.root.position;
-    const view = viewDistance(this.world, x, z, this.spider.heightSet, this.spider.lamp, distance);
+    const { x, z } = this.actor.position;
+    const view = viewDistance(this.world, x, z, this.actor.heightSet, this.actor.lamp, distance);
     return toObservation(this.spider.capture(), this.world, REACH, view, REACH_Y);
   }
 
@@ -179,7 +188,7 @@ export class SimSession {
       return { ok: false, reason: 'name-taken', name: clean };
     }
     if (this.world.marks.length >= MARK_LIMIT) return { ok: false, reason: 'full' };
-    const { x, z } = this.spider.root.position;
+    const { x, z } = this.actor.position;
     const mark: PlaceMark = { name: clean, x: round3(x), z: round3(z) };
     if (line) mark.note = line;
     this.world.marks.push(mark);
@@ -194,8 +203,8 @@ export class SimSession {
   }
 
   marks(): MarkView[] {
-    const { x, z } = this.spider.root.position;
-    const heading = toHeading(this.spider.yaw);
+    const { x, z } = this.actor.position;
+    const heading = toHeading(this.actor.yaw);
     return this.world.marks
       .map((mark) => {
         const dx = mark.x - x;
@@ -240,7 +249,7 @@ export class SimSession {
     return new Promise<GoalOutcome>((resolve) => {
       const active: ActiveGoal = {
         goal,
-        startedAt: this.spider.time,
+        startedAt: this.actor.time,
         guard: undefined as unknown as ReturnType<typeof setTimeout>,
         finish: (outcome: GoalOutcome) => {
           if (this.#active === active) this.#active = null;
@@ -258,19 +267,19 @@ export class SimSession {
   }
 
   walk(distance: number, fast = false): Promise<GoalOutcome> {
-    return this.run(walkGoal(this.spider, distance, fast));
+    return this.run(walkGoal(this.actor, distance, fast));
   }
 
   turn(degrees: number): Promise<GoalOutcome> {
-    return this.run(turnGoal(this.spider, degrees));
+    return this.run(turnGoal(this.actor, degrees));
   }
 
   turnTo(heading: number): Promise<GoalOutcome> {
-    return this.turn(wrapDegrees(heading - toHeading(this.spider.yaw)));
+    return this.turn(wrapDegrees(heading - toHeading(this.actor.yaw)));
   }
 
   setHeight(level: number): Promise<GoalOutcome> {
-    return this.run(heightGoal(this.spider, level));
+    return this.run(heightGoal(this.actor, level));
   }
 
   async moveTo(x: number, z: number, fast = false): Promise<GoalOutcome> {
@@ -282,7 +291,7 @@ export class SimSession {
     let last: GoalOutcome = { ok: false, reason: 'no-path', detour: null };
 
     for (let attempt = 0; attempt < 3; attempt++) {
-      const { x: x0, z: z0 } = this.spider.root.position;
+      const { x: x0, z: z0 } = this.actor.position;
       if (Math.hypot(x - x0, z - z0) <= 0.28) {
         return { ok: true, reason: 'reached', detour: detourNote(around, direct, true) };
       }
@@ -290,7 +299,7 @@ export class SimSession {
       if (!plan) return { ok: false, reason: 'no-path', detour: detourNote(around, direct, false) };
       direct = direct && plan.direct;
       for (const id of plan.around) if (!around.includes(id)) around.push(id);
-      last = await this.run(routeGoal(this.spider, plan.points, fast));
+      last = await this.run(routeGoal(this.actor, plan.points, fast));
       if (last.reason === 'cancelled') return { ...last, detour: null };
       if (last.ok) return { ok: true, reason: 'reached', detour: detourNote(around, direct, true) };
       if (last.reason !== 'blocked' && last.reason !== 'steep') return { ...last, detour: null };
@@ -308,7 +317,7 @@ export class SimSession {
       return { ok: false, reason: 'not-found', id, detour: null };
     }
 
-    const { x, z } = this.spider.root.position;
+    const { x, z } = this.actor.position;
     if (Math.hypot(entity.x - x, entity.z - z) > standoff + 0.05) {
       const spot = this.#standOff(entity, standoff);
       if (!spot) return { ok: false, reason: 'no-path', id, detour: null };
@@ -341,7 +350,7 @@ export class SimSession {
     }
 
     const target = entity;
-    const startedAt = this.spider.time;
+    const startedAt = this.actor.time;
     const slices = slicesOf(kind);
     const elapsed0 = slices === 0 ? 0 : (target.stage * meal.duration) / slices;
     const remaining = Math.max(0.05, meal.duration - elapsed0);
@@ -361,7 +370,7 @@ export class SimSession {
           failure = { ok: false, reason: 'not-found', id: target.id };
           return true;
         }
-        const elapsed = elapsed0 + this.spider.time - startedAt;
+        const elapsed = elapsed0 + this.actor.time - startedAt;
         const finished = elapsed >= meal.duration - 1e-4;
         const stage = Math.min(
           meal.stages,
@@ -404,7 +413,7 @@ export class SimSession {
     const reach = this.#reachable(entity);
     if (!reach.ok) return Promise.resolve(reach);
 
-    const startedAt = this.spider.time;
+    const startedAt = this.actor.time;
     const result = () => ({ action: 'pick-up', target: entity.id });
     const promise = this.run({
       timeout: 3,
@@ -412,14 +421,14 @@ export class SimSession {
         this.spider.setInteraction(entity, 'reach');
         return IDLE_CONTROLS;
       },
-      done: () => this.spider.time - startedAt >= 0.35,
+      done: () => this.actor.time - startedAt >= 0.35,
       result,
       commit: () => {
         if (this.world.entities.get(entity.id) !== entity)
           return { ok: false, reason: 'not-found', id: entity.id };
         const reached = this.#reachable(entity);
         if (!reached.ok) return reached;
-        const anchor = tetherAnchor(this.spider.root.position, this.spider.yaw);
+        const anchor = tetherAnchor(this.actor.position, this.actor.yaw);
         this.world.tethers.set(entity.id, tetherLength(anchor, entity, this.world.tethers.size));
         return { ok: true, ...result(), carrying: [...this.world.tethers.keys()] };
       },
@@ -442,7 +451,7 @@ export class SimSession {
   }
 
   drink(): GoalOutcome {
-    const { x, z } = this.spider.root.position;
+    const { x, z } = this.actor.position;
     const spot = nearestWater(this.world.terrain, x, z, REACH);
     if (!spot) return { ok: false, reason: 'no-water' };
     return {
@@ -473,7 +482,7 @@ export class SimSession {
   store(id?: string): GoalOutcome {
     const item = this.#carried(id);
     if (!item) return { ok: false, reason: 'not-carrying', id };
-    const { x, z } = this.spider.root.position;
+    const { x, z } = this.actor.position;
     const home = homeAt(x, z, this.world.entities.values());
     if (!home) return { ok: false, reason: 'not-home' };
     const spot = this.#stash(item, home);
@@ -490,43 +499,42 @@ export class SimSession {
   }
 
   sleep(): Promise<GoalOutcome> {
-    const { x, z } = this.spider.root.position;
+    const { x, z } = this.actor.position;
     if (!homeAt(x, z, this.world.entities.values()))
       return Promise.resolve({ ok: false, reason: 'not-home' });
     const duration = 4;
-    const startedAt = this.spider.time;
-    const woke = this.spider.heightSet;
+    const startedAt = this.actor.time;
+    const woke = this.actor.heightSet;
     return this.run({
       timeout: duration + 2,
       controls: () => {
-        const elapsed = this.spider.time - startedAt;
+        const elapsed = this.actor.time - startedAt;
         const target = elapsed < duration * 0.75 ? -0.28 : woke;
         const lift =
-          Math.abs(this.spider.heightSet - target) < 0.02
+          Math.abs(this.actor.heightSet - target) < 0.02
             ? 0
-            : Math.sign(target - this.spider.heightSet);
+            : Math.sign(target - this.actor.heightSet);
         return { ...IDLE_CONTROLS, lift };
       },
       done: () =>
-        this.spider.time - startedAt >= duration && Math.abs(this.spider.heightSet - woke) < 0.05,
+        this.actor.time - startedAt >= duration && Math.abs(this.actor.heightSet - woke) < 0.05,
       result: () => ({ action: 'sleep', home: true }),
     });
   }
 
   addEntity(kind: string, x: number, z: number): EntityState {
-    return addEntity(this.world, kind, { x, z }, this.spider.time);
+    return addEntity(this.world, kind, { x, z }, this.actor.time);
   }
 
   #face(x: number, z: number): Promise<GoalOutcome> {
     const bearing =
-      (Math.atan2(x - this.spider.root.position.x, -(z - this.spider.root.position.z)) * 180) /
-      Math.PI;
-    return this.turn(wrapDegrees(bearing - toHeading(this.spider.yaw)));
+      (Math.atan2(x - this.actor.position.x, -(z - this.actor.position.z)) * 180) / Math.PI;
+    return this.turn(wrapDegrees(bearing - toHeading(this.actor.yaw)));
   }
 
   #standOff(entity: EntityState, standoff: number): { x: number; z: number } | null {
-    const sx = this.spider.root.position.x;
-    const sz = this.spider.root.position.z;
+    const sx = this.actor.position.x;
+    const sz = this.actor.position.z;
     const blocks = this.world.blocks;
     const limit = WORLD_RADIUS;
     const height = (px: number, pz: number) => surfaceOf(this.world.terrain, px, pz);
@@ -557,7 +565,7 @@ export class SimSession {
   }
 
   #nearest(id: string | undefined, want: (entity: EntityState) => boolean): EntityState | null {
-    const { x, z } = this.spider.root.position;
+    const { x, z } = this.actor.position;
     if (id) return this.world.entities.get(id) ?? null;
     let nearest: EntityState | null = null;
     let distance = Infinity;
@@ -572,13 +580,13 @@ export class SimSession {
   }
 
   #reachable(entity: EntityState): GoalOutcome {
-    const { x, y, z } = this.spider.root.position;
+    const { x, y, z } = this.actor.position;
     const distance = Math.hypot(entity.x - x, entity.z - z);
     const vertical = Math.abs(entity.y - y);
     if (distance > REACH || vertical > REACH_Y) {
       return { ok: false, reason: 'out-of-reach', id: entity.id, distance };
     }
-    const eye = surfaceOf(this.world.terrain, x, z) + EYE_HEIGHT + this.spider.heightSet;
+    const eye = surfaceOf(this.world.terrain, x, z) + EYE_HEIGHT + this.actor.heightSet;
     if (occluded(x, z, entity.x, entity.z, this.world.blocks, entity.id, eye)) {
       return { ok: false, reason: 'blocked', id: entity.id };
     }
@@ -599,8 +607,8 @@ export class SimSession {
   }
 
   #spotAhead(item: EntityState): { x: number; z: number } | null {
-    const { x, z } = this.spider.root.position;
-    const forward = { x: -Math.sin(this.spider.yaw), z: -Math.cos(this.spider.yaw) };
+    const { x, z } = this.actor.position;
+    const forward = { x: -Math.sin(this.actor.yaw), z: -Math.cos(this.actor.yaw) };
     const right = { x: -forward.z, z: forward.x };
     const spots = [
       { x: x + forward.x * 0.85, z: z + forward.z * 0.85 },
@@ -643,27 +651,34 @@ export class SimSession {
   }
 
   #step(dt: number): void {
-    const time = this.spider.time + dt;
+    if (
+      this.world.controlledId !== this.actor.entity.id ||
+      this.world.entities.get(this.actor.entity.id) !== this.actor.entity
+    ) {
+      this.#active?.finish({ ok: false, reason: 'stale-actor' });
+      return;
+    }
+    const time = this.actor.time + dt;
     expireEntities(this.world, time);
-    grow(this.world, dt, this.spider.root.position, time);
+    grow(this.world, dt, this.actor.position, time);
 
     const active = this.#active;
     const previous =
       dt > 0 && this.world.tethers.size > 0
-        ? tetherAnchor(this.spider.root.position, this.spider.yaw)
+        ? tetherAnchor(this.actor.position, this.actor.yaw)
         : undefined;
     const from = {
-      x: this.spider.root.position.x,
-      y: this.spider.root.position.y,
-      z: this.spider.root.position.z,
+      x: this.actor.position.x,
+      y: this.actor.position.y,
+      z: this.actor.position.z,
     };
-    const stuckBefore = this.spider.stuckFor;
+    const stuckBefore = this.actor.stuckFor;
     const controls = active ? active.goal.controls() : IDLE_CONTROLS;
-    this.spider.update(dt, controls);
-    const position = this.spider.root.position;
+    this.actor.update(dt, controls);
+    const position = this.actor.position;
     let motion: TetherMotion | undefined;
     if (previous) {
-      const anchor = tetherAnchor(position, this.spider.yaw);
+      const anchor = tetherAnchor(position, this.actor.yaw);
       motion = {
         position: anchor,
         velocity: {
@@ -678,27 +693,19 @@ export class SimSession {
       {
         x: position.x,
         z: position.z,
-        speed: this.spider.speed,
+        speed: this.actor.speed,
+        radius: this.actor.radius,
         from,
       },
       dt,
       motion,
     );
-    if (committed && Math.hypot(committed.x - position.x, committed.z - position.z) > 1e-8) {
-      const proposed = Math.hypot(position.x - from.x, position.z - from.z);
-      const actual = Math.hypot(committed.x - from.x, committed.z - from.z);
-      const fraction = actual / proposed;
-      position.set(committed.x, from.y + (position.y - from.y) * fraction, committed.z);
-      this.spider.speed = 0;
-      this.spider.halt = 'solid';
-      this.spider.stuckFor =
-        Math.abs(controls.throttle) > 0.05 && actual < 1e-4 ? stuckBefore + dt : 0;
-      this.spider.update(0);
-    }
+    this.actor.commit(committed, from, stuckBefore, dt, controls);
+    this.spider.present(dt, controls);
     if (!active) return;
 
     const reached = active.goal.done();
-    const overtime = this.spider.time - active.startedAt > active.goal.timeout;
+    const overtime = this.actor.time - active.startedAt > active.goal.timeout;
     if (!reached && !overtime) return;
 
     const detail = active.goal.result();

@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { applePopulation } from '@/src/shared/islandContent';
+import { KINDS } from '@/src/shared/kinds';
 import { localDate } from '@/src/shared/dates';
 import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
 import { SimSession } from '@/src/shared/sim/session';
-import { tetherAnchor, tetherLength } from '@/src/shared/sim/tether';
-import { Terrain, TERRAIN } from '@/src/shared/terrain';
+import { Terrain } from '@/src/shared/terrain';
 import {
   applyBody,
   captureBody,
@@ -44,245 +43,7 @@ function good(): WorldRecord {
   };
 }
 
-it('restores carried items into the world with their saved or inferred silk length', () => {
-  const record = good();
-  const fruit = record.entities.find((item) => item.kind === 'apple')!;
-  const first = { ...fruit, id: 'carried-1', stage: 1, vx: 1, y: fruit.y + 1 };
-  const second = { ...fruit, id: 'carried-2', tetherLength: 4.5 };
-  const input = { ...record, carrying: [first, second] };
-  const decoded = classify(input);
-  expect(decoded.status).toBe('ok');
-  if (decoded.status !== 'ok') throw new Error('invalid carry record');
-
-  const restored = session();
-  applyBody(restored, decoded.record);
-  const anchor = tetherAnchor(record.spider.position, record.spider.yaw);
-  expect([...restored.world.tethers]).toEqual([
-    [first.id, tetherLength(anchor, first, 0)],
-    [second.id, 4.5],
-  ]);
-  expect([...restored.world.entities.values()].filter((item) => item.id === first.id)).toEqual([
-    first,
-  ]);
-  const saved = captureBody(restored, null);
-  expect(saved.entities.some((item) => item.id === first.id || item.id === second.id)).toBe(false);
-  expect(saved.carrying).toEqual([
-    { ...first, tetherLength: tetherLength(anchor, first, 0) },
-    second,
-  ]);
-  expect(classify({ ...record, ...saved }).status).toBe('ok');
-  expect(classify({ ...record, carrying: [null] }).status).toBe('malformed');
-  expect(classify({ ...record, carrying: [{ ...second, kind: 'grass' }] }).status).toBe(
-    'malformed',
-  );
-  for (const length of [Number.NaN, 1, 3_000_001]) {
-    expect(classify({ ...record, carrying: [{ ...second, tetherLength: length }] }).status).toBe(
-      'malformed',
-    );
-  }
-});
-
 describe('snapshot', () => {
-  it('reduces the former 32-tree world to 24 without changing other entities', () => {
-    const old = good();
-    old.scenery = 4;
-    const tree = old.entities.find((entity) => entity.kind === 'tree')!;
-    const others = old.entities.filter((entity) => entity.kind !== 'tree');
-    const trees = Array.from({ length: 32 }, (_, index) => ({ ...tree, id: `tree-${index + 1}` }));
-    old.entities = [...others, ...trees];
-    const restored = session();
-    applyBody(restored, old);
-    expect(
-      [...restored.world.entities.values()]
-        .filter((entity) => entity.kind === 'tree')
-        .map((entity) => entity.id),
-    ).toEqual(trees.slice(0, 24).map((entity) => entity.id));
-    expect(restored.world.blocks.filter((block) => block.id.startsWith('tree-'))).toHaveLength(24);
-    const saved = captureBody(restored, null);
-    applyBody(restored, saved);
-    expect(captureBody(restored, null)).toEqual(saved);
-  });
-
-  it('removes saved grass covered by a changed shoreline', () => {
-    const old = good();
-    old.entities.push({ id: 'grass-no-footprint', kind: 'grass', x: 10, y: 0, z: 10, stage: 0 });
-    const flooded = new Terrain(old.seed, new Float32Array((TERRAIN.segments + 1) ** 2).fill(-1));
-    const restored = session();
-    applyBody(restored, old, flooded);
-    expect([...restored.world.entities.values()].some((entity) => entity.kind === 'grass')).toBe(
-      false,
-    );
-    expect(
-      [...restored.world.entities.values()]
-        .filter((entity) => entity.kind !== 'grass')
-        .map((entity) => entity.id),
-    ).toEqual(old.entities.filter((entity) => entity.kind !== 'grass').map((entity) => entity.id));
-  });
-
-  it('thins the dense grass release once while preserving the rest of the world', () => {
-    const old = good();
-    old.scenery = 2;
-    const existing = old.entities.filter((entity) => entity.kind !== 'grass');
-    const patches = Array.from({ length: 60 }, (_, index) => ({
-      id: `grass-${index + 1}`,
-      kind: 'grass',
-      x: 10,
-      y: 0,
-      z: 10,
-      stage: 0,
-      footprint: { kind: 'circle' as const, r: 3.2 },
-    }));
-    old.entities = [...existing, ...patches];
-    const restored = session();
-    applyBody(restored, old);
-    expect(
-      [...restored.world.entities.values()]
-        .filter((entity) => entity.kind === 'grass')
-        .map((entity) => entity.id),
-    ).toEqual(patches.slice(0, 32).map((entity) => entity.id));
-    expect(
-      [...restored.world.entities.values()]
-        .filter((entity) => entity.kind !== 'grass')
-        .map((entity) => entity.id),
-    ).toEqual(existing.map((entity) => entity.id));
-    const saved = captureBody(restored, old.pending);
-    expect(classify({ ...old, ...saved }).status).toBe('ok');
-    applyBody(restored, saved);
-    expect(captureBody(restored, old.pending)).toEqual(saved);
-
-    old.entities = [...existing, ...patches.slice(0, 10)];
-    applyBody(restored, old);
-    expect(
-      [...restored.world.entities.values()].filter((entity) => entity.kind === 'grass'),
-    ).toHaveLength(10);
-  });
-
-  it('fills vegetation in the first scenery release without duplicating ids', () => {
-    const old = good();
-    old.scenery = 1;
-    let trees = 0;
-    let grass = 0;
-    old.entities = old.entities.filter((entity) => {
-      if (entity.kind === 'tree') return ++trees <= 8;
-      if (entity.kind === 'grass') return ++grass <= 24;
-      return true;
-    });
-    const restored = session();
-    applyBody(restored, old);
-    expect(
-      [...restored.world.entities.values()].filter((entity) => entity.kind === 'tree').length,
-    ).toBeGreaterThan(8);
-    expect(
-      [...restored.world.entities.values()].filter((entity) => entity.kind === 'grass').length,
-    ).toBeGreaterThan(24);
-    expect(new Set([...restored.world.entities.values()].map((entity) => entity.id)).size).toBe(
-      restored.world.entities.size,
-    );
-    expect(classify({ ...old, ...captureBody(restored, null) }).status).toBe('ok');
-  });
-
-  it('adds scenery to an old save and keeps the upgrade on subsequent restores', () => {
-    const first = session();
-    const old = good();
-    delete old.scenery;
-    expect(classify(old).status).toBe('ok');
-    old.entities = old.entities.filter((entity) =>
-      ['nest', 'apple', 'grass'].includes(entity.kind),
-    );
-    const originals = structuredClone(old.entities);
-    applyBody(first, old);
-    for (const kind of ['tree', 'stone', 'bog-stone']) {
-      expect([...first.world.entities.values()].some((entity) => entity.kind === kind)).toBe(true);
-    }
-    for (const entity of originals) {
-      expect(
-        [...first.world.entities.values()].find((item) => item.id === entity.id),
-      ).toMatchObject({
-        kind: entity.kind,
-        x: entity.x,
-        z: entity.z,
-        stage: entity.stage,
-      });
-    }
-    const saved = captureBody(first, old.pending);
-    expect(saved.scenery).toBe(5);
-    const parsed = classify({ ...old, ...saved });
-    expect(parsed.status).toBe('ok');
-    if (parsed.status !== 'ok') throw new Error('invalid upgraded save');
-    const second = session();
-    applyBody(second, parsed.record);
-    expect(second.world.entities).toEqual(first.world.entities);
-    expect(second.world.blocks).toEqual(first.world.blocks);
-    expect(captureBody(second, null).carrying).toEqual(old.carrying);
-    expect(second.world.marks).toEqual(old.marks);
-  });
-
-  it.each([1, 2])('rejects format %s instead of migrating it', (format) => {
-    expect(classify({ ...good(), format }, today)).toEqual({ status: 'malformed' });
-  });
-
-  it('rejects an older format without reading its body', () => {
-    expect(classify({ format: 2 }, today)).toEqual({ status: 'malformed' });
-  });
-
-  it('keeps a pose that sits past the island rim', () => {
-    const record = good();
-    record.spider.feet[0].x = 40;
-    record.entities[1].x = 400;
-    expect(classify(record, today).status).toBe('ok');
-    record.spider.feet[0].x = 1_000_001;
-    expect(classify(record, today).status).toBe('malformed');
-  });
-
-  it('rounds a body through classify and plants it on the same world', () => {
-    const first = session();
-    const raw = good();
-    raw.spider.position.x = 3;
-    raw.spider.speed = 4;
-    const parsed = classify(JSON.stringify(raw), today);
-    expect(parsed.status).toBe('ok');
-    if (parsed.status !== 'ok') return;
-    const world = first.world;
-    applyBody(first, parsed.record);
-    expect(first.world).toBe(world);
-    expect(first.world.terrain.seed).toBe(raw.seed);
-    expect(first.spider.root.position.x).toBe(3);
-    expect(first.spider.speed).toBe(0);
-    expect(first.spider.legs[0].lifted).toBe(false);
-
-    first.spider.root.position.set(0, first.spider.root.position.y, 2);
-    first.spider.yaw = Math.PI;
-    first.spider.root.rotation.y = Math.PI;
-    for (let i = 0; i < 20; i++) {
-      first.spider.update(0.05, { throttle: 1, turn: 0, lift: 0, boost: 1 });
-    }
-    expect(first.spider.halt).toBe('solid');
-
-    first.spider.root.position.set(0, first.spider.root.position.y, 0);
-    first.spider.yaw = 0;
-    first.spider.update(0.05, { throttle: 1, turn: 0, lift: 0, boost: 1 });
-    expect(first.spider.root.position.z).toBeLessThan(0);
-  });
-
-  it('keeps a lit lamp and leaves an older body dark', () => {
-    const lit = good();
-    lit.spider.lamp = true;
-    const parsed = classify(lit, today);
-    expect(parsed.status).toBe('ok');
-    if (parsed.status !== 'ok') return;
-    const next = session();
-    applyBody(next, parsed.record);
-    expect(next.lamp).toBe(true);
-
-    const older = good();
-    delete older.spider.lamp;
-    const legacy = classify(older, today);
-    expect(legacy.status).toBe('ok');
-    if (legacy.status !== 'ok') return;
-    applyBody(next, legacy.record);
-    expect(next.lamp).toBe(false);
-  });
-
   it('rounds named places through a body and restores them', () => {
     const record = good();
     record.marks = [{ name: '水边', x: 2, z: -3, note: '喝水' }];
@@ -300,16 +61,10 @@ describe('snapshot', () => {
     expect(frozen.marks[0].x).toBe(2);
   });
 
-  it('accepts an old body without marks and rejects broken marks', () => {
-    const legacy = { ...good() } as Record<string, unknown>;
-    delete legacy.marks;
-    const parsed = classify(legacy, today);
-    expect(parsed.status).toBe('ok');
-    if (parsed.status === 'ok') expect(parsed.record.marks).toEqual([]);
-
+  it('requires marks and rejects malformed locations', () => {
     const valid = { name: '水边', x: 2, z: -3 };
     const status = (marks: unknown): string => classify({ ...good(), marks }, today).status;
-    expect(status(undefined)).toBe('ok');
+    expect(status(undefined)).toBe('malformed');
     expect(status([valid])).toBe('ok');
     expect(status([{ ...valid, note: '喝水' }])).toBe('ok');
     expect(status('no')).toBe('malformed');
@@ -418,14 +173,6 @@ describe('snapshot', () => {
     expect(captureBody(session(), { text: '', tool: null }).pending).toBeNull();
   });
 
-  it('falls back to the default apple timer and sprout count', () => {
-    const bare = session();
-    bare.world.populations.clear();
-    const body = captureBody(bare, null);
-    expect(body.appleIn).toBe(applePopulation.interval);
-    expect(body.sprouts).toBe(0);
-  });
-
   it('picks the newer sequence, then the later stamp', () => {
     const older = good();
     const newerSeq = { ...good(), seq: 3 };
@@ -456,8 +203,8 @@ describe('snapshot', () => {
     expect(classify('{', today).status).toBe('malformed');
     expect(classify([], today).status).toBe('malformed');
     expect(classify(1, today).status).toBe('malformed');
-    expect(classify({ ...good(), format: 4 }, today).status).toBe('format');
-    expect(classify({ format: 4 }, today).status).toBe('format');
+    expect(classify({ ...good(), format: 5 }, today).status).toBe('format');
+    expect(classify({ format: 5 }, today).status).toBe('format');
     expect(classify({ ...good(), format: undefined }, today).status).toBe('malformed');
     expect(classify({ ...good(), format: null }, today).status).toBe('malformed');
     expect(classify({ ...good(), format: '3' }, today).status).toBe('malformed');
@@ -483,13 +230,7 @@ describe('snapshot', () => {
     expect(bad({ owner: 4 })).toBe('malformed');
     expect(bad({ id: 'other' })).toBe('malformed');
     expect(bad({ seed: Number.NaN })).toBe('malformed');
-    expect(bad({ appleIn: 25 })).toBe('malformed');
-    expect(bad({ appleIn: -1 })).toBe('malformed');
-    expect(bad({ sprouts: 1.2 })).toBe('malformed');
-    expect(bad({ sprouts: -1 })).toBe('malformed');
-    expect(bad({ sprouts: 1_000_001 })).toBe('malformed');
     expect(bad({ entities: 'no' })).toBe('malformed');
-    expect(bad({ carrying: 'no' })).toBe('malformed');
     expect(bad({ pending: undefined })).toBe('ok');
     expect(bad({ pending: 4 })).toBe('malformed');
     expect(bad({ pending: { text: '', tool: null } })).toBe('ok');
@@ -520,7 +261,6 @@ describe('snapshot', () => {
       [],
       'bad',
       { absent: clock },
-      { apple: clock },
       { berries: null },
       { berries: 1 },
     ]) {
@@ -546,73 +286,179 @@ describe('snapshot', () => {
     expect(status({ entities: [{ ...home, expiresAt: 1 }, ...others] })).toBe('malformed');
   });
 
-  it('rejects a world that is not one nest with unique props', () => {
-    const base = good();
-    const home = base.entities[0];
-    const apple = base.entities.find((entity) => entity.kind === 'apple');
-    expect(apple).toBeTruthy();
-    const status = (entities: typeof base.entities, carrying = base.carrying) =>
-      classify({ ...base, entities, carrying }, today).status;
-    expect(status(base.entities.filter((entity) => entity.id !== 'home'))).toBe('malformed');
-    expect(status([...base.entities, { ...home }])).toBe('malformed');
-    expect(status(base.entities, [{ ...apple!, id: apple!.id }])).toBe('malformed');
-    expect(status([], [])).toBe('malformed');
-    const crowd = [
-      home,
-      ...Array.from({ length: MAX_ENTITIES }, (_, index) => ({
-        ...apple!,
-        id: `apple-${index}`,
-      })),
-    ];
-    expect(status(crowd)).toBe('malformed');
-    expect(
-      status(base.entities, [
-        apple!,
-        { ...apple!, id: 'apple-b' },
-        { ...apple!, id: 'apple-c' },
-        { ...apple!, id: 'apple-d' },
-      ]),
-    ).toBe('malformed');
-    expect(
-      status(
-        base.entities,
-        Array.from({ length: 8 }, (_, index) => ({ ...apple!, id: `carry-${index}` })),
-      ),
-    ).toBe('malformed');
-    expect(status([{ ...home, kind: 'nope' }])).toBe('malformed');
-    expect(status([{ ...home, id: 'bad id' }])).toBe('malformed');
-    expect(status([{ ...home, x: Number.NaN }])).toBe('malformed');
-    expect(status([{ ...home, stage: 9 }])).toBe('malformed');
-    expect(status([{ ...home, footprint: { kind: 'circle', r: 0 } }])).toBe('malformed');
-    expect(status([{ ...home, footprint: { kind: 'circle', r: 2 } }])).toBe('ok');
-    expect(status([{ ...home, footprint: { kind: 'box', hx: 1, hz: 2 } }])).toBe('ok');
-    expect(status([{ ...home, footprint: { kind: 'box', hx: 0, hz: 2 } }])).toBe('malformed');
-    expect(status([{ ...home, footprint: { kind: 'triangle' } }])).toBe('malformed');
-    expect(status([{ ...home, footprint: 'disk' }])).toBe('malformed');
-    expect(status([home, null as unknown as typeof home])).toBe('malformed');
-    const spider = structuredClone(base.spider);
-    expect(classify({ ...base, spider: null }, today).status).toBe('malformed');
-    expect(classify({ ...base, spider: { ...spider, yaw: Number.NaN } }, today).status).toBe(
-      'malformed',
-    );
-    expect(classify({ ...base, spider: { ...spider, time: 'late' } }, today).status).toBe(
-      'malformed',
-    );
-    expect(
-      classify({ ...base, spider: { ...spider, feet: spider.feet.slice(0, 7) } }, today).status,
-    ).toBe('malformed');
-    expect(
-      classify(
-        { ...base, spider: { ...spider, feet: spider.feet.map((foot) => ({ ...foot, y: 5000 })) } },
-        today,
-      ).status,
-    ).toBe('malformed');
-    expect(classify({ ...base, spider: { ...spider, position: null } }, today).status).toBe(
-      'malformed',
-    );
-  });
-
   it('names today from the local clock', () => {
     expect(localDate(new Date(2026, 10, 2, 23))).toBe('2026-11-02');
   });
+});
+
+describe('entity snapshots', () => {
+  it('round-trips one authoritative actor and moving items without repairing the scene', () => {
+    const source = session();
+    const actor = source.actor.entity;
+    Object.assign(actor, { x: 3, y: 4, z: -2, vx: 1, vy: -2, vz: 3 });
+    Object.assign(actor.control!, {
+      yaw: 0.3,
+      yawRate: 0.4,
+      speed: 1,
+      fall: 2,
+      stuckFor: 0.1,
+      halt: 'solid',
+      lamp: true,
+    });
+    source.spider.headYaw = 0.2;
+    source.world.entities.delete('home');
+    const fruit = [...source.world.entities.values()].find((entity) => entity.kind === 'apple')!;
+    Object.assign(fruit, { y: 5, vx: 2, vy: -1, vz: 3, qx: 0, qy: 0, qz: 0.6, qw: 0.8 });
+    source.world.tethers.set(fruit.id, 3.7);
+    const saved = captureBody(source, null);
+    expect(saved).not.toHaveProperty('spider');
+    expect(saved).not.toHaveProperty('carrying');
+    expect(saved).not.toHaveProperty('appleIn');
+    const parsed = classify({ ...good(), ...saved });
+    expect(parsed.status).toBe('ok');
+    if (parsed.status !== 'ok') throw new Error('Expected a valid new snapshot');
+    const target = session();
+    applyBody(target, parsed.record);
+    expect(target.world.entities).toEqual(source.world.entities);
+    expect(target.world.entities.get(saved.controlledId)).toBe(target.actor.entity);
+    expect(target.world.tethers.get(fruit.id)).toBe(3.7);
+    expect(target.actor.state).toEqual(actor.control);
+    expect(target.spider.headYaw).toBe(0.2);
+    expect(target.spider.root.position.toArray()).toEqual([3, 4, -2]);
+    expect(target.world.entities.has('home')).toBe(false);
+    actor.x = 100;
+    expect(target.actor.position.x).toBe(3);
+    expect(saved.entities.find((item) => item.id === saved.controlledId)!.x).toBe(3);
+  });
+
+  it('rejects incomplete candidates before changing the live world or cancelling its action', async () => {
+    const target = session();
+    const world = target.world.entities;
+    const action = target.walk(0);
+    const broken = captureBody(target, null);
+    broken.controlledId = 'missing';
+    expect(() => applyBody(target, broken)).toThrow('Invalid world snapshot');
+    expect(target.world.entities).toBe(world);
+    target.frame(1 / 60);
+    await expect(action).resolves.toMatchObject({ ok: true });
+  });
+
+  it.each([1, 2, 3, 5])('rejects format %s without a migration', (format) => {
+    expect(classify({ ...good(), format }).status).toBe('format');
+  });
+
+  it('validates identity, registered capabilities and all optional physical data', () => {
+    const base = good();
+    const actor = base.entities.find((item) => item.id === base.controlledId)!;
+    const item = base.entities.find((entity) => entity.kind === 'apple')!;
+    const status = (patch: Record<string, unknown>) => classify({ ...base, ...patch }).status;
+    expect(status({ controlledId: null })).toBe('malformed');
+    expect(status({ controlledId: item.id })).toBe('malformed');
+    expect(status({ entities: [] })).toBe('malformed');
+    expect(status({ entities: [...base.entities, actor] })).toBe('malformed');
+    expect(status({ entities: Array.from({ length: MAX_ENTITIES + 1 }, () => item) })).toBe(
+      'malformed',
+    );
+    const withItem = (patch: Record<string, unknown>) =>
+      status({
+        entities: base.entities.map((entity) =>
+          entity.id === item.id ? { ...item, ...patch } : entity,
+        ),
+      });
+    for (const patch of [
+      { kind: 'unknown' },
+      { id: 'bad id' },
+      { x: NaN },
+      { y: 2000 },
+      { z: 1_000_001 },
+      { stage: -1 },
+      { stage: 9 },
+      { control: {} },
+      { footprint: 'disk' },
+      { footprint: { kind: 'triangle' } },
+      { footprint: { kind: 'circle', r: 0 } },
+      { footprint: { kind: 'box', hx: 1, hz: 0 } },
+    ]) {
+      expect(withItem(patch)).toBe('malformed');
+    }
+    expect(status({ entities: [null, actor] })).toBe('malformed');
+    expect(withItem({ footprint: { kind: 'circle', r: 2 } })).toBe('ok');
+    expect(withItem({ footprint: { kind: 'box', hx: 1, hz: 2 } })).toBe('ok');
+    for (const control of [
+      null,
+      {},
+      { ...actor.control, time: -1 },
+      { ...actor.control, speed: Infinity },
+      { ...actor.control, fall: -1 },
+      { ...actor.control, stuckFor: -1 },
+      { ...actor.control, height: -5 },
+      { ...actor.control, height: 5 },
+      { ...actor.control, lamp: 1 },
+      { ...actor.control, halt: 'invalid' },
+    ]) {
+      expect(
+        status({
+          entities: base.entities.map((entity) =>
+            entity.id === actor.id ? { ...actor, control } : entity,
+          ),
+        }),
+      ).toBe('malformed');
+    }
+  });
+
+  it('validates every tether endpoint and restores expired targets before publication', () => {
+    const base = good();
+    const fruit = base.entities.find((item) => item.kind === 'apple')!;
+    const berry = base.entities.find((item) => item.kind === 'berry')!;
+    const relation = { targetId: fruit.id, length: 2 };
+    for (const tethers of [
+      null,
+      [null],
+      [{ targetId: 4, length: 2 }],
+      [{ ...relation, targetId: base.controlledId }],
+      [{ ...relation, targetId: 'missing' }],
+      [{ ...relation, targetId: berry.id }],
+      [relation, relation],
+      [{ ...relation, length: NaN }],
+      [{ ...relation, length: 0 }],
+      [{ ...relation, length: 3_000_001 }],
+      Array.from({ length: 8 }, () => relation),
+    ]) {
+      expect(classify({ ...base, tethers }).status).toBe('malformed');
+    }
+    expect(classify({ ...base, tethers: [relation] }).status).toBe('ok');
+    berry.expiresAt = 0;
+    const target = session();
+    applyBody(target, base);
+    expect(target.world.entities.has(berry.id)).toBe(false);
+  });
+
+  it('validates the saved visual pose separately from the physical actor', () => {
+    const base = good();
+    for (const pose of [
+      null,
+      { ...base.pose, headYaw: NaN },
+      { ...base.pose, chassisPitch: NaN },
+      { ...base.pose, chassisRoll: NaN },
+      { ...base.pose, feet: [] },
+      { ...base.pose, feet: base.pose.feet.map(() => null) },
+      { ...base.pose, feet: base.pose.feet.map((foot) => ({ ...foot, y: 5000 })) },
+    ]) {
+      expect(classify({ ...base, pose }).status).toBe('malformed');
+    }
+  });
+});
+
+it('rejects a candidate whose controlled entity expires before publication', () => {
+  const target = session();
+  const before = target.world.entities;
+  const body = captureBody(target, null);
+  body.entities.find((item) => item.id === body.controlledId)!.expiresAt = 0;
+  KINDS.spider.lifetime = 1;
+  try {
+    expect(() => applyBody(target, body)).toThrow('Controlled entity expired');
+    expect(target.world.entities).toBe(before);
+  } finally {
+    delete KINDS.spider.lifetime;
+  }
 });

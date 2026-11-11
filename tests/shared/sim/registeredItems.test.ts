@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { populationRules } from '@/src/shared/islandContent';
 import { KINDS } from '@/src/shared/kinds';
 import { SimSession } from '@/src/shared/sim/session';
 import { captureBody, classify, type SimBody } from '@/src/shared/sim/snapshot';
@@ -12,7 +13,7 @@ function decode(body: SimBody): SimBody {
     {
       ...body,
       id: 'current',
-      format: 3,
+      format: 4,
       savedAt: 1,
       day: date,
       owner: 'tab',
@@ -33,9 +34,11 @@ describe('registered items in the island', () => {
     expect(seeded.some((item) => item.kind === 'berry')).toBe(true);
 
     const old = captureBody(session, null);
-    delete old.populations;
+    old.populations = {};
     old.entities = old.entities.filter((item) => item.kind !== 'pebble' && item.kind !== 'berry');
     session.adopt(decode(old));
+    for (const rule of populationRules)
+      session.world.populations.set(rule.id, { remaining: rule.interval, attempts: 0 });
     grow(session.world, 12);
     expect(
       [...session.world.entities.values()].filter((item) => item.kind === 'berry'),
@@ -54,7 +57,9 @@ describe('registered items in the island', () => {
 
   it('rolls a pebble into a wall using its registered body', () => {
     const session = new SimSession(7);
-    session.world.entities.clear();
+    session.world.entities = new Map([
+      [session.spider.controller.entity.id, session.spider.controller.entity],
+    ]);
     session.world.terrain = { height: () => 1 };
     const wall = block('wall', 0.8, 1, -4, -1);
     session.world.blocks = [wall];

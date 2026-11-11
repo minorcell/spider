@@ -39,7 +39,9 @@ function registerCamp(): void {
 function campSession(): SimSession {
   registerCamp();
   const session = new SimSession(7);
-  session.world.entities.clear();
+  session.world.entities = new Map([
+    [session.spider.controller.entity.id, session.spider.controller.entity],
+  ]);
   session.world.blocks = [];
   session.world.terrain = { height: () => 0 };
   const camp = addEntity(session.world, 'camp', { x: 8, z: -6 }, 0);
@@ -48,7 +50,7 @@ function campSession(): SimSession {
   camp.id = 'home';
   session.world.entities.set(camp.id, camp);
   session.world.blocks = propBlocks(session.world.entities.values());
-  session.spider.root.position.set(camp.x, 0, camp.z);
+  session.spider.place(camp.x, 0, camp.z);
   return session;
 }
 
@@ -64,7 +66,7 @@ describe('registered scenery composition', () => {
     const placement = islandPlacements[0];
     const saved = { ...placement };
     const families = islandFamilies as Array<(typeof islandFamilies)[number]>;
-    families.push({ kind: 'canopy', count: 3, home: 8, gap: 4, repair: true });
+    families.push({ kind: 'canopy', count: 3, home: 8, gap: 4 });
     Object.assign(placement, { kind: 'camp', x: 8, z: -6 });
     try {
       const terrain = new Terrain(7);
@@ -140,7 +142,7 @@ describe('registered scenery composition', () => {
     const parsed = classify({
       ...body,
       id: 'current',
-      format: 3,
+      format: 4,
       savedAt: 1,
       day: '2026-11-11',
       owner: 'tab',

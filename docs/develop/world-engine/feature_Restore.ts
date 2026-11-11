@@ -1,6 +1,4 @@
 import type { UnixMs } from './base';
-import type { Deadline } from './module_Content';
-import type { DroppedItemData } from './module_Entity';
 import type {
   CheckpointError,
   CheckpointPayload,
@@ -8,29 +6,6 @@ import type {
   WorldSnapshot,
 } from './module_Snapshot';
 import type { World, WorldFrame, WorldRestoreResult } from './module_World';
-
-interface LegacyApple {
-  readonly stage: number;
-  /** 只有早期苹果生命周期原型保存过这个字段。 */
-  readonly expiresAt?: UnixMs;
-}
-
-/** 输入已通过旧版格式校验。 */
-export function restoreApple(
-  item: LegacyApple,
-  ordinal: number,
-  wallNowMs: UnixMs,
-): DroppedItemData {
-  const legacy = item.expiresAt === undefined;
-  const expiresAtMs = item.expiresAt ?? wallNowMs + (720 - (ordinal % 20) * 24) * 1000;
-  const deadline: Deadline = { clock: 'wall', rotsAtMs: expiresAtMs - 90_000, expiresAtMs };
-  return {
-    itemTypeId: 'spider:apple',
-    // 旧版苹果共三口，已经吃掉一口或两口时，分别换算为六口中的两口或四口。
-    completedBites: Math.min(5, Math.floor(item.stage) * (legacy ? 2 : 1)),
-    deadline,
-  };
-}
 
 export type BuildCandidate = (snapshot: WorldSnapshot) => WorldRestoreResult;
 

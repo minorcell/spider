@@ -484,3 +484,15 @@ it('describes a registered home and unnamed cover without assuming a content kin
   observation.self.cover = 'unnamed-canopy';
   expect(describeObservation(observation)).toContain('在unnamed-canopy里');
 });
+
+it('does not label the indexed controlled actor as a hidden object', () => {
+  const parent = document.createElement('div');
+  const overlay = new ObserveOverlay(parent);
+  const session = new SimSession(7);
+  overlay.sync(true, camera(), session.spider, session.world, view);
+  expect(parent.querySelector('#observe-pins')!.textContent).not.toContain(
+    session.world.controlledId,
+  );
+  expect(parent.querySelector('#observe-pins')!.textContent).toContain('home');
+  overlay.dispose();
+});

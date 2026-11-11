@@ -1,7 +1,9 @@
 import { localDate } from '@/src/shared/dates';
+import { canonicalText } from '@/src/client/cloud/bytes';
 import type { SnapshotStore } from '@/src/client/storage/snapshot';
 import { PersistentCache } from '@/src/client/store/cache';
 import {
+  FORMAT,
   applyBody,
   bodyOfRecord,
   captureBody,
@@ -277,7 +279,7 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
   const dirty =
     !lastBody ||
     (reason === 'hide'
-      ? JSON.stringify(lastBody) !== JSON.stringify(body)
+      ? canonicalText(lastBody) !== canonicalText(body)
       : changed(lastBody, body, slack));
   const revision = ++writeRevision;
 
@@ -508,7 +510,7 @@ function stamp(body: SimBody, seq: number, now: number, today: string): WorldRec
   return {
     ...body,
     id: 'current',
-    format: 3,
+    format: FORMAT,
     savedAt: now,
     day: today,
     owner,
@@ -522,11 +524,13 @@ export function prefer(a?: WorldRecord, b?: WorldRecord): WorldRecord | undefine
 }
 
 function changed(prev: SimBody, next: SimBody, populationSlack: number): boolean {
-  const dx = next.spider.position.x - prev.spider.position.x;
-  const dz = next.spider.position.z - prev.spider.position.z;
+  if (prev.controlledId !== next.controlledId) return true;
+  const before = prev.entities.find((entity) => entity.id === prev.controlledId)!;
+  const after = next.entities.find((entity) => entity.id === next.controlledId)!;
+  const dx = after.x - before.x;
+  const dz = after.z - before.z;
   if (Math.hypot(dx, dz) > MOVE_M) return true;
-  if (yawGap(prev.spider.yaw, next.spider.yaw) > YAW_M) return true;
-  if (prev.sprouts !== next.sprouts) return true;
+  if (yawGap(before.control!.yaw, after.control!.yaw) > YAW_M) return true;
   if (prev.seed !== next.seed) return true;
   if (
     (prev.pending?.text ?? '') !== (next.pending?.text ?? '') ||
@@ -534,9 +538,8 @@ function changed(prev: SimBody, next: SimBody, populationSlack: number): boolean
   ) {
     return true;
   }
-  if (prev.appleIn - next.appleIn >= populationSlack) return true;
-  const priorPopulations = prev.populations ?? {};
-  const nextPopulations = next.populations ?? {};
+  const priorPopulations = prev.populations;
+  const nextPopulations = next.populations;
   if (Object.keys(priorPopulations).length !== Object.keys(nextPopulations).length) return true;
   for (const [id, state] of Object.entries(nextPopulations)) {
     const before = priorPopulations[id];
@@ -547,13 +550,21 @@ function changed(prev: SimBody, next: SimBody, populationSlack: number): boolean
     )
       return true;
   }
-  const priorSerials = prev.entitySerials ?? {};
-  const nextSerials = next.entitySerials ?? {};
+  const priorSerials = prev.entitySerials;
+  const nextSerials = next.entitySerials;
   if (Object.keys(priorSerials).length !== Object.keys(nextSerials).length) return true;
   if (Object.entries(nextSerials).some(([kind, serial]) => priorSerials[kind] !== serial))
     return true;
   if (!sameMarks(prev.marks, next.marks)) return true;
-  return !sameList(prev.entities, next.entities) || !sameList(prev.carrying, next.carrying);
+  if (prev.tethers.length !== next.tethers.length) return true;
+  if (
+    prev.tethers.some(
+      (tether, i) =>
+        tether.targetId !== next.tethers[i].targetId || tether.length !== next.tethers[i].length,
+    )
+  )
+    return true;
+  return !sameList(prev.entities, next.entities, next.controlledId);
 }
 
 function sameMarks(a: SimBody['marks'], b: SimBody['marks']): boolean {
@@ -569,7 +580,7 @@ function sameMarks(a: SimBody['marks'], b: SimBody['marks']): boolean {
   });
 }
 
-function sameList(a: SimBody['entities'], b: SimBody['entities']): boolean {
+function sameList(a: SimBody['entities'], b: SimBody['entities'], controlledId: string): boolean {
   if (a.length !== b.length) return false;
   return a.every((item, index) => {
     const other = b[index];
@@ -577,8 +588,9 @@ function sameList(a: SimBody['entities'], b: SimBody['entities']): boolean {
       item.id === other.id &&
       item.stage === other.stage &&
       item.expiresAt === other.expiresAt &&
-      quant(item.x) === quant(other.x) &&
-      quant(item.z) === quant(other.z) &&
+      (item.id === controlledId ||
+        (quant(item.x) === quant(other.x) && quant(item.z) === quant(other.z))) &&
+      item.control?.lamp === other.control?.lamp &&
       sameFoot(item.footprint, other.footprint)
     );
   });

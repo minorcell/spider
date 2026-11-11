@@ -9,7 +9,6 @@ import { Terrain, TERRAIN } from '@/src/shared/terrain';
 import {
   createWorld,
   grow,
-  populateScenery,
   propBlocks,
   settle,
   REACH,
@@ -145,18 +144,6 @@ describe('registered collision shapes', () => {
     expect(blocks[0].height).toBeCloseTo(6.2);
     expect(blocks[0].maxX).toBeCloseTo(0.4 * 0.62);
     expect(blocks[1].maxX).toBeCloseTo(5.82);
-  });
-
-  it('leaves existing scenery alone and respects the save capacity', () => {
-    const world = createWorld(7);
-    const before = structuredClone(world.entities);
-    populateScenery(world, { x: 0, z: 0 }, world.entities.size);
-    expect(world.entities).toEqual(before);
-    world.entities = indexEntities(
-      [...world.entities.values()].filter((entity) => entity.kind === 'nest'),
-    );
-    populateScenery(world, { x: 0, z: 0 }, 1);
-    expect(world.entities.size).toBe(1);
   });
 
   it('builds a ring of walls with a door at -Z', () => {

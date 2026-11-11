@@ -20,7 +20,7 @@ export type Json =
 export interface Clock {
   /** 已提交的模拟步数。 */
   readonly tick: Tick;
-  /** 累计的模拟秒数，包含旧版存档保留的小数部分。 */
+  /** 累计实际执行的模拟秒数。 */
   readonly simSeconds: number;
   /** 浏览器为这次更新采样的 UTC Unix 时间戳，单位为毫秒。 */
   readonly wallNowMs: UnixMs;

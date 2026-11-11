@@ -33,7 +33,7 @@ const readySettings: CloudSettings = {
 
 function sample(deviceId = 'device-a', seed = 4): CloudBundle {
   return {
-    format: 1,
+    format: 2,
     deviceId,
     world: captureBody(new SimSession(seed), null),
     memories: [

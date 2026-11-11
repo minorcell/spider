@@ -164,7 +164,7 @@ describe('Spider', () => {
     const ground = (x: number, z: number) => terrain.height(x, z);
     const spider = new Spider();
     spider.yaw = 1.2;
-    spider.root.position.set(0, 0, 8);
+    spider.place(0, 0, 8);
     spider.bindGround(ground);
     for (let i = 0; i < 200; i++) spider.update(1 / 30);
     expect(shellClearance(spider, ground)).toBeGreaterThan(-0.02);
@@ -234,7 +234,7 @@ describe('Spider', () => {
   it('clamps the body inside the ground limit', () => {
     const spider = new Spider();
     spider.bindGround(() => 0, 1);
-    spider.root.position.set(0.9, 0, 0);
+    spider.place(0.9, 0, 0);
     spider.yaw = Math.PI / 2;
     spider.update(0.2, { ...IDLE, throttle: -1 });
     expect(spider.root.position.x).toBeCloseTo(1, 6);
@@ -281,7 +281,7 @@ describe('Spider', () => {
   it('falls instead of easing down a real drop', () => {
     const spider = new Spider();
     spider.bindGround(() => 0);
-    spider.root.position.y = 20;
+    spider.position.y = 20;
     for (let i = 0; i < 400; i++) spider.update(0.05);
     expect(spider.root.position.y).toBeCloseTo(0);
     expect(spider.fall).toBe(0);
@@ -290,7 +290,7 @@ describe('Spider', () => {
   it('eases down a small gap', () => {
     const spider = new Spider();
     spider.bindGround(() => 0);
-    spider.root.position.y = 0.1;
+    spider.position.y = 0.1;
     spider.update(0.1);
     expect(spider.root.position.y).toBeGreaterThan(0);
     expect(spider.root.position.y).toBeLessThan(0.1);
@@ -299,7 +299,7 @@ describe('Spider', () => {
   it('keeps the feet at body height while airborne', () => {
     const spider = new Spider();
     spider.bindGround(() => 0);
-    spider.root.position.y = 5;
+    spider.position.y = 5;
     for (let i = 0; i < 50; i++) spider.update(0.01, { ...IDLE, throttle: 1 });
     expect(spider.capture().feet.some((foot) => foot.y > 1)).toBe(true);
   });
@@ -517,11 +517,7 @@ describe('Spider', () => {
       const z = nest.z + at.z * NEST_SCALE_XZ;
       const spider = new Spider();
       const spec = spider.legs[0].spec;
-      spider.root.position.set(
-        x - spec.side * spec.lateral,
-        nest.y + at.y * NEST_SCALE_Y,
-        z + spec.fore,
-      );
+      spider.place(x - spec.side * spec.lateral, nest.y + at.y * NEST_SCALE_Y, z + spec.fore);
       bindLegWorld(spider, world);
       spider.bindGround(FLAT);
       for (let i = 0; i < 60; i++) spider.update(1 / 60);
@@ -542,7 +538,7 @@ describe('Spider', () => {
     spider.bindGround(FLAT);
     const pebble = NEST_DETAILS.pebbles[0].position;
     const origin = { x: 0, y: 0.02, z: 0 };
-    spider.root.position.set(pebble.x * NEST_SCALE_XZ, 0, pebble.z * NEST_SCALE_XZ);
+    spider.place(pebble.x * NEST_SCALE_XZ, 0, pebble.z * NEST_SCALE_XZ);
     spider.bindLegs(
       (into) => {
         into.length = 0;

@@ -22,7 +22,9 @@ function scene(): SimSession {
     physics: { solid: true, radius: 0.01, loose: true, rolls: true, mass: 0.01 },
   };
   const session = new SimSession(7);
-  session.world.entities.clear();
+  session.world.entities = new Map([
+    [session.spider.controller.entity.id, session.spider.controller.entity],
+  ]);
   session.world.blocks = [];
   session.world.terrain = { height: () => 0 };
   session.world.physics = { ...PHYSICS, damping: 0, maxSpeed: 120 };
@@ -82,6 +84,7 @@ describe('registered bodies share continuous collision', () => {
 
   it('uses registered solidity independently from motion and rendering', () => {
     const session = scene();
+    session.spider.place(-5, 0, 0);
     KINDS.ghost = { ...KINDS.pellet, physics: { ...KINDS.pellet.physics!, solid: false } };
     addEntity(session.world, 'fence', { x: 0.2, z: 0 }, 0);
     const ghost = addEntity(session.world, 'ghost', { x: 0, z: 0 }, 0);
@@ -111,7 +114,7 @@ describe('registered bodies share continuous collision', () => {
 
   it('binds the same world boundary after the controller emits a long intent', () => {
     const session = scene();
-    session.spider.root.position.set(WORLD_RADIUS - 0.01, 0, 0);
+    session.spider.place(WORLD_RADIUS - 0.01, 0, 0);
     session.spider.yaw = -Math.PI / 2;
     session.spider.update(0.2, { throttle: 1, turn: 0, lift: 0, boost: 1 });
     expect(session.spider.root.position.x).toBeLessThanOrEqual(WORLD_RADIUS);

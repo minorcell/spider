@@ -30,3 +30,12 @@ describe('kinds', () => {
     ).toBe(4);
   });
 });
+
+it('validates authored grass using its default placement footprint', () => {
+  expect(
+    KINDS.grass.placement!.fits(
+      { height: () => 1 },
+      { id: 'grass-test', kind: 'grass', x: 0, y: 1, z: 0, stage: 0 },
+    ),
+  ).toBe(true);
+});

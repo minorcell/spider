@@ -45,7 +45,7 @@ function snapshot(seq: number): WorldRecord {
   return {
     ...captureBody(new SimSession(5), null),
     id: 'current',
-    format: 3,
+    format: 4,
     savedAt: 1,
     day: '2026-11-02',
     owner: 'test',

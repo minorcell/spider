@@ -1,7 +1,5 @@
-import { GAIT } from '@/src/shared/config';
-import { BODY_RADIUS, moveCircle } from '@/src/shared/collision';
-import { insideLand, WORLD_RADIUS } from '@/src/shared/terrain';
-import { floatHeight, waterAt } from '@/src/shared/water';
+import { bindController } from '@/src/shared/sim/bindController';
+import { waterAt } from '@/src/shared/water';
 import { kindOf, type KindSpec } from '@/src/shared/kinds';
 import type { EntityState, WorldState } from '@/src/shared/state';
 import type { LegSphere } from '@/src/shared/sim/legPose';
@@ -42,17 +40,5 @@ export function bindWorld(spider: Spider, world: WorldState): void {
   bindLegWorld(spider, world);
   spider.bindGround((x, z) => world.terrain.height(x, z));
   spider.bindWater((x, z) => waterAt(world.terrain, x, z));
-  spider.bindMotion((x, z, dx, dz) =>
-    moveCircle(x, z, dx, dz, BODY_RADIUS, {
-      blocks: world.blocks,
-      inside: (px, pz) =>
-        Math.hypot(px, pz) <= WORLD_RADIUS && insideLand(world.terrain, px, pz, BODY_RADIUS),
-      surface: (px, pz) => {
-        const water = waterAt(world.terrain, px, pz);
-        const ground = world.terrain.height(px, pz);
-        return water.depth > 0 ? Math.max(ground, floatHeight(water)) : ground;
-      },
-      maxSlope: GAIT.maxSlope,
-    }),
-  );
+  bindController(spider.controller, world);
 }

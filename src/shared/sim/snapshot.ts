@@ -1,13 +1,7 @@
 import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX, MOUNTS } from '@/src/shared/config';
+import type { ControlSpec, ControlState } from '@/src/shared/control';
 import { kindOf } from '@/src/shared/kinds';
-import {
-  applePopulation,
-  initialPopulations,
-  islandFamilies,
-  islandPlacements,
-  populationRules,
-  type PopulationState,
-} from '@/src/shared/islandContent';
+import { populationRules, type PopulationState } from '@/src/shared/islandContent';
 import type {
   EntityState,
   Footprint,
@@ -15,25 +9,13 @@ import type {
   SpiderState,
   WorldState,
 } from '@/src/shared/state';
-import {
-  expireEntities,
-  indexEntities,
-  populateScenery,
-  propBlocks,
-  restingY,
-  removeEntity,
-} from '@/src/shared/world';
+import { expireEntities, indexEntities, propBlocks } from '@/src/shared/world';
 import { Terrain } from '@/src/shared/terrain';
-import {
-  carriedItems,
-  MIN_TETHER_LENGTH,
-  tetherAnchor,
-  tetherLength,
-} from '@/src/shared/sim/tether';
+import { MIN_TETHER_LENGTH } from '@/src/shared/sim/tether';
 import { bindWorld } from '@/src/shared/sim/bindWorld';
 import type { Spider } from '@/src/shared/sim/Spider';
 
-export const FORMAT = 3;
+export const FORMAT = 4;
 export const MAX_ENTITIES = 160;
 export const MAX_PENDING = 4000;
 export const MAX_JSON = 64_000;
@@ -42,27 +24,21 @@ const MAX_TOOL = 32;
 const PLACE_M = 1_000_000;
 const PLACE_Y = 1_000;
 
-interface CarriedRecord extends EntityState {
-  tetherLength?: number;
-}
-
 export interface SimBody {
-  scenery?: 1 | 2 | 3 | 4 | 5;
   seed: number;
-  appleIn: number;
-  sprouts: number;
-  populations?: Record<string, PopulationState>;
-  entitySerials?: Record<string, number>;
+  controlledId: string;
+  populations: Record<string, PopulationState>;
+  entitySerials: Record<string, number>;
   entities: EntityState[];
   marks: PlaceMark[];
-  carrying: CarriedRecord[];
-  spider: SpiderState;
+  tethers: { targetId: string; length: number }[];
+  pose: Pick<SpiderState, 'chassisPitch' | 'chassisRoll' | 'headYaw' | 'feet'>;
   pending: { text: string; tool: string | null } | null;
 }
 
 export interface WorldRecord extends SimBody {
   id: 'current';
-  format: 3;
+  format: 4;
   savedAt: number;
   day: string;
   owner: string;
@@ -97,81 +73,58 @@ export function bodyOfRecord(record: WorldRecord): SimBody {
 
 export function captureBody(session: Restorable, pending: SimBody['pending']): SimBody {
   const world = session.world;
-  const { id: legacyId, interval } = applePopulation;
-  const legacy = world.populations.get(legacyId);
-  const populations = Object.fromEntries([...world.populations].filter(([id]) => id !== legacyId));
-  const carrying: CarriedRecord[] = structuredClone(carriedItems(world));
-  for (const item of carrying) item.tetherLength = world.tethers.get(item.id);
+  const { chassisPitch, chassisRoll, headYaw, feet } = session.spider.capture();
   return {
-    scenery: 5,
     seed: world.seed,
-    appleIn: legacy?.remaining ?? interval,
-    sprouts: legacy?.attempts ?? 0,
-    ...(world.entitySerials.size ? { entitySerials: Object.fromEntries(world.entitySerials) } : {}),
-    ...(Object.keys(populations).length > 0 ? { populations: structuredClone(populations) } : {}),
-    entities: structuredClone(
-      [...world.entities.values()].filter((item) => !world.tethers.has(item.id)),
-    ),
+    controlledId: world.controlledId!,
+    populations: structuredClone(Object.fromEntries(world.populations)),
+    entitySerials: Object.fromEntries(world.entitySerials),
+    entities: structuredClone([...world.entities.values()]),
     marks: structuredClone(world.marks),
-    carrying,
-    spider: session.spider.capture(),
+    tethers: [...world.tethers].map(([targetId, length]) => ({ targetId, length })),
+    pose: { chassisPitch, chassisRoll, headYaw, feet },
     pending: cleanPending(pending),
   };
 }
 
+/** Build and validate a complete candidate before cancelling actions or replacing live state. */
 export function applyBody(
   session: Restorable,
   body: SimBody,
   terrain = new Terrain(body.seed),
 ): void {
+  const decoded = bodyOf(body as unknown as Record<string, unknown>);
+  if (!decoded) throw new Error('Invalid world snapshot');
+  const entities = indexEntities(decoded.entities);
+  const actor = entities.get(decoded.controlledId)!;
+  const candidate: WorldState = {
+    seed: terrain.seed,
+    terrain,
+    entities,
+    controlledId: actor.id,
+    blocks: propBlocks(entities.values()),
+    marks: decoded.marks,
+    tethers: new Map(decoded.tethers.map(({ targetId, length }) => [targetId, length])),
+    populations: new Map(Object.entries(decoded.populations)),
+    entitySerials: new Map(Object.entries(decoded.entitySerials)),
+    physics: session.world.physics,
+  };
+  expireEntities(candidate, actor.control!.time);
+  if (!candidate.entities.has(actor.id)) throw new Error('Controlled entity expired');
   session.cancel();
-  const world = session.world;
-  world.terrain = terrain;
-  world.seed = terrain.seed;
-  let ground = structuredClone(body.entities);
-  for (const family of islandFamilies) {
-    const legacy = family.legacy;
-    if (legacy?.cap.includes(body.scenery)) {
-      let count = 0;
-      ground = ground.filter((entity) => entity.kind !== family.kind || ++count <= family.count);
-    }
-    if (legacy?.footprint?.includes(body.scenery)) {
-      for (const entity of ground) {
-        if (entity.kind === family.kind)
-          entity.footprint = kindOf(entity.kind)?.placement?.footprint(entity.id);
-      }
-    }
-  }
-  for (const entity of ground) {
-    if (!kindOf(entity.kind)?.fixedElevation)
-      entity.y = restingY(terrain, entity.kind, entity.x, entity.z, entity.footprint);
-  }
-  world.entities = indexEntities(ground);
-  world.entitySerials = new Map(Object.entries(body.entitySerials ?? {}));
-  world.blocks = propBlocks(ground);
-  world.marks = structuredClone(body.marks);
-  world.tethers.clear();
-  const anchor = tetherAnchor(body.spider.position, body.spider.yaw);
-  for (const [index, { tetherLength: length, ...item }] of structuredClone(
-    body.carrying,
-  ).entries()) {
-    world.entities.set(item.id, item);
-    world.tethers.set(item.id, length ?? tetherLength(anchor, item, index));
-  }
-  if (body.scenery !== 2 && body.scenery !== 3 && body.scenery !== 4 && body.scenery !== 5)
-    populateScenery(world, body.spider.position, MAX_ENTITIES);
-  for (const entity of world.entities.values()) {
-    const placement = kindOf(entity.kind)?.placement;
-    if (placement && !placement.fits(terrain, entity)) removeEntity(world, entity);
-  }
-  world.populations = initialPopulations();
-  world.populations.set(applePopulation.id, { remaining: body.appleIn, attempts: body.sprouts });
-  for (const [id, state] of Object.entries(body.populations ?? {})) {
-    world.populations.set(id, { ...state });
-  }
-  expireEntities(world, body.spider.time);
-  bindWorld(session.spider, world);
-  session.spider.settle(body.spider);
+  Object.assign(session.world, candidate);
+  session.spider.controller.bindEntity(actor);
+  bindWorld(session.spider, session.world);
+  const control = actor.control!;
+  session.spider.applyState({
+    ...decoded.pose,
+    position: { x: actor.x, y: actor.y, z: actor.z },
+    time: control.time,
+    yaw: control.yaw,
+    speed: control.speed,
+    height: control.height,
+    lamp: control.lamp,
+  });
 }
 
 export function chooseRecord(ls: unknown, idb: unknown, today: string): WorldRecord | null {
@@ -204,7 +157,7 @@ export function classify(input: unknown, _today?: string): Classify {
   if (!isFiniteNumber(raw.format) || !Number.isSafeInteger(raw.format) || raw.format < 1) {
     return { status: 'malformed' };
   }
-  if (raw.format < FORMAT) return { status: 'malformed' };
+  if (raw.format < FORMAT) return { status: 'format' };
   if (raw.format > FORMAT) return { status: 'format' };
   if (!isDay(raw.day)) return { status: 'malformed' };
   if (
@@ -236,64 +189,51 @@ export function classify(input: unknown, _today?: string): Classify {
 
 function bodyOf(raw: Record<string, unknown>): SimBody | null {
   if (!isFiniteNumber(raw.seed)) return null;
-  if (!isFiniteNumber(raw.appleIn) || raw.appleIn < 0 || raw.appleIn > applePopulation.interval)
+  if (!Array.isArray(raw.entities) || raw.entities.length < 1 || raw.entities.length > MAX_ENTITIES)
     return null;
-  if (!isFiniteNumber(raw.sprouts) || !Number.isInteger(raw.sprouts)) return null;
-  if (raw.sprouts < 0 || raw.sprouts > MAX_SPROUTS) return null;
-  if (!Array.isArray(raw.entities) || !Array.isArray(raw.carrying)) return null;
-  if (raw.carrying.length > CARRY_LIMIT) return null;
-  const count = raw.entities.length + raw.carrying.length;
-  if (count < 1 || count > MAX_ENTITIES) return null;
-  const entities = raw.entities.map(readEntity);
-  const carrying = raw.carrying.map(readCarried);
-  if (entities.some((entity) => !entity) || carrying.some((entity) => !entity)) return null;
-  const ground = entities as EntityState[];
-  const held = carrying as CarriedRecord[];
-  for (const placement of islandPlacements) {
-    if (
-      kindOf(placement.kind)?.home &&
-      !ground.some((entity) => entity.id === placement.id && kindOf(entity.kind)?.home)
-    )
-      return null;
+  const entities: EntityState[] = [];
+  const index = new Map<string, EntityState>();
+  for (const value of raw.entities) {
+    const entity = readEntity(value);
+    if (!entity || index.has(entity.id)) return null;
+    index.set(entity.id, entity);
+    entities.push(entity);
   }
-  const ids = new Set<string>();
-  for (const entity of [...ground, ...held]) {
-    if (ids.has(entity.id)) return null;
-    ids.add(entity.id);
+  if (typeof raw.controlledId !== 'string' || !index.get(raw.controlledId)?.control) return null;
+  if (!Array.isArray(raw.tethers) || raw.tethers.length > CARRY_LIMIT) return null;
+  const tethers: SimBody['tethers'] = [];
+  const targets = new Set<string>();
+  for (const value of raw.tethers) {
+    if (!value || typeof value !== 'object') return null;
+    const { targetId, length } = value as { targetId?: unknown; length?: unknown };
+    if (typeof targetId !== 'string' || targetId === raw.controlledId || targets.has(targetId))
+      return null;
+    const target = index.get(targetId);
+    if (!target || !kindOf(target.kind)?.carryable) return null;
+    if (!isFiniteNumber(length) || length < MIN_TETHER_LENGTH || length > PLACE_M * 3) return null;
+    targets.add(targetId);
+    tethers.push({ targetId, length });
   }
   const serials = readEntitySerials(raw.entitySerials);
-  if (serials === null) return null;
   const populations = readPopulations(raw.populations);
-  if (populations === null) return null;
-  const spider = readSpider(raw.spider);
-  if (!spider) return null;
+  const pose = readPose(raw.pose);
   const pending = readPending(raw.pending);
-  if (pending === undefined) return null;
   const marks = readMarks(raw.marks);
-  if (!marks) return null;
+  if (!serials || !populations || !pose || pending === undefined || !marks) return null;
   return {
-    ...(raw.scenery === 1 ||
-    raw.scenery === 2 ||
-    raw.scenery === 3 ||
-    raw.scenery === 4 ||
-    raw.scenery === 5
-      ? { scenery: raw.scenery }
-      : {}),
     seed: raw.seed >>> 0,
-    appleIn: raw.appleIn as number,
-    sprouts: raw.sprouts as number,
-    ...(populations ? { populations } : {}),
-    ...(serials ? { entitySerials: serials } : {}),
-    entities: ground,
+    controlledId: raw.controlledId,
+    entities,
+    entitySerials: serials,
+    populations,
     marks,
-    carrying: held,
-    spider,
+    tethers,
+    pose,
     pending,
   };
 }
 
 function readEntitySerials(value: unknown): SimBody['entitySerials'] | null {
-  if (value === undefined) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const entries: [string, number][] = [];
   for (const [kind, serial] of Object.entries(value)) {
@@ -305,12 +245,11 @@ function readEntitySerials(value: unknown): SimBody['entitySerials'] | null {
 }
 
 function readPopulations(value: unknown): SimBody['populations'] | null {
-  if (value === undefined) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const entries: [string, PopulationState][] = [];
   for (const [id, state] of Object.entries(value)) {
     const rule = populationRules.find((candidate) => candidate.id === id);
-    if (!rule || rule === applePopulation || !state || typeof state !== 'object') return null;
+    if (!rule || !state || typeof state !== 'object') return null;
     const { remaining, attempts } = state as Partial<PopulationState>;
     if (!isFiniteNumber(remaining) || remaining < 0 || remaining > rule.interval) return null;
     if (
@@ -326,7 +265,6 @@ function readPopulations(value: unknown): SimBody['populations'] | null {
 }
 
 function readMarks(value: unknown): PlaceMark[] | null {
-  if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > MARK_LIMIT) return null;
   const marks: PlaceMark[] = [];
   const names = new Set<string>();
@@ -363,15 +301,6 @@ function readMarks(value: unknown): PlaceMark[] | null {
   return marks;
 }
 
-function readCarried(value: unknown): CarriedRecord | null {
-  const item = readEntity(value);
-  if (!item || !kindOf(item.kind)?.carryable) return null;
-  const { tetherLength: length } = value as { tetherLength?: unknown };
-  if (length === undefined) return item;
-  if (!isFiniteNumber(length) || length < MIN_TETHER_LENGTH || length > PLACE_M * 3) return null;
-  return { ...item, tetherLength: length };
-}
-
 function readEntity(value: unknown): EntityState | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
@@ -400,6 +329,11 @@ function readEntity(value: unknown): EntityState | null {
     z: raw.z as number,
     stage: raw.stage as number,
   };
+  if (kind.control) {
+    const control = readControl(raw.control, kind.control);
+    if (!control) return null;
+    entity.control = control;
+  } else if (raw.control !== undefined) return null;
   const expiry = optionalNumber(raw.expiresAt);
   if (expiry === null) return null;
   if (expiry !== undefined) {
@@ -440,22 +374,15 @@ function optionalNumber(value: unknown): number | undefined | null {
   return isFiniteNumber(value) ? value : null;
 }
 
-function readSpider(value: unknown): SpiderState | null {
+function readPose(value: unknown): SimBody['pose'] | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
-  const position = raw.position as { x?: unknown; y?: unknown; z?: unknown } | null;
-  if (!position || !placed(position.x, position.y, position.z)) return null;
-  if (!isFiniteNumber(raw.yaw)) return null;
-  for (const key of [
-    'time',
-    'speed',
-    'height',
-    'chassisPitch',
-    'chassisRoll',
-    'headYaw',
-  ] as const) {
-    if (!isFiniteNumber(raw[key])) return null;
-  }
+  if (
+    !isFiniteNumber(raw.chassisPitch) ||
+    !isFiniteNumber(raw.chassisRoll) ||
+    !isFiniteNumber(raw.headYaw)
+  )
+    return null;
   if (!Array.isArray(raw.feet) || raw.feet.length !== MOUNTS.length) return null;
   const feet: SpiderState['feet'] = [];
   for (const foot of raw.feet) {
@@ -464,16 +391,38 @@ function readSpider(value: unknown): SpiderState | null {
     feet.push({ x: point.x as number, y: point.y as number, z: point.z as number });
   }
   return {
-    time: raw.time as number,
-    position: { x: position.x as number, y: position.y as number, z: position.z as number },
-    yaw: raw.yaw,
-    speed: raw.speed as number,
-    height: raw.height as number,
-    chassisPitch: raw.chassisPitch as number,
-    chassisRoll: raw.chassisRoll as number,
-    headYaw: raw.headYaw as number,
-    lamp: raw.lamp === true,
+    chassisPitch: raw.chassisPitch,
+    chassisRoll: raw.chassisRoll,
+    headYaw: raw.headYaw,
     feet,
+  };
+}
+
+function readControl(value: unknown, spec: ControlSpec): ControlState | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as ControlState;
+  for (const key of ['time', 'yaw', 'yawRate', 'speed', 'height', 'fall', 'stuckFor'] as const) {
+    if (!isFiniteNumber(raw[key])) return null;
+  }
+  if (
+    raw.time < 0 ||
+    raw.fall < 0 ||
+    raw.stuckFor < 0 ||
+    raw.height < spec.heightMin ||
+    raw.height > spec.heightMax
+  )
+    return null;
+  if (typeof raw.lamp !== 'boolean' || !['clear', 'solid', 'steep'].includes(raw.halt)) return null;
+  return {
+    time: raw.time,
+    yaw: raw.yaw,
+    yawRate: raw.yawRate,
+    speed: raw.speed,
+    height: raw.height,
+    fall: raw.fall,
+    stuckFor: raw.stuckFor,
+    halt: raw.halt,
+    lamp: raw.lamp,
   };
 }
 

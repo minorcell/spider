@@ -279,6 +279,7 @@ export class Stage {
     const alive = this.#alive;
     alive.clear();
     for (const entity of world.entities.values()) {
+      if (entity.id === world.controlledId) continue;
       alive.add(entity.id);
       this.#syncProp(entity, entity.x, entity.y, entity.z, world);
     }

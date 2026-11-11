@@ -16,7 +16,9 @@ function scene(): SimSession {
   };
   KINDS.heavy = { ...KINDS.light, physics: { ...KINDS.light.physics!, mass: 2 } };
   const session = new SimSession(7);
-  session.world.entities.clear();
+  session.world.entities = new Map([
+    [session.spider.controller.entity.id, session.spider.controller.entity],
+  ]);
   session.world.blocks = [];
   session.world.terrain = { height: () => 0 };
   session.world.physics = { ...PHYSICS, gravity: 0, damping: 0, maxSpeed: 120 };
@@ -127,7 +129,7 @@ describe('continuous body contacts', () => {
     const session = scene();
     session.world.blocks = [block('wall', 0.65, 0.66, -1, 1)];
     const item = addEntity(session.world, 'light', { x: 0.6, z: 0 }, 0);
-    session.spider.root.position.set(0, 0, 0);
+    session.spider.place(0, 0, 0);
     session.spider.yaw = -Math.PI / 2;
     const action = drive(session, 3, { throttle: 1 });
     pump(session, 240);

@@ -48,7 +48,7 @@ export type DecodedCheckpoint =
   | Readonly<{ ok: false; reason: CheckpointError }>;
 
 export interface SnapshotCodec {
-  /** 解码本地格式 3、4 和云端格式 1、2 中的世界数据。 */
+  /** 仅解码当前本地格式 4 和云端格式 2，不迁移旧版本。 */
   decode(raw: unknown, wallNowMs: UnixMs): DecodedCheckpoint;
   /** 将带版本的世界数据编码为 JSON 安全值。存储层负责外层封装。 */
   encode(checkpoint: CheckpointPayload): Json;
