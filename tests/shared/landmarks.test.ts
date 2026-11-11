@@ -36,8 +36,9 @@ describe('home landmarks', () => {
     expect(homeLandmarks(world).map((place) => place.name)).toEqual(['巢穴', '山顶']);
   });
 
-  it('derives mountain and rear from each island and preserves user marks on restore', () => {
-    for (const seed of Array.from({ length: 20 }, (_, index) => index + 1)) {
+  it.each(Array.from({ length: 20 }, (_, index) => index + 1))(
+    'derives mountain and rear and preserves user marks on restore for island seed %i',
+    (seed) => {
       const session = new SimSession(seed);
       const [home, peak, rear] = session.landmarks();
       expect(home).toMatchObject({ name: '巢穴', x: 0, z: 0 });
@@ -67,6 +68,6 @@ describe('home landmarks', () => {
       expect(restored.world.marks).toEqual(session.world.marks);
       expect(restored.landmarks()).toEqual(homeLandmarks(restored.world));
       expect(restored.landmarks()).toEqual(session.landmarks());
-    }
-  });
+    },
+  );
 });
