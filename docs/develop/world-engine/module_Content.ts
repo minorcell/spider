@@ -28,8 +28,11 @@ export interface ItemType {
   readonly body: BodySpec;
   /** 浏览器用这个 ID 从模型注册表查找外观。 */
   readonly modelId: TypeId;
+  /** 由牵引动作读取，与食物和生命周期配置独立。 */
   readonly tetherable: boolean;
+  /** 配置后由通用物品实体提供可食用能力。 */
   readonly food?: FoodSpec;
+  /** 配置后由世界按指定时钟检查到期。 */
   readonly lifetime?: LifetimeSpec;
 }
 
@@ -47,8 +50,13 @@ export interface PopulationRule {
 
 export interface PlacementPolicy {
   readonly id: TypeId;
-  /** 使用与移动相同的地形和空间查询，提出一个可落地的位姿。 */
-  pick(terrain: Terrain, physics: PhysicsView, random: () => number): Pose | undefined;
+  /** 使用候选物理体的形状和通用空间查询，提出一个可落地的位姿。 */
+  pick(
+    terrain: Terrain,
+    physics: PhysicsView,
+    body: BodySpec,
+    random: () => number,
+  ): Pose | undefined;
 }
 
 export interface ItemCatalog {

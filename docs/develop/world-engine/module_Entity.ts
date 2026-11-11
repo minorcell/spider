@@ -5,7 +5,7 @@ import type { BodySpec, BodyState, Motion, PhysicsView } from './module_Physics'
 export type Freshness = 'fresh' | 'rotten' | 'expired';
 
 export interface DroppedItemData {
-  /** 引用共享的物品类型定义。 */
+  /** 通用物品工厂用这个 ID 查找共享定义，物品类型共用同一实例格式。 */
   readonly itemTypeId: TypeId;
   /** 只记录已经结算的口数。中断一口的过程会保留这个值。 */
   readonly completedBites: number;
@@ -35,6 +35,8 @@ export interface EntityView {
   readonly item?: Readonly<{ itemTypeId: TypeId; completedBites: number; freshness: Freshness }>;
   readonly hunger?: number;
   readonly tetherable: boolean;
+  /** 按食物能力和提交时的新鲜度判断，可达性由空间查询和动作另行校验。 */
+  readonly edible: boolean;
 }
 
 export interface Entity {
