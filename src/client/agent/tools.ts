@@ -2,7 +2,8 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import type { GoalOutcome, SimSession } from '@/src/shared/sim/session';
 import type { ActionHint, Observation, Sense } from '@/src/shared/state';
-import { CARRY_LIMIT, GAIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
+import { GAIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
+import { kindOf } from '@/src/shared/kinds';
 import { VIEW_DISTANCE } from '@/src/shared/world';
 import type { MemoryApi } from '@/src/client/journal/diary';
 import type { Landmark } from '@/src/shared/landmarks';
@@ -82,7 +83,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       case 'full':
         return {
           code: 'carry-full',
-          message: '牵引的物品已经达到上限。先用 act 的 drop 或 store 放下一件。',
+          message: '牵引的物品已经达到上限。先用 act 的 release、drop 或 store 放下一件。',
           next: 'act',
         };
       case 'no-water':
@@ -151,10 +152,10 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         const observation = session.observe(distance ?? VIEW_DISTANCE);
         const world = session.worldInfo();
         const hint =
-          observation.self.cover === 'grass' && observation.view < VIEW_DISTANCE
+          observation.self.cover && observation.view < VIEW_DISTANCE
             ? {
-                code: 'view-limited-by-grass',
-                message: `草丛把视野缩短到了 ${observation.view}。先用 set_height 抬高身体，再 observe。`,
+                code: 'view-limited-by-cover',
+                message: `遮蔽物把视野缩短到了 ${observation.view}。先用 set_height 抬高身体，再 observe。`,
                 next: 'set_height',
               }
             : !session.lamp && world.view < 0.9 && observation.view < VIEW_DISTANCE
@@ -188,7 +189,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
     }),
     go: tool({
       description:
-        '移动或转身，一次只做一件事。point 走到 x、z，自动绕开固体，陡坡仍需自己爬。id 走到对象旁边并面向它。heading 或 degrees 只转身。',
+        '移动或转身，一次只做一件事。point 走到 x、z，自动翻过可攀爬的矮地物，绕开挡路的高障碍。id 走到对象旁边并面向它。heading 或 degrees 只转身。',
       inputSchema: z.discriminatedUnion('mode', [
         call({
           mode: z.literal('point').describe('走到一个坐标。'),
@@ -243,7 +244,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       },
     }),
     act: tool({
-      description: `吃、搬、放下、存进巢、喝水或睡觉。eat、pick_up、drop、store 要带 id，最多牵引 ${CARRY_LIMIT} 件。`,
+      description: `吃、牵引、松手、放下、存进巢、喝水或睡觉。eat、pick_up、release、drop、store 要带 id，最多牵引 ${kindOf(session.actor.entity.kind)?.tether?.limit ?? 0} 件。`,
       inputSchema: z.discriminatedUnion('verb', [
         call({
           verb: z.literal('eat').describe('吃附近或背上的食物。'),
@@ -252,6 +253,10 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
         call({
           verb: z.literal('pick_up').describe('搬起附近能搬的东西。'),
           id: z.string().describe('对象 id。'),
+        }),
+        call({
+          verb: z.literal('release').describe('在当前位置松开蛛丝，物品保留当前速度。'),
+          id: z.string().describe('正在牵引的物品 id。'),
         }),
         call({
           verb: z.literal('drop').describe('松开蛛丝，把东西放在面前。'),
@@ -271,6 +276,7 @@ export function spiderTools(session: SimSession, memory?: MemoryApi) {
       execute: async (input) => {
         if (input.verb === 'eat') return finish(await session.eat(input.id));
         if (input.verb === 'pick_up') return finish(await session.pickUp(input.id));
+        if (input.verb === 'release') return finish(session.release(input.id));
         if (input.verb === 'drop') return finish(session.drop(input.id));
         if (input.verb === 'store') return finish(session.store(input.id));
         if (input.verb === 'drink') return finish(session.drink());

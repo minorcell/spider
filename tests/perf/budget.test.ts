@@ -1,6 +1,9 @@
+import { ActorPresenter } from '@/src/client/rig/presenter';
+import { drive } from '@/tests/simHelpers';
 import { describe, expect, it } from 'vitest';
 import { parseInlineCalls } from '@/src/client/agent/inline';
 import { islandGroup } from '@/src/client/groundView';
+import { islandBuffers } from '@/src/client/islandMesh';
 import {
   blankSession,
   planCompaction,
@@ -9,6 +12,7 @@ import {
   type ChatSession,
   type CompactLimits,
 } from '@/src/client/journal/session';
+import { onWorldCommit, type WorldCommit } from '@/src/shared/changes';
 import { localDate } from '@/src/shared/dates';
 import {
   applyBody,
@@ -18,7 +22,6 @@ import {
   type WorldRecord,
 } from '@/src/shared/sim/snapshot';
 import { SimSession } from '@/src/shared/sim/session';
-import { EYE_HEIGHT, sightOutline } from '@/src/shared/sight';
 import { toObservation } from '@/src/shared/state';
 import { surfaceOf, Terrain } from '@/src/shared/terrain';
 import { createWorld, REACH, REACH_Y, VIEW_DISTANCE } from '@/src/shared/world';
@@ -62,7 +65,7 @@ function recordOf(seed = 7): WorldRecord {
   return {
     ...body,
     id: 'current',
-    format: 3,
+    format: 4,
     savedAt: Date.now(),
     day: localDate(new Date()),
     owner: 'perf',
@@ -102,34 +105,97 @@ describe('frame and boot budgets', () => {
   });
 });
 
+describe('world event budgets', () => {
+  it('publishes 120 island mutations to two readers in under 120 ms', () => {
+    const session = new SimSession(SEED);
+    const actorId = session.actor.entity.id;
+    const readLamp = ({ view }: WorldCommit) =>
+      view.entities.find(({ id }) => id === actorId)?.control?.lamp;
+    const first: { receipt: WorldCommit; lamp: boolean | undefined }[] = [];
+    const second: { receipt: WorldCommit; lamp: boolean | undefined }[] = [];
+    const stopFirst = onWorldCommit(session.world, (receipt) => {
+      first.push({ receipt, lamp: readLamp(receipt) });
+    });
+    const stopSecond = onWorldCommit(session.world, (receipt) => {
+      second.push({ receipt, lamp: readLamp(receipt) });
+    });
+
+    const elapsed = bestOf(
+      3,
+      () => {
+        for (let i = 0; i < 120; i++) session.setLamp(i % 2 === 0);
+      },
+      () => {
+        first.length = 0;
+        second.length = 0;
+      },
+    );
+    stopFirst();
+    stopSecond();
+
+    expect(elapsed).toBeLessThan(120);
+    expect(first).toHaveLength(120);
+    expect(second).toHaveLength(120);
+    for (const [index, { receipt, lamp }] of first.entries()) {
+      const on = index % 2 === 0;
+      expect(receipt.events).toEqual([{ kind: 'lampChanged', actor: actorId, on }]);
+      expect(second[index].receipt).toBe(receipt);
+      expect(second[index].lamp).toBe(on);
+      expect(lamp).toBe(on);
+      expect(readLamp(receipt)).toBe(on);
+    }
+  });
+});
+
 describe('driven frames', () => {
   it('steps 120 driven frames in under 120 ms', () => {
     const session = new SimSession(SEED);
-    const home = session.spider.capture();
+    const home = session.actor.capture();
+    const initial = structuredClone(session.actor.entity);
     expect(
       bestOf(
         3,
         () => stepDriven(session),
-        () => session.spider.settle(home),
+        () => Object.assign(session.actor.entity, structuredClone(initial)),
       ),
     ).toBeLessThan(120);
 
-    session.spider.settle(home);
+    Object.assign(session.actor.entity, structuredClone(initial));
     stepDriven(session);
     const moved = Math.hypot(
-      session.spider.root.position.x - home.position.x,
-      session.spider.root.position.z - home.position.z,
+      session.actor.position.x - home.position.x,
+      session.actor.position.z - home.position.z,
     );
     expect(moved).toBeGreaterThan(1);
-    expect(session.spider.halt).toBe('clear');
+    expect(session.actor.halt).toBe('clear');
   });
+});
+
+it('steps the world and browser rig together for 120 frames in under 120 ms', () => {
+  let session: SimSession;
+  let presenter: ActorPresenter;
+  const reset = () => {
+    session = new SimSession(SEED);
+    presenter = new ActorPresenter(session);
+  };
+  const run = () => {
+    void drive(session, 4, { throttle: 1 });
+    try {
+      for (let i = 0; i < 120; i++) presenter.step(1 / 60);
+    } finally {
+      session.cancel();
+    }
+  };
+  expect(bestOf(3, run, reset)).toBeLessThan(120);
+  expect(presenter!.model.root.position.z).toBe(session!.actor.position.z);
+  expect(presenter!.model.root.position.z).toBeLessThan(-1);
 });
 
 describe('route around the nest', () => {
   it('routes around the nest in under 15 ms', () => {
     const world = createWorld(SEED);
     const height = (x: number, z: number): number => surfaceOf(world.terrain, x, z);
-    const blocks = world.blocks.filter((block) => block.id.startsWith('nest-ring-'));
+    const blocks = world.blocks.filter((block) => block.owner === 'home');
     const plan = planAroundNest(blocks, height);
     expect(plan !== null && plan.direct === false && plan.points.length > 2).toBe(true);
     expect(bestOf(5, () => void planAroundNest(blocks, height))).toBeLessThan(15);
@@ -137,21 +203,21 @@ describe('route around the nest', () => {
 });
 
 describe('worker boot', () => {
-  it('bakes a worker island in under 250 ms', () => {
+  it('bakes the worker island in under 250 ms', () => {
     expect(bestOf(3, () => void bakeWorkerIsland())).toBeLessThan(250);
   });
 });
 
 describe('main-thread dress', () => {
-  it('dresses the island on the main thread in under 250 ms', async () => {
+  it('dresses the island on the main thread in under 250 ms', () => {
     const world = createWorld(SEED);
-    const prepared = await bakeWorkerIsland();
-    expect(world.entities.some((entity) => entity.kind === 'nest')).toBe(true);
-    expect(world.entities.some((entity) => entity.kind === 'apple')).toBe(true);
-    expect(world.entities.some((entity) => entity.kind === 'grass')).toBe(true);
+    const buffers = islandBuffers((x, z) => world.terrain.height(x, z));
+    expect([...world.entities.values()].some((entity) => entity.kind === 'nest')).toBe(true);
+    expect([...world.entities.values()].some((entity) => entity.kind === 'apple')).toBe(true);
+    expect([...world.entities.values()].some((entity) => entity.kind === 'grass')).toBe(true);
     expect(
       bestOf(3, () => {
-        islandGroup(prepared.island);
+        islandGroup(buffers);
         dressIsland(world);
       }),
     ).toBeLessThan(250);
@@ -162,8 +228,6 @@ describe('observe budgets', () => {
   const seed = 12345;
   const terrain = new Terrain(seed);
   const world = createWorld(seed, terrain);
-  const height = (x: number, z: number): number => terrain.height(x, z);
-  const eye = surfaceOf(terrain, 0, 0) + EYE_HEIGHT;
   const state = {
     time: 0,
     position: { x: 0, y: terrain.height(0, 0), z: 0 },
@@ -176,25 +240,10 @@ describe('observe budgets', () => {
     feet: [],
   };
 
-  it('traces a full sight outline in under 15 ms', () => {
-    expect(
-      bestOf(5, () => void sightOutline(0, 0, eye, VIEW_DISTANCE, height, world.blocks)),
-    ).toBeLessThan(15);
-  });
-
   it('observes the whole island in under 15 ms', () => {
     expect(
       bestOf(5, () => void toObservation(state, world, REACH, VIEW_DISTANCE, REACH_Y)),
     ).toBeLessThan(15);
-  });
-
-  it('refreshes the sight area in under 25 ms', () => {
-    expect(
-      bestOf(5, () => {
-        toObservation(state, world, REACH, VIEW_DISTANCE, REACH_Y);
-        sightOutline(0, 0, eye, VIEW_DISTANCE, height, world.blocks);
-      }),
-    ).toBeLessThan(25);
   });
 });
 

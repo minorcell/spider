@@ -14,7 +14,7 @@ const memory = {
 
 function sample(deviceId = 'device-a') {
   return {
-    format: 1 as const,
+    format: 2 as const,
     deviceId,
     world: captureBody(new SimSession(4), { text: '去水边', tool: null }),
     memories: [memory],
@@ -31,7 +31,7 @@ describe('cloud bundle', () => {
     const record: WorldRecord = {
       ...bundle.world,
       id: 'current',
-      format: 3,
+      format: 4,
       savedAt: 9,
       day: '2026-11-06',
       owner: 'tab',
@@ -53,7 +53,7 @@ describe('cloud bundle', () => {
     expect(parseBundle(new Uint8Array())).toBeNull();
     expect(parseBundle(bytesOf('{'))).toBeNull();
     expect(parseBundle(bytesOf([]))).toBeNull();
-    expect(parseBundle(bytesOf({ ...bundle, format: 2 }))).toBeNull();
+    expect(parseBundle(bytesOf({ ...bundle, format: 3 }))).toBeNull();
     expect(parseBundle(bytesOf({ ...bundle, deviceId: '' }))).toBeNull();
     expect(parseBundle(bytesOf({ ...bundle, world: null }))).toBeNull();
     expect(parseBundle(bytesOf({ ...bundle, world: { seed: 1 } }))).toBeNull();
@@ -68,6 +68,22 @@ describe('cloud bundle', () => {
     expect(
       parseBundle(bytesOf({ ...bundle, memories: [{ ...memory, updatedAt: Number.NaN }] })),
     ).toBeNull();
+  });
+
+  it('preserves the silk length through the cloud save format', () => {
+    const session = new SimSession(4);
+    const cargo = session.addEntity('apple', 0, -1);
+    session.world.tethers.set(cargo.id, {
+      sourceId: session.actor.entity.id,
+      targetId: cargo.id,
+      length: 3.75,
+    });
+    const bundle = { ...sample(), world: captureBody(session, null) };
+    const parsed = parseBundle(bundleBytes(bundle));
+    expect(parsed?.world.entities).toContainEqual(cargo);
+    expect(parsed?.world.tethers).toEqual([
+      { sourceId: session.actor.entity.id, targetId: cargo.id, length: 3.75 },
+    ]);
   });
 
   it('reads a lease and rejects a bad one', () => {

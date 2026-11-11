@@ -7,9 +7,9 @@ import {
   Vector3,
   type Material,
 } from 'three';
-import { inkMat } from '@/src/shared/sim/parts';
+import { inkMat } from '@/src/client/rig/parts';
 
-export { tubeGeometry } from '@/src/shared/tubeGeometry';
+export { tubeGeometry } from '@/src/client/tubeGeometry';
 
 export function lineFrom(flat: readonly number[], material: Material = inkMat): LineSegments {
   const geometry = new BufferGeometry();

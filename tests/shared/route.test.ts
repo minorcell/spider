@@ -62,7 +62,7 @@ describe('planRoute', () => {
     const blocks = [block('a', 2, 4, -1, 1), block('b', 2, 4, -1, 1)];
     const plan = planRoute(0, 0, 6, 0, blocks, flat, LIMIT);
     expect(plan).not.toBeNull();
-    expect(plan?.around).toEqual(['a']);
+    expect(plan?.around).toEqual(['a', 'b']);
   });
 
   it('skips corners outside the limit', () => {

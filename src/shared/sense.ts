@@ -10,12 +10,12 @@ export interface Ahead {
   open: number;
   by: 'clear' | 'wall' | 'slope' | 'edge';
   id: string | null;
-  kind: 'nest' | 'solid' | null;
+  kind: string | null;
 }
 
 export interface NearbySolid {
   id: string;
-  kind: 'nest' | 'solid';
+  kind: string;
   distance: number;
   bearing: number;
 }
@@ -26,15 +26,11 @@ const round = (value: number, places = 2): number => {
   return rounded === 0 ? 0 : rounded;
 };
 
-function kindOfBlock(id: string): 'nest' | 'solid' {
-  return id.startsWith('nest') ? 'nest' : 'solid';
-}
-
 interface Probe {
   open: number;
   by: 'clear' | 'wall' | 'slope' | 'edge';
   id: string | null;
-  kind: 'nest' | 'solid' | null;
+  kind: string | null;
 }
 
 export function aheadAt(
@@ -46,7 +42,7 @@ export function aheadAt(
   inside?: (x: number, z: number, margin?: number) => boolean,
 ): Ahead {
   const here = blockAt(x, z, blocks);
-  if (here) return { open: 0, by: 'wall', id: here.id, kind: kindOfBlock(here.id) };
+  if (here) return { open: 0, by: 'wall', id: here.owner ?? here.id, kind: here.kind ?? 'solid' };
   return probe(x, z, heading, height, blocks, inside);
 }
 
@@ -72,7 +68,13 @@ function probe(
       return { open: round(traveled - STEP), by: 'edge', id: null, kind: null };
     const ground = height(nx, nz);
     const hit = blockAt(nx, nz, blocks);
-    if (hit) return { open: round(traveled), by: 'wall', id: hit.id, kind: kindOfBlock(hit.id) };
+    if (hit)
+      return {
+        open: round(traveled),
+        by: 'wall',
+        id: hit.owner ?? hit.id,
+        kind: hit.kind ?? 'solid',
+      };
     if (ground - previous > GAIT.maxSlope * STEP)
       return { open: round(traveled), by: 'slope', id: null, kind: null };
     previous = ground;
@@ -231,8 +233,8 @@ export function senseBody(
     if (distance > NEAR) continue;
     const bearing = (((Math.atan2(cx - x, -(cz - z)) * 180) / Math.PI - heading + 540) % 360) - 180;
     nearby.push({
-      id: block.id,
-      kind: kindOfBlock(block.id),
+      id: block.owner ?? block.id,
+      kind: block.kind ?? 'solid',
       distance: round(distance),
       bearing: round(bearing, 1),
     });

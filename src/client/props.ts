@@ -1,12 +1,40 @@
-import type { Group } from 'three';
+import { Color, Group, Mesh, MeshLambertMaterial, SphereGeometry } from 'three';
+import { kindOf } from '@/src/shared/kinds';
 import type { Footprint } from '@/src/shared/state';
 import { buildApple } from '@/src/client/appleMesh';
-import { buildGrass, type GrassStyle } from '@/src/client/grassMesh';
+import { buildGrass, drapeGrass, type GrassStyle } from '@/src/client/grassMesh';
 import { buildStone } from '@/src/client/models/stone';
+import { treeForm } from '@/src/shared/treeForm';
 import { buildTree } from '@/src/client/models/tree';
 import { buildNest } from '@/src/client/nest';
+import { buildBerry, buildPebble } from '@/src/client/models/smallItems';
 
 export { drapeGrass } from '@/src/client/grassMesh';
+
+const roundMaterials = new Map<number, MeshLambertMaterial>();
+const rottenMaterials = new WeakMap<MeshLambertMaterial, MeshLambertMaterial>();
+const freshMaterials = new WeakMap<MeshLambertMaterial, MeshLambertMaterial>();
+const rottenColor = new Color(0x756345);
+
+/** Palette variants are shared assets; changing one item never recolors its neighbours. */
+export function showFreshness(group: Group, rotten: boolean): void {
+  group.traverse((node) => {
+    if (!(node instanceof Mesh) || !(node.material instanceof MeshLambertMaterial)) return;
+    const base = freshMaterials.get(node.material) ?? node.material;
+    if (!rotten) {
+      node.material = base;
+      return;
+    }
+    let material = rottenMaterials.get(base);
+    if (!material) {
+      material = base.clone();
+      material.color.lerp(rottenColor, 0.78);
+      rottenMaterials.set(base, material);
+      freshMaterials.set(material, base);
+    }
+    node.material = material;
+  });
+}
 
 const STYLES: readonly GrassStyle[] = ['thin', 'seed', 'broad'];
 
@@ -34,21 +62,67 @@ export function buildProp(
   footprint?: Footprint,
   id = '',
 ): Group | null {
-  if (kind === 'apple') return buildApple(stage);
-  if (kind === 'nest') return buildNest();
-  if (kind === 'grass') {
-    const radius = footprint?.kind === 'circle' ? footprint.r : 1.7;
-    const { style, seed } = grassStyle(id);
-    return buildGrass(radius, seed, style);
+  const spec = kindOf(kind);
+  const model = spec?.model;
+  if (!model) return null;
+  const progress = spec.eat ? Math.max(0, Math.min(1, stage / spec.eat.bites)) : 0;
+  if (typeof model === 'object') {
+    const radius = spec.physics?.radius ?? 0.2;
+    const size = radius * Math.cbrt(Math.max(0.15, 1 - progress));
+    let material = roundMaterials.get(model.color);
+    if (!material) {
+      material = new MeshLambertMaterial({ color: model.color, flatShading: true });
+      roundMaterials.set(model.color, material);
+    }
+    const mesh = new Mesh(new SphereGeometry(size, model.segments, 8), material);
+    mesh.position.y = radius;
+    const group = new Group().add(mesh);
+    group.scale.setScalar(spec.modelScale ?? 1);
+    return group;
   }
-  if (kind === 'tree') {
-    const radius = circleRadius(footprint, 0.4);
-    return buildTree(propSeed(id, 13), 2.55 + radius * 3.3);
-  }
-  if (kind === 'stone' || kind === 'bog-stone') {
-    const bog = kind === 'bog-stone';
-    const radius = circleRadius(footprint, bog ? 0.75 : 0.8);
-    return buildStone(propSeed(id, bog ? 41 : 29), radius / 0.82, bog);
-  }
-  return null;
+  const group = modelOf(model)?.build(progress, footprint, id, spec.physics?.radius ?? 0.2);
+  if (!group) return null;
+  group.scale.multiplyScalar(spec.modelScale ?? 1);
+  return group;
+}
+
+interface ModelSpec {
+  build(stage: number, footprint: Footprint | undefined, id: string, radius: number): Group;
+  drape?: typeof drapeGrass;
+}
+
+/** Presentation assets are registered separately from gameplay capabilities. */
+export const MODELS: Record<string, ModelSpec> = {
+  berry: { build: (progress, _footprint, _id, radius) => buildBerry(progress, radius) },
+  pebble: { build: (_progress, _footprint, id, radius) => buildPebble(propSeed(id, 71), radius) },
+  apple: { build: (stage) => buildApple(stage) },
+  nest: { build: () => buildNest() },
+  grass: {
+    build: (_stage, footprint, id) => {
+      const { style, seed } = grassStyle(id);
+      return buildGrass(circleRadius(footprint, 1.7), seed, style);
+    },
+    drape: drapeGrass,
+  },
+  tree: {
+    build: (_stage, footprint, id) => {
+      const form = treeForm(id, footprint);
+      return buildTree(form.seed, form.height, form);
+    },
+  },
+  stone: {
+    build: (_stage, footprint, id) => buildStone(id, footprint, false),
+  },
+  'bog-stone': {
+    build: (_stage, footprint, id) => buildStone(id, footprint, true),
+  },
+};
+
+export function propDrape(kind: string): ModelSpec['drape'] {
+  const model = kindOf(kind)?.model;
+  return typeof model === 'string' ? modelOf(model)?.drape : undefined;
+}
+
+function modelOf(id: string): ModelSpec | undefined {
+  return Object.hasOwn(MODELS, id) ? MODELS[id] : undefined;
 }

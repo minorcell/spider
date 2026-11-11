@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Mesh } from 'three';
 import { grassClumps, grassOnDryGround, grassRadius, grassSeed } from '@/src/shared/grass';
-import { grassHere } from '@/src/shared/sight';
+import { coverAt } from '@/src/shared/sight';
 import { buildProp } from '@/src/client/props';
 
 describe('grass shape', () => {
@@ -15,13 +15,13 @@ describe('grass shape', () => {
       stage: 0,
       footprint: { kind: 'circle' as const, r: 1 },
     };
-    const query = (x: number, z: number) => grassHere(x, z, [entity], 0);
-    expect(query(0, 0)).toBe(true);
-    expect(query(0, 0)).toBe(true);
+    const query = (x: number, z: number) => coverAt(x, z, [entity], 0);
+    expect(query(0, 0)).toBeTruthy();
+    expect(query(0, 0)).toBeTruthy();
     entity.footprint.r = 2;
-    expect(query(0, 0)).toBe(true);
+    expect(query(0, 0)).toBeTruthy();
     entity.id = 'grass-2';
-    expect(query(0, 0)).toBe(true);
+    expect(query(0, 0)).toBeTruthy();
   });
 
   it('rejects a wet edge or a small water pocket even with a dry center', () => {
@@ -64,10 +64,10 @@ describe('grass shape', () => {
         footprint: { kind: 'circle' as const, r: radius },
       };
       for (const clump of clumps) {
-        expect(grassHere(clump.x, clump.z, [entity], 0.5)).toBe(true);
-        expect(grassHere(clump.x, clump.z, [entity], 2)).toBe(false);
+        expect(coverAt(clump.x, clump.z, [entity], 0.5)).toBeTruthy();
+        expect(coverAt(clump.x, clump.z, [entity], 2)).toBeNull();
       }
-      expect(grassHere(radius, 0, [entity], 0)).toBe(false);
+      expect(coverAt(radius, 0, [entity], 0)).toBeNull();
     }
   });
 });

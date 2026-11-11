@@ -1,8 +1,12 @@
+import { onWorldCommit } from '@/src/shared/changes';
 import { localDate } from '@/src/shared/dates';
+import { canonicalText } from '@/src/client/cloud/bytes';
 import type { SnapshotStore } from '@/src/client/storage/snapshot';
 import { PersistentCache } from '@/src/client/store/cache';
 import {
+  FORMAT,
   applyBody,
+  bodyOfRecord,
   captureBody,
   chooseRecord,
   classify,
@@ -29,7 +33,7 @@ import {
 const SAVE_MS = 10_000;
 const LEASE_MS = 30_000;
 const POKE_MS = 400;
-const APPLE_DIRTY_S = 5;
+const CLOCK_DIRTY_S = 5;
 const MOVE_M = 0.05;
 const YAW_M = 0.02;
 const OPEN_MS = 1500;
@@ -42,6 +46,7 @@ export interface BootNote {
 
 type Reason = 'interval' | 'hide' | 'poke';
 
+let stopWorldChanges: (() => void) | null = null;
 let installed = false;
 let readonly = false;
 let dbDeferred = false;
@@ -158,6 +163,8 @@ export function writesDone(): Promise<void> {
 }
 
 export function resetWorldStore(): void {
+  stopWorldChanges?.();
+  stopWorldChanges = null;
   if (timer) clearInterval(timer);
   timer = undefined;
   if (pokeTimer) clearTimeout(pokeTimer);
@@ -218,10 +225,10 @@ export async function restoreWorld(
     };
   }
   if (!readLease()) setLease(chosen.owner, chosen.leaseUntil);
-  await adoptBody(session, strip(chosen));
+  await adoptBody(session, bodyOfRecord(chosen));
   pending = chosen.pending;
   seenSeq = chosen.seq;
-  lastBody = strip(chosen);
+  lastBody = bodyOfRecord(chosen);
   cache.hydrate(chosen);
   if (dbOpen && !dbDeferred) await mirror(chosen, ls, idb);
   return {
@@ -233,6 +240,22 @@ export async function restoreWorld(
 
 export function installWorldStore(session: Restorable, store?: SnapshotStore): void {
   if (store) providedStore = store;
+  if (sessionRef !== session && pokeTimer) {
+    clearTimeout(pokeTimer);
+    pokeTimer = undefined;
+  }
+  stopWorldChanges?.();
+  stopWorldChanges = onWorldCommit(session.world, ({ events }) => {
+    if (
+      events.some(
+        (event) =>
+          event.kind !== 'restored' &&
+          event.kind !== 'blocked' &&
+          event.kind !== 'freshnessChanged',
+      )
+    )
+      flushSoon('poke');
+  });
   sessionRef = session;
   installed = true;
   if (!owner) owner = pageOwner();
@@ -272,11 +295,15 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
   const now = Date.now();
   const today = localDate(new Date(now));
   const body = captureBody(session, pending);
-  const slack = reason === 'interval' ? APPLE_DIRTY_S : 0.05;
+  const slack = reason === 'interval' ? CLOCK_DIRTY_S : 0.05;
   const dirty =
     !lastBody ||
     (reason === 'hide'
-      ? JSON.stringify(lastBody) !== JSON.stringify(body)
+      ? // A fresh host wall sample alone needs no write: deadlines are absolute.
+        canonicalText({
+          ...lastBody,
+          clock: { ...lastBody.clock, wallNowMs: body.clock.wallNowMs },
+        }) !== canonicalText(body)
       : changed(lastBody, body, slack));
   const revision = ++writeRevision;
 
@@ -386,7 +413,7 @@ async function catchUp(): Promise<void> {
   }
   if (!chosen || chosen.seq <= seenSeq || chosen.owner === owner) return;
   setLease(chosen.owner, chosen.leaseUntil);
-  await adoptBody(session, strip(chosen));
+  await adoptBody(session, bodyOfRecord(chosen));
   pending = chosen.pending;
   seenSeq = chosen.seq;
   lastBody = captureBody(session, pending);
@@ -486,7 +513,7 @@ async function reconcile(): Promise<void> {
   }
   if (idb.status !== 'ok' || idb.record.seq <= seenSeq) return;
   setLease(idb.record.owner, idb.record.leaseUntil);
-  await adoptBody(session, strip(idb.record));
+  await adoptBody(session, bodyOfRecord(idb.record));
   pending = idb.record.pending;
   seenSeq = idb.record.seq;
   lastBody = captureBody(session, pending);
@@ -507,7 +534,7 @@ function stamp(body: SimBody, seq: number, now: number, today: string): WorldRec
   return {
     ...body,
     id: 'current',
-    format: 3,
+    format: FORMAT,
     savedAt: now,
     day: today,
     owner,
@@ -520,12 +547,15 @@ export function prefer(a?: WorldRecord, b?: WorldRecord): WorldRecord | undefine
   return a && b ? newer(a, b) : (a ?? b);
 }
 
-function changed(prev: SimBody, next: SimBody, appleSlack: number): boolean {
-  const dx = next.spider.position.x - prev.spider.position.x;
-  const dz = next.spider.position.z - prev.spider.position.z;
+function changed(prev: SimBody, next: SimBody, populationSlack: number): boolean {
+  if (Math.abs(next.clock.simSeconds - prev.clock.simSeconds) >= populationSlack) return true;
+  if (prev.controlledId !== next.controlledId) return true;
+  const before = prev.entities.find((entity) => entity.id === prev.controlledId)!;
+  const after = next.entities.find((entity) => entity.id === next.controlledId)!;
+  const dx = after.x - before.x;
+  const dz = after.z - before.z;
   if (Math.hypot(dx, dz) > MOVE_M) return true;
-  if (yawGap(prev.spider.yaw, next.spider.yaw) > YAW_M) return true;
-  if (prev.sprouts !== next.sprouts) return true;
+  if (yawGap(before.control!.yaw, after.control!.yaw) > YAW_M) return true;
   if (prev.seed !== next.seed) return true;
   if (
     (prev.pending?.text ?? '') !== (next.pending?.text ?? '') ||
@@ -533,9 +563,35 @@ function changed(prev: SimBody, next: SimBody, appleSlack: number): boolean {
   ) {
     return true;
   }
-  if (prev.appleIn - next.appleIn >= appleSlack) return true;
+  const priorPopulations = prev.populations;
+  const nextPopulations = next.populations;
+  if (Object.keys(priorPopulations).length !== Object.keys(nextPopulations).length) return true;
+  for (const [id, state] of Object.entries(nextPopulations)) {
+    const before = priorPopulations[id];
+    if (
+      !before ||
+      before.attempts !== state.attempts ||
+      before.remaining - state.remaining >= populationSlack
+    )
+      return true;
+  }
+  const priorSerials = prev.entitySerials;
+  const nextSerials = next.entitySerials;
+  if (Object.keys(priorSerials).length !== Object.keys(nextSerials).length) return true;
+  if (Object.entries(nextSerials).some(([kind, serial]) => priorSerials[kind] !== serial))
+    return true;
   if (!sameMarks(prev.marks, next.marks)) return true;
-  return !sameList(prev.entities, next.entities) || !sameList(prev.carrying, next.carrying);
+  if (prev.tethers.length !== next.tethers.length) return true;
+  if (
+    prev.tethers.some(
+      (tether, i) =>
+        tether.sourceId !== next.tethers[i].sourceId ||
+        tether.targetId !== next.tethers[i].targetId ||
+        tether.length !== next.tethers[i].length,
+    )
+  )
+    return true;
+  return !sameList(prev.entities, next.entities, next.controlledId);
 }
 
 function sameMarks(a: SimBody['marks'], b: SimBody['marks']): boolean {
@@ -551,15 +607,18 @@ function sameMarks(a: SimBody['marks'], b: SimBody['marks']): boolean {
   });
 }
 
-function sameList(a: SimBody['entities'], b: SimBody['entities']): boolean {
+function sameList(a: SimBody['entities'], b: SimBody['entities'], controlledId: string): boolean {
   if (a.length !== b.length) return false;
   return a.every((item, index) => {
     const other = b[index];
     return (
       item.id === other.id &&
       item.stage === other.stage &&
-      quant(item.x) === quant(other.x) &&
-      quant(item.z) === quant(other.z) &&
+      canonicalText(item.deadline) === canonicalText(other.deadline) &&
+      item.metabolism?.hunger === other.metabolism?.hunger &&
+      (item.id === controlledId ||
+        (quant(item.x) === quant(other.x) && quant(item.z) === quant(other.z))) &&
+      item.control?.lamp === other.control?.lamp &&
       sameFoot(item.footprint, other.footprint)
     );
   });
@@ -594,20 +653,6 @@ async function adoptBody(session: Restorable, body: SimBody): Promise<void> {
     return;
   }
   session.adopt(body);
-}
-
-function strip(record: WorldRecord): SimBody {
-  return {
-    scenery: record.scenery,
-    seed: record.seed,
-    appleIn: record.appleIn,
-    sprouts: record.sprouts,
-    entities: record.entities,
-    marks: record.marks,
-    carrying: record.carrying,
-    spider: record.spider,
-    pending: record.pending,
-  };
 }
 
 function arm(): void {

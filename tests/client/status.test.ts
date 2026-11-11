@@ -51,13 +51,13 @@ describe('live status', () => {
     await Promise.resolve();
     expect(panel.hidden).toBe(false);
     expect(panel.querySelector('#status-world')!.textContent).toContain('世界种子3');
-    expect(panel.querySelector('#status-spider')!.textContent).toContain('在巢里');
+    expect(panel.querySelector('#status-spider')!.textContent).toContain('在家里');
     expect(panel.querySelector('#status-saved')!.textContent).toContain('没有可用');
-    session.spider.root.position.x = 3;
+    session.actor.position.x = 3;
     await vi.advanceTimersByTimeAsync(1000);
     expect(panel.querySelector('#status-spider')!.textContent).toContain('(3,');
     panel.hidden = true;
-    session.spider.root.position.x = 4;
+    session.actor.position.x = 4;
     await vi.advanceTimersByTimeAsync(1000);
     expect(panel.querySelector('#status-spider')!.textContent).toContain('(3,');
   });

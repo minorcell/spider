@@ -1,9 +1,19 @@
 import { PALETTE } from '@/src/shared/config';
 import { describe, expect, it, vi } from 'vitest';
-import { applyEcologyLighting, EcologySky } from '@/src/client/ecologyView';
+import { applyEcologyLighting, EcologySky, enableWorldShadows } from '@/src/client/ecologyView';
 import { buildIsland } from '@/src/client/groundView';
 import { worldClock } from '@/src/shared/ecology';
-import { Color, InstancedMesh, Matrix4, Mesh, Vector3 } from 'three';
+import { Color, Group, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, Vector3 } from 'three';
+
+it('lets the model gallery receive and cast shadows on its Lambert surfaces', () => {
+  const root = new Group();
+  const paper = new Mesh(undefined, new MeshLambertMaterial());
+  const other = new Mesh();
+  root.add(paper, other);
+  enableWorldShadows(root);
+  expect(paper).toMatchObject({ castShadow: true, receiveShadow: true });
+  expect(other).toMatchObject({ castShadow: false, receiveShadow: false });
+});
 
 describe('applyEcologyLighting', () => {
   it('draws the original 159 cloud puffs in 28 independently culled batches', () => {
@@ -61,9 +71,15 @@ describe('applyEcologyLighting', () => {
     expect(sky.clouds.children[0].position.x).not.toBe(cloudX);
     expect(sky.sun.visible).toBe(true);
     expect(sky.moon.visible).toBe(false);
+    expect(sky.stars.visible).toBe(false);
+    expect(sky.fog.density).toBe(0);
     sky.update(worldClock(new Date(2026, 0, 1, 23)), focus, true, 1);
     expect(sky.sun.visible).toBe(false);
     expect(sky.moon.visible).toBe(true);
+    expect(sky.stars.visible).toBe(true);
+    expect(sky.stars.position).toEqual(focus);
+    expect(sky.stars.geometry.getAttribute('position').count).toBe(220);
+    expect(sky.fog.density).toBeGreaterThan(0);
     sky.update(worldClock(new Date(2026, 0, 1, 23)), focus, true);
     sky.dispose();
   });
@@ -93,7 +109,7 @@ describe('applyEcologyLighting', () => {
     sky.dispose();
   });
 
-  it('keeps the daytime sky on paper and still darkens it at night', () => {
+  it('keeps the daytime paper palette and separates moonlit surfaces from the night sky', () => {
     const backgrounds: Color[] = [];
     const renderer = { setClearColor: (color: Color) => backgrounds.push(color.clone()) };
     for (const hour of [8, 12, 16, 23]) {
@@ -110,9 +126,34 @@ describe('applyEcologyLighting', () => {
     const fill = sky.ambient.color.clone().multiplyScalar(sky.ambient.intensity / Math.PI);
     const altitude = sky.light.position.clone().sub(sky.light.target.position).normalize().y;
     const moon = sky.light.color.clone().multiplyScalar((sky.light.intensity * altitude) / Math.PI);
-    for (const value of fill.toArray()) expect(value).toBeLessThan(0.02);
-    for (const value of fill.clone().add(moon).toArray()) expect(value).toBeLessThan(0.05);
+    // Even in shadow the pale models remain readable; the key reveals their
+    // shape without lifting the whole night scene to daytime exposure.
+    for (const value of fill.toArray()) {
+      expect(value).toBeGreaterThan(0.02);
+      expect(value).toBeLessThan(0.05);
+    }
+    const lit = fill.clone().add(moon);
+    for (const value of lit.toArray()) {
+      expect(value).toBeGreaterThan(0.07);
+      expect(value).toBeLessThan(0.22);
+    }
+    expect(lit.b).toBeGreaterThan(lit.r);
+    expect(lit.r).toBeGreaterThan(fill.r * 2.5);
+    expect(lit.r / backgrounds[3].r).toBeGreaterThan(10);
+    expect(sky.ambient.groundColor.r).toBeLessThan(sky.ambient.color.r);
     expect(sky.moon.visible).toBe(true);
+    sky.dispose();
+  });
+
+  it('keeps a sky fill and an above-horizon light through dawn and dusk', () => {
+    const sky = new EcologySky();
+    for (const hour of [5, 5.9, 6, 6.1, 18, 18.1, 19]) {
+      const clock = worldClock(new Date(2026, 0, 1, Math.floor(hour), (hour % 1) * 60));
+      sky.update(clock, new Vector3(), false);
+      expect(sky.light.position.y).toBeGreaterThanOrEqual(-1e-12);
+      expect(sky.ambient.intensity).toBeGreaterThanOrEqual(Math.PI * 0.055);
+      expect(sky.sun.visible).not.toBe(sky.moon.visible);
+    }
     sky.dispose();
   });
 

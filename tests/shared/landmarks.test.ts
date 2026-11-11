@@ -5,8 +5,21 @@ import { blockedAt } from '@/src/shared/sight';
 import { captureBody } from '@/src/shared/sim/snapshot';
 import { SimSession } from '@/src/shared/sim/session';
 import { WORLD_RADIUS } from '@/src/shared/terrain';
+import { block } from '@/tests/helpers';
 
 describe('home landmarks', () => {
+  it('uses the default body radius when the world has no controlled actor', () => {
+    const world = new SimSession(1).world;
+    world.terrain = {
+      height: (x, z) => (z === 0 && x === 5 ? 2 : z === 0 && x === 3 ? 1 : -2),
+    };
+    world.blocks = [block('wall', 5.51, 6, -0.5, 0.5)];
+    expect(homeLandmarks(world)[1]).toMatchObject({ name: '山顶', x: 3, z: 0 });
+
+    delete world.controlledId;
+    expect(homeLandmarks(world)[1]).toMatchObject({ name: '山顶', x: 5, z: 0 });
+  });
+
   it('keeps home when no dry landmark can be placed', () => {
     const world = new SimSession(1).world;
     world.terrain = { height: () => -2 };
@@ -23,8 +36,9 @@ describe('home landmarks', () => {
     expect(homeLandmarks(world).map((place) => place.name)).toEqual(['巢穴', '山顶']);
   });
 
-  it('derives mountain and rear from each island and preserves user marks on restore', () => {
-    for (const seed of Array.from({ length: 20 }, (_, index) => index + 1)) {
+  it.each(Array.from({ length: 20 }, (_, index) => index + 1))(
+    'derives mountain and rear and preserves user marks on restore for island seed %i',
+    (seed) => {
       const session = new SimSession(seed);
       const [home, peak, rear] = session.landmarks();
       expect(home).toMatchObject({ name: '巢穴', x: 0, z: 0 });
@@ -54,6 +68,6 @@ describe('home landmarks', () => {
       expect(restored.world.marks).toEqual(session.world.marks);
       expect(restored.landmarks()).toEqual(homeLandmarks(restored.world));
       expect(restored.landmarks()).toEqual(session.landmarks());
-    }
-  });
+    },
+  );
 });

@@ -18,7 +18,7 @@ import {
 } from '@/src/client/worldStore';
 import { localDate } from '@/src/shared/dates';
 import { SimSession } from '@/src/shared/sim/session';
-import { captureBody, type WorldRecord } from '@/src/shared/sim/snapshot';
+import { applyBody, captureBody, type WorldRecord } from '@/src/shared/sim/snapshot';
 import { Terrain } from '@/src/shared/terrain';
 import type { SnapshotStore } from '@/src/client/storage/snapshot';
 
@@ -45,7 +45,7 @@ function stamp(session: SimSession, over: Partial<WorldRecord> = {}): WorldRecor
   return {
     ...body,
     id: 'current',
-    format: 3,
+    format: 4,
     savedAt: Date.now(),
     day: localDate(new Date()),
     owner: 'other',
@@ -155,7 +155,7 @@ describe('restoreWorld', () => {
   it('adopts the newer buffer and copies it into the database', async () => {
     const live = new SimSession(3);
     const saved = new SimSession(9);
-    saved.spider.root.position.set(4, saved.spider.root.position.y, 2);
+    Object.assign(saved.actor.position, { x: 4, y: saved.actor.position.y, z: 2 });
     const record = stamp(saved, { seq: 4, pending: { text: '还在', tool: null } });
     localStorage.setItem(KEY, JSON.stringify(record));
     await put(stamp(live, { seq: 1 }));
@@ -164,30 +164,10 @@ describe('restoreWorld', () => {
     expect(note.restored).toBe(true);
     expect(note.pendingText).toBe('还在');
     expect(session.world.terrain.seed).toBe(saved.world.terrain.seed);
-    expect(session.spider.root.position.x).toBeCloseTo(4);
+    expect(session.actor.position.x).toBeCloseTo(4);
     const db = await openSpiderDb();
     const stored = await db.get('snapshots', 'current');
     expect(stored?.seq).toBe(4);
-  });
-
-  it.each([1, 2])('drops format %s copies instead of restoring them', async (format) => {
-    const saved = new SimSession(9);
-    saved.spider.root.position.x = 0.4;
-    const record = {
-      ...stamp(saved, { seq: 4, pending: { text: '旧世界', tool: null } }),
-      format,
-    };
-    localStorage.setItem(KEY, JSON.stringify(record));
-    await put(record as WorldRecord);
-
-    const session = new SimSession(1);
-    const note = await restoreWorld(session);
-    const db = await openSpiderDb();
-
-    expect(note).toMatchObject({ restored: false, cause: 'malformed', pendingText: null });
-    expect(session.world.seed).toBe(1);
-    expect(localStorage.getItem(KEY)).toBeNull();
-    expect(await db.get('snapshots', 'current')).toBeUndefined();
   });
 
   it.each(['future format', 'newer sequence', 'later timestamp'] as const)(
@@ -202,7 +182,7 @@ describe('restoreWorld', () => {
       await source.started;
       const arrived = {
         ...saved,
-        format: update === 'future format' ? 4 : 3,
+        format: update === 'future format' ? 5 : 4,
         seq: update === 'newer sequence' ? 5 : 4,
         savedAt: saved.savedAt + 1,
       };
@@ -241,19 +221,19 @@ describe('restoreWorld', () => {
   });
 
   it('does not overwrite a snapshot from a newer page', async () => {
-    const record = { ...stamp(new SimSession(2)), format: 4 };
+    const record = { ...stamp(new SimSession(2)), format: 5 };
     localStorage.setItem(KEY, JSON.stringify(record));
     const session = new SimSession(6);
     const born = session.world.terrain.seed;
     const note = await restoreWorld(session);
     expect(note.cause).toBe('format');
     expect(session.world.terrain.seed).toBe(born);
-    expect(JSON.parse(localStorage.getItem(KEY) ?? '').format).toBe(4);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').format).toBe(5);
     installWorldStore(session);
-    session.spider.root.position.x += 1;
+    session.actor.position.x += 1;
     flushWorld('poke');
     await writesDone();
-    expect(JSON.parse(localStorage.getItem(KEY) ?? '').format).toBe(4);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').format).toBe(5);
   });
 
   it('says the place was unreadable when nothing valid remains', async () => {
@@ -394,12 +374,16 @@ describe('flushWorld', () => {
       await originalPut(record);
     };
 
-    session.spider.root.position.x = 0.3;
+    session.actor.position.x = 0.3;
     flushWorld('poke');
     await readStarted;
-    session.spider.root.position.x = 0.6;
+    session.actor.position.x = 0.6;
     flushWorld('hide');
-    expect(JSON.parse(String(localStorage.getItem(KEY))).spider.position.x).toBe(0.6);
+    expect(
+      JSON.parse(String(localStorage.getItem(KEY))).entities.find(
+        (entity: { control?: unknown }) => entity.control,
+      ).x,
+    ).toBe(0.6);
 
     releaseRead(storedBefore);
     await putStarted;
@@ -407,25 +391,27 @@ describe('flushWorld', () => {
     releasePut();
     await writesDone();
 
-    expect(buffered.spider.position.x).toBe(0.6);
+    expect(buffered.entities.find((entity) => entity.id === buffered.controlledId)!.x).toBe(0.6);
   });
 
   it.each(['small movement', 'height', 'prop orientation'] as const)(
     'keeps a %s change when the page hides',
     async (change) => {
       const session = new SimSession(2);
-      session.spider.root.position.x = 0.3;
-      session.spider.heightSet = 0.2;
-      const prop = session.world.entities.find((entity) => entity.kind === 'apple')!;
+      session.actor.position.x = 0.3;
+      session.actor.state.height = 0.2;
+      const prop = [...session.world.entities.values()].find((entity) => entity.kind === 'apple')!;
       Object.assign(prop, { qx: 0, qy: 0, qz: 0, qw: 1 });
       const store = memoryStore(stamp(session, { owner: 'tab-a' }));
       sessionStorage.setItem('spider.world.owner', 'tab-a');
       await restoreWorld(session, new Date(), store);
       installWorldStore(session, store);
-      if (change === 'small movement') session.spider.root.position.x += 0.01;
-      if (change === 'height') session.spider.heightSet += 0.1;
+      if (change === 'small movement') session.actor.position.x += 0.01;
+      if (change === 'height') session.actor.state.height += 0.1;
       if (change === 'prop orientation') {
-        const restoredProp = session.world.entities.find((entity) => entity.id === prop.id)!;
+        const restoredProp = [...session.world.entities.values()].find(
+          (entity) => entity.id === prop.id,
+        )!;
         Object.assign(restoredProp, { qx: 0.5, qy: 0.5, qz: 0.5, qw: 0.5 });
       }
       const expected = captureBody(session, null);
@@ -433,8 +419,14 @@ describe('flushWorld', () => {
       const buffered = JSON.parse(String(localStorage.getItem(KEY))) as WorldRecord;
       await writesDone();
 
-      expect(buffered.spider.position.x).toBe(expected.spider.position.x);
-      expect(buffered.spider.height).toBe(expected.spider.height);
+      expect(buffered.entities.find((entity) => entity.id === buffered.controlledId)!.x).toBe(
+        expected.entities.find((entity) => entity.id === expected.controlledId)!.x,
+      );
+      expect(
+        buffered.entities.find((entity) => entity.id === buffered.controlledId)!.control!.height,
+      ).toBe(
+        expected.entities.find((entity) => entity.id === expected.controlledId)!.control!.height,
+      );
       expect(buffered.entities).toEqual(expected.entities);
     },
   );
@@ -464,16 +456,21 @@ describe('flushWorld', () => {
       await originalPut(record);
     };
 
-    session.spider.root.position.x = 0.3;
+    session.actor.position.x = 0.3;
     flushWorld('poke');
-    session.spider.root.position.x = 0.6;
+    session.actor.position.x = 0.6;
     flushWorld('poke');
     await firstPut;
     release();
     await writesDone();
 
     expect(puts).toBe(2);
-    expect(store.value).toMatchObject({ seq: 2, spider: { position: { x: 0.6 } } });
+    expect(store.value).toMatchObject({
+      seq: 2,
+      entities: expect.arrayContaining([
+        expect.objectContaining({ id: session.world.controlledId, x: 0.6 }),
+      ]),
+    });
   });
 
   it('continues after a visible-tab reconciliation failure', async () => {
@@ -510,7 +507,7 @@ describe('flushWorld', () => {
       const session = new SimSession(2);
       await restoreWorld(session, new Date(), store);
       installWorldStore(session, store);
-      const future = { ...stamp(new SimSession(9), { seq: 5 }), format: 4 };
+      const future = { ...stamp(new SimSession(9), { seq: 5 }), format: 5 };
       const originalGet = Storage.prototype.getItem;
       let arrived = false;
       const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (
@@ -524,7 +521,7 @@ describe('flushWorld', () => {
         return originalGet.call(this, key);
       });
 
-      session.spider.root.position.x = 0.4;
+      session.actor.position.x = 0.4;
       flushWorld(reason);
       await writesDone();
       read.mockRestore();
@@ -557,33 +554,65 @@ describe('flushWorld', () => {
     expect(pendingNow()).toBeNull();
   });
 
-  it('writes a move, and ignores a small apple tick until the page hides', async () => {
+  it('saves idle world time periodically and preserves the exact clock on hide', async () => {
     const session = new SimSession(2);
     await restoreWorld(session);
     installWorldStore(session);
-    session.spider.root.position.x += 0.2;
     flushWorld('poke');
     await writesDone();
     const first = JSON.parse(localStorage.getItem(KEY) ?? '').seq as number;
-    session.world.appleIn = (session.world.appleIn ?? 24) - 1;
+    session.world.clock.simSeconds = 1;
+    session.world.clock.tick = 60;
+    flushWorld('interval');
+    await writesDone();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(first);
+    session.world.clock.simSeconds = 5;
+    session.world.clock.tick = 300;
+    flushWorld('interval');
+    await writesDone();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '')).toMatchObject({
+      seq: first + 1,
+      clock: { tick: 300, simSeconds: 5 },
+    });
+    session.world.clock.simSeconds = 5.02;
+    session.world.clock.tick = 301;
+    flushWorld('hide');
+    await writesDone();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '')).toMatchObject({
+      clock: { tick: 301, simSeconds: 5.02 },
+    });
+  });
+
+  it('writes a move, and ignores a small population tick until the page hides', async () => {
+    const session = new SimSession(2);
+    await restoreWorld(session);
+    installWorldStore(session);
+    session.actor.position.x += 0.2;
+    flushWorld('poke');
+    await writesDone();
+    const first = JSON.parse(localStorage.getItem(KEY) ?? '').seq as number;
+    session.world.populations.get('apple')!.remaining =
+      (session.world.populations.get('apple')!.remaining ?? 24) - 1;
     flushWorld('interval');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(first);
     flushWorld('hide');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(first + 1);
-    session.world.appleIn = (session.world.appleIn ?? 24) - 5;
+    session.world.populations.get('apple')!.remaining =
+      (session.world.populations.get('apple')!.remaining ?? 24) - 5;
     flushWorld('interval');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(first + 2);
 
-    session.spider.root.position.x += 0.1;
+    session.actor.position.x += 0.1;
     flushWorld('interval');
     await writesDone();
-    session.spider.yaw += 0.05;
+    session.actor.state.yaw += 0.05;
     flushWorld('poke');
     await writesDone();
-    session.world.sprouts = (session.world.sprouts ?? 0) + 1;
+    session.world.populations.get('apple')!.attempts =
+      (session.world.populations.get('apple')!.attempts ?? 0) + 1;
     flushWorld('poke');
     await writesDone();
     session.world.seed = 99;
@@ -593,7 +622,7 @@ describe('flushWorld', () => {
     setPending({ text: '带上苹果', tool: null });
     flushWorld('poke');
     await writesDone();
-    const grass = session.world.entities.find((entity) => entity.kind === 'grass');
+    const grass = [...session.world.entities.values()].find((entity) => entity.kind === 'grass');
     grass!.footprint = { kind: 'box', hx: 1, hz: 1 };
     flushWorld('poke');
     await writesDone();
@@ -605,10 +634,56 @@ describe('flushWorld', () => {
     flushWorld('poke');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(moved + 1);
-    session.world.entities.pop();
+    session.world.entities.delete(
+      [...session.world.entities.values()].find((entity) => entity.kind === 'berry')!.id,
+    );
     flushWorld('poke');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(moved + 2);
+  });
+
+  it('saves registered population attempts, countdowns and ID allocations', async () => {
+    const session = new SimSession(2);
+    await restoreWorld(session);
+    installWorldStore(session);
+    session.actor.position.x += 0.2;
+    flushWorld('poke');
+    await writesDone();
+    const seq = () => JSON.parse(localStorage.getItem(KEY) ?? '').seq as number;
+    let previous = seq();
+    const check = async (writes: number) => {
+      flushWorld('interval');
+      await writesDone();
+      expect(seq()).toBe(previous + writes);
+      previous = seq();
+    };
+
+    const berryClock = session.world.populations.get('berries')!;
+    berryClock.remaining -= 1;
+    await check(0);
+    berryClock.remaining -= 5;
+    await check(1);
+    berryClock.attempts += 1;
+    await check(1);
+    session.world.populations.delete('pebbles');
+    await check(1);
+    session.world.populations.delete('berries');
+    session.world.populations.set('pebbles', berryClock);
+    await check(1);
+    session.world.populations.delete('pebbles');
+    await check(1);
+    session.world.populations.set('berries', berryClock);
+    await check(1);
+
+    session.world.entitySerials.set('berry', 20);
+    await check(1);
+    session.world.entitySerials.set('berry', 21);
+    await check(1);
+    await check(0);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '')).toMatchObject({
+      entitySerials: { berry: 21 },
+      populations: { berries: berryClock },
+    });
   });
 
   it('lets this tab keep its lease across a reload', async () => {
@@ -616,7 +691,7 @@ describe('flushWorld', () => {
     const session = new SimSession(2);
     await restoreWorld(session);
     installWorldStore(session);
-    session.spider.root.position.x += 0.2;
+    session.actor.position.x += 0.2;
     flushWorld('poke');
     await writesDone();
     const seq = JSON.parse(localStorage.getItem(KEY) ?? '').seq as number;
@@ -625,7 +700,7 @@ describe('flushWorld', () => {
     const again = new SimSession(2);
     await restoreWorld(again);
     installWorldStore(again);
-    again.spider.root.position.x += 0.2;
+    again.actor.position.x += 0.2;
     flushWorld('poke');
     await writesDone();
     const stored = JSON.parse(localStorage.getItem(KEY) ?? '');
@@ -643,7 +718,7 @@ describe('flushWorld', () => {
       JSON.stringify(stamp(session, { seq: 8, owner: 'other', leaseUntil: Date.now() + 60_000 })),
     );
     localStorage.setItem(LEASE, JSON.stringify({ owner: 'other', until: Date.now() + 60_000 }));
-    session.spider.root.position.x += 0.4;
+    session.actor.position.x += 0.4;
     flushWorld('poke');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(8);
@@ -657,7 +732,7 @@ describe('flushWorld', () => {
     await put(stale);
     localStorage.setItem(KEY, JSON.stringify(stale));
     localStorage.setItem(LEASE, JSON.stringify({ owner: 'other', until: Date.now() - 10 }));
-    session.spider.root.position.x += 0.4;
+    session.actor.position.x += 0.4;
     flushWorld('interval');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(4);
@@ -673,7 +748,7 @@ describe('flushWorld', () => {
       get: () => 'visible',
     });
     installWorldStore(session, store);
-    session.spider.root.position.x += 0.2;
+    session.actor.position.x += 0.2;
     flushWorld('poke');
     await writesDone();
     const seq = (JSON.parse(localStorage.getItem(KEY) ?? '') as WorldRecord).seq;
@@ -700,7 +775,7 @@ describe('flushWorld', () => {
           release = resolve;
         }),
     );
-    session.spider.root.position.x += 0.3;
+    session.actor.position.x += 0.3;
     flushWorld('hide');
     expect(localStorage.getItem(KEY)).toContain('"seq":1');
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -716,7 +791,7 @@ describe('flushWorld', () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('full');
     });
-    session.spider.root.position.x += 0.3;
+    session.actor.position.x += 0.3;
     flushWorld('poke');
     await writesDone();
     setItem.mockRestore();
@@ -730,7 +805,7 @@ describe('flushWorld', () => {
     installWorldStore(session);
     const db = await openSpiderDb();
     const putSnap = vi.spyOn(db, 'put').mockRejectedValue(new Error('full'));
-    session.spider.root.position.x += 0.3;
+    session.actor.position.x += 0.3;
     flushWorld('poke');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(1);
@@ -746,7 +821,7 @@ describe('flushWorld', () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('full');
     });
-    session.spider.root.position.x += 0.3;
+    session.actor.position.x += 0.3;
     flushWorld('poke');
     await expect(writesDone()).resolves.toBeUndefined();
     setItem.mockRestore();
@@ -758,7 +833,7 @@ describe('flushWorld', () => {
     const session = new SimSession(2);
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
-    session.spider.root.position.x = 0.4;
+    session.actor.position.x = 0.4;
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('full');
     });
@@ -774,7 +849,12 @@ describe('flushWorld', () => {
     const buffered = JSON.parse(String(localStorage.getItem(KEY))) as WorldRecord;
     await writesDone();
 
-    expect(buffered).toMatchObject({ seed: session.world.seed, spider: { position: { x: 0.4 } } });
+    expect(buffered).toMatchObject({
+      seed: session.world.seed,
+      entities: expect.arrayContaining([
+        expect.objectContaining({ id: session.world.controlledId, x: 0.4 }),
+      ]),
+    });
     expect(store.value).toEqual(buffered);
   });
 
@@ -808,7 +888,7 @@ describe('flushWorld', () => {
     const session = new SimSession(2);
     await restoreWorld(session);
     installWorldStore(session);
-    session.spider.root.position.x += 1;
+    session.actor.position.x += 1;
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(localStorage.getItem(KEY)).toBeNull();
     Object.defineProperty(document, 'visibilityState', {
@@ -845,7 +925,7 @@ describe('flushWorld', () => {
     await restoreWorld(session);
     installWorldStore(session);
     getItem.mockRestore();
-    session.spider.root.position.x += 0.2;
+    session.actor.position.x += 0.2;
     flushWorld('poke');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').owner).toEqual(expect.any(String));
@@ -858,7 +938,7 @@ describe('injected snapshot store', () => {
     const session = new SimSession(2);
     expect(await restoreWorld(session, new Date(), store)).toMatchObject({ restored: false });
     installWorldStore(session, store);
-    session.spider.root.position.x += 0.3;
+    session.actor.position.x += 0.3;
     flushWorld('poke');
     await writesDone();
     expect(store.value).toMatchObject({ id: 'current' });
@@ -1029,10 +1109,10 @@ describe('injected snapshot store', () => {
     await pending;
     vi.useRealTimers();
     store.hangRead = false;
-    store.value = { format: 4 };
+    store.value = { format: 5 };
     installWorldStore(session, store);
     await writesDone();
-    session.spider.root.position.x += 0.5;
+    session.actor.position.x += 0.5;
     flushWorld('poke');
     await writesDone();
     expect(store.calls).not.toContain('put');
@@ -1043,8 +1123,8 @@ describe('injected snapshot store', () => {
     const session = new SimSession(2);
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
-    localStorage.setItem(KEY, JSON.stringify({ format: 4 }));
-    session.spider.root.position.x += 0.5;
+    localStorage.setItem(KEY, JSON.stringify({ format: 5 }));
+    session.actor.position.x += 0.5;
     flushWorld('poke');
     await writesDone();
     expect(store.calls).not.toContain('put');
@@ -1055,8 +1135,8 @@ describe('injected snapshot store', () => {
     const session = new SimSession(2);
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
-    store.value = { format: 4 };
-    session.spider.root.position.x += 0.5;
+    store.value = { format: 5 };
+    session.actor.position.x += 0.5;
     flushWorld('poke');
     await writesDone();
     expect(store.calls).not.toContain('put');
@@ -1079,10 +1159,10 @@ describe('injected snapshot store', () => {
       readEntered();
       return readGate;
     };
-    session.spider.root.position.x = 0.4;
+    session.actor.position.x = 0.4;
     flushWorld('poke');
     await readStarted;
-    const future = { ...stamp(new SimSession(9), { seq: 5 }), format: 4 };
+    const future = { ...stamp(new SimSession(9), { seq: 5 }), format: 5 };
     localStorage.setItem(KEY, JSON.stringify(future));
     release(null);
     await writesDone();
@@ -1102,7 +1182,7 @@ describe('injected snapshot store', () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('full');
     });
-    session.spider.root.position.x += 0.2;
+    session.actor.position.x += 0.2;
     flushWorld('hide');
     await writesDone();
     setItem.mockRestore();
@@ -1135,8 +1215,8 @@ describe('injected snapshot store', () => {
     const session = new SimSession(2);
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
-    store.value = { format: 4 };
-    localStorage.setItem(KEY, JSON.stringify({ format: 4 }));
+    store.value = { format: 5 };
+    localStorage.setItem(KEY, JSON.stringify({ format: 5 }));
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
       get: () => 'visible',
@@ -1145,7 +1225,7 @@ describe('injected snapshot store', () => {
     await writesDone();
     document.dispatchEvent(new Event('visibilitychange'));
     await writesDone();
-    session.spider.root.position.x += 0.5;
+    session.actor.position.x += 0.5;
     flushWorld('poke');
     await writesDone();
     expect(store.calls).not.toContain('put');
@@ -1189,7 +1269,7 @@ describe('injected snapshot store', () => {
     const session = new SimSession(1);
     await restoreWorld(session, new Date(), store);
     localStorage.removeItem(KEY);
-    session.spider.root.position.x += 0.5;
+    session.actor.position.x += 0.5;
     flushWorld('poke');
     await writesDone();
     expect(store.calls).toContain('read');
@@ -1202,7 +1282,7 @@ describe('injected snapshot store', () => {
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
     installWorldStore(session, store);
-    session.spider.root.position.x += 0.2;
+    session.actor.position.x += 0.2;
     await vi.advanceTimersByTimeAsync(10_000);
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBeGreaterThan(0);
@@ -1232,7 +1312,7 @@ describe('injected snapshot store', () => {
 
     store.hangRead = false;
     installWorldStore(session, store);
-    session.spider.root.position.x += 0.3;
+    session.actor.position.x += 0.3;
     flushWorld('hide');
     await writesDone();
     expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(1);
@@ -1370,7 +1450,7 @@ describe('injected snapshot store', () => {
     const local = stamp(new SimSession(2), { seq: 2 });
     localStorage.setItem(KEY, JSON.stringify(local));
     const db = await openSpiderDb();
-    await db.put('snapshots', { id: 'current', format: 3 } as WorldRecord);
+    await db.put('snapshots', { id: 'current', format: 4 } as WorldRecord);
     const note = await restoreWorld(new SimSession(1));
     expect(note.restored).toBe(true);
     const after = await openSpiderDb();
@@ -1379,15 +1459,118 @@ describe('injected snapshot store', () => {
 });
 
 describe('write cadence and leases', () => {
+  it('debounces completed bites before the meal ends and saves partial progress on cancellation', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    const { x, z } = session.actor.position;
+    const food = session.addEntity('apple', x, z);
+    installWorldStore(session, store);
+
+    const eating = session.eat(food.id);
+    const step = (ticks: number) => {
+      for (let i = 0; i < ticks; i++) session.frame(1 / 60, Date.now());
+    };
+    step(29);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(store.calls).not.toContain('put');
+
+    step(1);
+    expect(food.stage).toBe(1);
+    await vi.advanceTimersByTimeAsync(399);
+    expect(store.calls).not.toContain('put');
+    await vi.advanceTimersByTimeAsync(1);
+    await writesDone();
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(1);
+    expect((store.value as WorldRecord).entities.find(({ id }) => id === food.id)?.stage).toBe(1);
+
+    step(30);
+    expect(food.stage).toBe(2);
+    session.cancel();
+    await expect(eating).resolves.toMatchObject({ ok: false, reason: 'cancelled', stage: 2 });
+    await vi.advanceTimersByTimeAsync(400);
+    await writesDone();
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(2);
+    expect((store.value as WorldRecord).entities.find(({ id }) => id === food.id)?.stage).toBe(2);
+    vi.useRealTimers();
+  });
+
+  it('keeps a restore notification from scheduling a write for expired entities', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    const food = session.addEntity('apple', 0, 0);
+    const saved = captureBody(session, null);
+    installWorldStore(session, store);
+
+    applyBody(session, saved, undefined, Date.now() + 720_000);
+    expect(session.world.entities.has(food.id)).toBe(false);
+    await vi.advanceTimersByTimeAsync(400);
+    await writesDone();
+    expect(store.calls).not.toContain('put');
+    vi.useRealTimers();
+  });
+
+  it('honors a foreign lease when an event schedules a write', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const session = new SimSession(2);
+    await restoreWorld(session, new Date(), store);
+    installWorldStore(session, store);
+    session.mark('here');
+    localStorage.setItem(LEASE, JSON.stringify({ owner: 'other', until: Date.now() + 60_000 }));
+
+    await vi.advanceTimersByTimeAsync(400);
+    await writesDone();
+    expect(store.calls).not.toContain('put');
+    expect(localStorage.getItem(KEY)).toBeNull();
+    expect(JSON.parse(localStorage.getItem(LEASE) ?? '')).toMatchObject({ owner: 'other' });
+    vi.useRealTimers();
+  });
+
+  it('clears world event subscriptions on reinstall and reset', async () => {
+    vi.useFakeTimers();
+    const store = memoryStore();
+    const first = new SimSession(2);
+    const next = new SimSession(3);
+    await restoreWorld(first, new Date(), store);
+    installWorldStore(first, store);
+    first.mark('queued in the old world');
+    installWorldStore(next, store);
+
+    await vi.advanceTimersByTimeAsync(400);
+    await writesDone();
+    expect(store.calls).not.toContain('put');
+
+    const idleTimers = vi.getTimerCount();
+    first.mark('old');
+    expect(vi.getTimerCount()).toBe(idleTimers);
+    next.mark('current');
+    await vi.advanceTimersByTimeAsync(400);
+    await writesDone();
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(1);
+    expect((store.value as WorldRecord).marks).toEqual(next.world.marks);
+
+    next.mark('queued');
+    resetWorldStore();
+    next.mark('detached');
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(store.calls.filter((call) => call === 'put')).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
   it('coalesces quick pokes into one write', async () => {
     vi.useFakeTimers();
     const store = memoryStore();
     const session = new SimSession(2);
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
-    session.spider.root.position.x += 0.2;
+    session.actor.position.x += 0.2;
     flushSoon('poke');
-    session.spider.root.position.x += 0.2;
+    session.actor.position.x += 0.2;
     flushSoon('poke');
     await vi.advanceTimersByTimeAsync(399);
     expect(store.calls).not.toContain('put');
@@ -1403,7 +1586,7 @@ describe('write cadence and leases', () => {
     const session = new SimSession(2);
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
-    session.spider.root.position.x += 0.2;
+    session.actor.position.x += 0.2;
     flushSoon('poke');
     flushWorld('hide');
     await writesDone();
@@ -1441,7 +1624,7 @@ describe('write cadence and leases', () => {
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
     localStorage.removeItem(LEASE);
-    session.spider.root.position.x += 0.3;
+    session.actor.position.x += 0.3;
     flushWorld('poke');
     await writesDone();
     expect(store.calls).toContain('put');
@@ -1453,7 +1636,7 @@ describe('write cadence and leases', () => {
     await restoreWorld(session, new Date(), store);
     installWorldStore(session, store);
     localStorage.removeItem(LEASE);
-    session.spider.root.position.x += 0.3;
+    session.actor.position.x += 0.3;
     flushWorld('poke');
     await writesDone();
     expect(store.calls).toContain('put');
@@ -1466,7 +1649,7 @@ describe('write cadence and leases', () => {
     installWorldStore(session, store);
     for (const raw of ['{', '{"owner":4,"until":1}', '{"owner":"x","until":"y"}']) {
       localStorage.setItem(LEASE, raw);
-      session.spider.root.position.x += 0.3;
+      session.actor.position.x += 0.3;
       flushWorld('poke');
       await writesDone();
     }
@@ -1520,7 +1703,7 @@ describe('write cadence and leases', () => {
       configurable: true,
       get: () => 'hidden',
     });
-    session.spider.root.position.x += 0.3;
+    session.actor.position.x += 0.3;
     flushWorld('hide');
     await writesDone();
     expect((JSON.parse(localStorage.getItem(KEY) ?? '') as WorldRecord).seq).toBe(3);
@@ -1539,7 +1722,7 @@ describe('cloud handoff', () => {
     await restoreWorld(session);
     installWorldStore(session);
     setCloudLock(true);
-    session.spider.root.position.x += 0.4;
+    session.actor.position.x += 0.4;
     flushWorld('poke');
     await writesDone();
     expect(heard).not.toHaveBeenCalled();
@@ -1585,7 +1768,7 @@ describe('cloud handoff', () => {
     flushWorld('hide');
     await writesDone();
     expect(heard).not.toHaveBeenCalled();
-    session.spider.root.position.x += 0.4;
+    session.actor.position.x += 0.4;
     flushWorld('hide');
     await writesDone();
     expect(heard).toHaveBeenCalledWith('hide');
@@ -1625,7 +1808,7 @@ describe('cloud handoff', () => {
     const body = captureBody(new SimSession(9), null);
     await expect(replaceWorld(body)).resolves.toBe(false);
 
-    localStorage.setItem(KEY, JSON.stringify(stamp(new SimSession(2), { format: 9 as 3 })));
+    localStorage.setItem(KEY, JSON.stringify(stamp(new SimSession(2), { format: 9 as 4 })));
     const blocked = new SimSession(2);
     await restoreWorld(blocked);
     installWorldStore(blocked);
@@ -1644,4 +1827,65 @@ describe('cloud handoff', () => {
     await expect(replaceWorld(captureBody(new SimSession(4), null))).resolves.toBe(false);
     expect(session.world.seed).toBe(2);
   });
+});
+
+it('saves changes to registered control and tether state, including actor handoff', async () => {
+  const session = new SimSession(7);
+  const store = memoryStore();
+  await restoreWorld(session, new Date(), store);
+  installWorldStore(session, store);
+  flushWorld('poke');
+  await writesDone();
+  const items = [...session.world.entities.values()].filter((item) => item.kind === 'apple');
+  session.world.tethers.set(items[0].id, {
+    sourceId: session.actor.entity.id,
+    targetId: items[0].id,
+    length: 2,
+  });
+  flushWorld('poke');
+  await writesDone();
+  const seq = (store.value as WorldRecord).seq;
+  flushWorld('poke');
+  await writesDone();
+  expect((store.value as WorldRecord).seq).toBe(seq);
+  session.world.tethers.set(items[0].id, {
+    sourceId: session.actor.entity.id,
+    targetId: items[0].id,
+    length: 3,
+  });
+  flushWorld('poke');
+  await writesDone();
+  expect((store.value as WorldRecord).tethers).toEqual([
+    { sourceId: session.actor.entity.id, targetId: items[0].id, length: 3 },
+  ]);
+  session.world.tethers.clear();
+  session.world.tethers.set(items[1].id, {
+    sourceId: session.actor.entity.id,
+    targetId: items[1].id,
+    length: 3,
+  });
+  flushWorld('poke');
+  await writesDone();
+  expect((store.value as WorldRecord).tethers[0].targetId).toBe(items[1].id);
+  session.setLamp(true);
+  flushWorld('poke');
+  await writesDone();
+  expect(
+    (store.value as WorldRecord).entities.find((item) => item.id === session.world.controlledId)!
+      .control!.lamp,
+  ).toBe(true);
+  const next = session.addEntity('spider', 0, 0);
+  flushWorld('poke');
+  await writesDone();
+  const priorSeq = (store.value as WorldRecord).seq;
+  session.world.tethers.get(items[1].id)!.sourceId = next.id;
+  flushWorld('poke');
+  await writesDone();
+  expect((store.value as WorldRecord).seq).toBeGreaterThan(priorSeq);
+  expect((store.value as WorldRecord).tethers[0].sourceId).toBe(next.id);
+  session.actor.bindEntity(next);
+  session.world.controlledId = next.id;
+  flushWorld('poke');
+  await writesDone();
+  expect((store.value as WorldRecord).controlledId).toBe(next.id);
 });

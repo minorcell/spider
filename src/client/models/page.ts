@@ -18,8 +18,8 @@ import {
 } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { PALETTE } from '@/src/shared/config';
-import { islandBuffers } from '@/src/shared/island';
-import { groundMat } from '@/src/shared/sim/parts';
+import { islandBuffers } from '@/src/client/islandMesh';
+import { groundMat } from '@/src/client/rig/parts';
 import { enableWorldShadows } from '@/src/client/ecologyView';
 import { buildProp, drapeGrass } from '@/src/client/props';
 import { buildStone } from '@/src/client/models/stone';
@@ -196,7 +196,11 @@ function createExhibits(round: number): Exhibit[] {
   ];
   stones.forEach((item, index) => {
     const at = spot(item.at[0], item.at[1]);
-    const group = buildStone(5 + index * 14 + seedBase, item.size, false);
+    const group = buildStone(
+      `stone-${5 + index * 14 + seedBase}`,
+      { kind: 'circle', r: item.size * 0.82 },
+      false,
+    );
     group.position.set(at.x, at.y, at.z);
     group.rotation.y = index * 2.1 + round * 0.4;
     exhibits.push({
@@ -213,7 +217,11 @@ function createExhibits(round: number): Exhibit[] {
   ];
   bogs.forEach((item, index) => {
     const at = pondSpot(item.angle);
-    const group = buildStone(41 + index * 16 + seedBase, item.size, true);
+    const group = buildStone(
+      `bog-stone-${41 + index * 16 + seedBase}`,
+      { kind: 'circle', r: item.size * 0.82 },
+      true,
+    );
     group.position.set(at.x, at.y + 0.12, at.z);
     group.rotation.y = index * 1.3 + round * 0.5;
     exhibits.push({

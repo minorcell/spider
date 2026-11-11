@@ -1,5 +1,8 @@
+import { mineralGrain } from '@/src/client/models/surface';
 import {
   BufferGeometry,
+  Color,
+  MeshLambertMaterial,
   Float32BufferAttribute,
   Group,
   LatheGeometry,
@@ -10,16 +13,39 @@ import {
   Vector2,
   Vector3,
 } from 'three';
-import { APPLE_SCALE } from '@/src/shared/config';
-import {
-  appleMat,
-  growShell,
-  inkMat,
-  inkSolidMat,
-  leafMat,
-  paperMat,
-  stemMat,
-} from '@/src/shared/sim/parts';
+import { growShell, inkMat, inkSolidMat, leafMat, stemMat } from '@/src/client/rig/parts';
+
+const appleMat = new MeshLambertMaterial({
+  color: 0xffffff,
+  vertexColors: true,
+  map: mineralGrain,
+  bumpMap: mineralGrain,
+  bumpScale: 0.003,
+});
+const seedMat = new MeshLambertMaterial({ color: 0x705540 });
+
+function paintApple(geometry: LatheGeometry, cut: number): void {
+  const position = geometry.getAttribute('position');
+  const colors: number[] = [];
+  const gold = new Color(0xd9b36f),
+    red = new Color(0xbc6551),
+    flesh = new Color(0xf3ddb0);
+  const tint = new Color();
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i),
+      y = position.getY(i),
+      z = position.getZ(i);
+    const angle = Math.atan2(z, x);
+    const blush = 0.45 + 0.3 * Math.sin(angle + 0.5) + 0.12 * Math.sin(angle * 11 + y * 12);
+    tint
+      .copy(gold)
+      .lerp(red, blush)
+      .multiplyScalar(0.95 + 0.06 * Math.sin(angle * 37 + y * 60));
+    if (x >= cut - 0.0001) tint.copy(flesh);
+    colors.push(tint.r, tint.g, tint.b);
+  }
+  geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+}
 
 function appleProfile(): Vector2[] {
   const raw: readonly (readonly [number, number])[] = [
@@ -137,7 +163,17 @@ function appleLeaf(scale: number): Mesh {
   quad(ink, 0.01, 0, 0.1, 0.02, 0.22, 0.008, scale);
   quad(ink, 0.06, 0.004, 0.12, 0.045, 0.18, 0.02, scale);
   quad(ink, 0.06, 0.004, 0.12, -0.03, 0.18, -0.012, scale);
-  mesh.add(lineFrom(ink));
+  const veins = lineFrom(ink);
+  mesh.add(veins);
+  mesh.name = 'fruit-leaf';
+  for (const surface of [geometry, veins.geometry]) {
+    const vertices = surface.getAttribute('position');
+    for (let i = 0; i < vertices.count; i++) {
+      const lift = Math.sin((vertices.getX(i) / (0.24 * scale)) * Math.PI) * 0.025;
+      vertices.setZ(i, vertices.getZ(i) + lift + vertices.getY(i) * 0.3);
+    }
+  }
+  geometry.computeVertexNormals();
   return mesh;
 }
 
@@ -212,17 +248,19 @@ function radiusAtY(y: number): number {
   return best * 0.995;
 }
 
-export function buildApple(stage: number): Group {
+export function buildApple(progress: number): Group {
   const group = new Group();
   const geometry = appleGeometry();
-  const amount = stage <= 0 ? 0 : stage === 1 ? 0.42 : 0.8;
+  const amount = Math.max(0, Math.min(1, progress)) * 0.96;
   const cutLines: number[] = [];
+  let cutPlane = Infinity;
 
   if (amount > 0) {
     const position = geometry.getAttribute('position');
     let peak = 0;
     for (let i = 0; i < position.count; i++) peak = Math.max(peak, position.getX(i));
     const cut = peak * (1 - amount);
+    cutPlane = cut;
     for (let i = 0; i < position.count; i++) {
       if (position.getX(i) > cut) position.setX(i, cut);
     }
@@ -254,7 +292,7 @@ export function buildApple(stage: number): Group {
       seed.bezierCurveTo(-0.016, 0.018, -0.018, -0.01, 0, -0.026);
       const shape = new ShapeGeometry(seed);
       shape.rotateY(Math.PI / 2);
-      const mesh = new Mesh(shape, paperMat);
+      const mesh = new Mesh(shape, seedMat);
       mesh.position.set(cut + 0.002, 0.33 + dy, dz);
       const outline: number[] = [];
       cubic(outline, [0, -0.026], [0.018, -0.01], [0.016, 0.018], [0, 0.026], 1);
@@ -283,8 +321,10 @@ export function buildApple(stage: number): Group {
     group.add(lineFrom(cutLines));
   }
 
+  paintApple(geometry, cutPlane);
   const apple = new Mesh(geometry, appleMat);
-  apple.add(outlineShell(geometry, 0.008));
+  apple.name = 'fruit-skin';
+  apple.add(outlineShell(geometry, 0.004));
   group.add(apple);
 
   const face: number[] = [];
@@ -316,7 +356,7 @@ export function buildApple(stage: number): Group {
       face.push(Math.cos(a0) * r, y, Math.sin(a0) * r, Math.cos(a1) * r, y, Math.sin(a1) * r);
     }
   };
-  if (stage <= 0) {
+  if (progress <= 0) {
     curveLine(0.5, 0.16, 0.55, 0.012);
     curveLine(-0.7, 0.14, 0.5, 0.01);
     curveLine(2.2, 0.22, 0.58, 0.008);
@@ -342,6 +382,5 @@ export function buildApple(stage: number): Group {
   leaf.rotation.x = -0.2;
   group.add(leaf);
 
-  group.scale.setScalar(APPLE_SCALE);
   return group;
 }

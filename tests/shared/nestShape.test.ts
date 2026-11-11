@@ -8,15 +8,16 @@ import {
   NEST_SCALE_Y,
   nestDoor,
   nestLocalHeight,
+  nestRimRadius,
   nestSurface,
 } from '@/src/shared/nestShape';
 
 describe('nest shape', () => {
-  it('keeps the bowl low, the back high, and the door open', () => {
+  it('keeps the chamber floor low, the rear bank high, and the door open', () => {
     const floor = nestLocalHeight(0, 0);
     expect(floor).toBeCloseTo(NEST_FLOOR);
     const back = Math.PI / 2;
-    const rim = nestLocalHeight(NEST_RI + 0.4, back);
+    const rim = nestLocalHeight(nestRimRadius(back), back);
     expect(rim).toBeGreaterThan(floor + 0.4);
     const door = nestLocalHeight(NEST_RI + 0.4, NEST_DOOR);
     expect(nestDoor(NEST_DOOR)).toBe(1);
@@ -33,6 +34,25 @@ describe('nest shape', () => {
     const outside = nestLocalHeight(NEST_RO - 0.05, angle);
     expect(outside).toBeLessThan(crest);
     expect(outside).toBeGreaterThanOrEqual(0);
+  });
+
+  it('joins the floor to the inner shoulder continuously', () => {
+    for (const angle of [NEST_DOOR, NEST_DOOR + 0.5, 0, Math.PI / 2]) {
+      const inside = nestLocalHeight(NEST_RI - 1e-5, angle);
+      const outside = nestLocalHeight(NEST_RI + 1e-5, angle);
+      expect(outside).toBeCloseTo(inside, 4);
+    }
+  });
+
+  it('eases into the rear crest and down to the outer edge', () => {
+    const angle = Math.PI / 2;
+    const crest = nestRimRadius(angle);
+    const step = 1e-5;
+    const height = nestLocalHeight(crest, angle);
+    const edge = nestLocalHeight(NEST_RO, angle);
+    expect((height - nestLocalHeight(crest - step, angle)) / step).toBeCloseTo(0, 3);
+    expect((nestLocalHeight(crest + step, angle) - height) / step).toBeCloseTo(0, 3);
+    expect((edge - nestLocalHeight(NEST_RO - step, angle)) / step).toBeCloseTo(0, 3);
   });
 
   it('lifts a world point onto the mound and ignores the island beyond it', () => {

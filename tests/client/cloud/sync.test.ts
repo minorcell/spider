@@ -40,7 +40,7 @@ const page = (date: string): MemoryPage => ({
 
 function worldBundle(seed: number, memories: MemoryPage[] = []): CloudBundle {
   return {
-    format: 1,
+    format: 2,
     deviceId: 'remote',
     world: captureBody(new SimSession(seed), null),
     memories,
@@ -214,7 +214,7 @@ describe('cloud sync', () => {
     const uploads = () =>
       cloud.calls.filter(({ url, init }) => url.includes('world.json') && init.method === 'PUT');
     const started = uploads().length;
-    session.spider.root.position.x += 1;
+    session.actor.position.x += 1;
     flushWorld('poke');
     await writesDone();
     await vi.waitFor(() => expect(uploads().length).toBeGreaterThan(started));
@@ -232,7 +232,7 @@ describe('cloud sync', () => {
     await db.put('snapshots', {
       ...captureBody(session, null),
       id: 'current',
-      format: 3,
+      format: 4,
       savedAt: Date.now(),
       day: '2026-11-06',
       owner: 'tab',
@@ -347,7 +347,7 @@ describe('cloud sync', () => {
     await db.put('snapshots', {
       ...captureBody(session, null),
       id: 'current',
-      format: 3,
+      format: 4,
       savedAt: Date.now(),
       day: '2026-11-06',
       owner: 'tab',

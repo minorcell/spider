@@ -1,8 +1,15 @@
+import { mineralGrain } from '@/src/client/models/surface';
+import { mulberry32 } from '@/src/shared/noise';
 import {
   BufferGeometry,
   CylinderGeometry,
   Float32BufferAttribute,
   Group,
+  Color,
+  MeshBasicMaterial,
+  MeshLambertMaterial,
+  MeshStandardMaterial,
+  LineBasicMaterial,
   LatheGeometry,
   LineSegments,
   Mesh,
@@ -14,7 +21,6 @@ import {
 } from 'three';
 import { DECK_Y } from '@/src/shared/config';
 import {
-  eyeMat,
   growShell,
   inkMat,
   inkSolidMat,
@@ -22,8 +28,18 @@ import {
   tubeCrest,
   tubeGeo,
   tubeShell,
-} from '@/src/shared/sim/parts';
+} from '@/src/client/rig/parts';
 
+const bodyMat = new MeshLambertMaterial({
+  color: 0xffffff,
+  vertexColors: true,
+  map: mineralGrain,
+  bumpMap: mineralGrain,
+  bumpScale: 0.008,
+});
+const darkEyeMat = new MeshStandardMaterial({ color: 0x24201d, roughness: 0.16, metalness: 0.12 });
+const glintMat = new MeshBasicMaterial({ color: 0xf5eed9 });
+const hairMat = new LineBasicMaterial({ color: 0x756552, transparent: true, opacity: 0.48 });
 const CEPH_REAR_Z = 0.36;
 const CEPH_Y_SCALE = 0.18 / 0.55;
 const CEPHALOTHORAX: readonly (readonly [number, number])[] = [
@@ -57,8 +73,8 @@ const ABDOMEN: readonly (readonly [number, number])[] = [
 
 const EYES: readonly (readonly [number, number, number, number])[] = [
   [-0.15, 0.04, -0.01, 0.016],
-  [-0.064, 0.02, -0.04, 0.03],
-  [0.064, 0.02, -0.04, 0.03],
+  [-0.066, 0.025, -0.046, 0.046],
+  [0.066, 0.025, -0.046, 0.046],
   [0.15, 0.04, -0.01, 0.016],
   [-0.12, 0.078, 0.02, 0.013],
   [-0.04, 0.086, 0.0, 0.015],
@@ -97,9 +113,54 @@ function spindle(
 }
 
 function paper(parent: Object3D, geo: BufferGeometry, name: string): Mesh {
-  const mesh = new Mesh(geo, spiderMat);
+  const position = geo.getAttribute('position');
+  const normal = geo.getAttribute('normal');
+  const color: number[] = [];
+  const hairs: number[] = [];
+  const base = new Color(0xc9b99d);
+  const stripe = new Color(0x8d7963);
+  const tint = new Color();
+  const rand = mulberry32(name === 'abdomen' ? 136 : 62);
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i),
+      y = position.getY(i),
+      z = position.getZ(i);
+    const top = Math.max(0, normal.getY(i));
+    const abdomen = name === 'abdomen';
+    const pattern = abdomen
+      ? Math.exp(
+          -Math.pow((Math.abs(x) - (0.065 + 0.16 * Math.abs(Math.sin((z - 0.45) * 10)))) * 30, 2),
+        )
+      : Math.min(1, Math.abs(x) * 3.5);
+    tint
+      .copy(base)
+      .lerp(stripe, pattern * top * 0.65)
+      .multiplyScalar(0.94 + rand() * 0.09);
+    color.push(tint.r, tint.g, tint.b);
+    if (i % 3 === 0 && normal.getY(i) > -0.15) {
+      const nx = normal.getX(i),
+        ny = normal.getY(i),
+        nz = normal.getZ(i);
+      const length = 0.012 + rand() * 0.021;
+      hairs.push(
+        x + nx * 0.005,
+        y + ny * 0.005,
+        z + nz * 0.005,
+        x + nx * length,
+        y + ny * length,
+        z + nz * length + 0.009,
+      );
+    }
+  }
+  geo.setAttribute('color', new Float32BufferAttribute(color, 3));
+  const mesh = new Mesh(geo, bodyMat);
   mesh.name = name;
-  mesh.add(new Mesh(growShell(geo, 0.006), inkSolidMat));
+  mesh.add(new Mesh(growShell(geo, 0.004), inkSolidMat));
+  const fuzz = new BufferGeometry();
+  fuzz.setAttribute('position', new Float32BufferAttribute(hairs, 3));
+  const coat = new LineSegments(fuzz, hairMat);
+  coat.name = `${name}-setae`;
+  mesh.add(coat);
   parent.add(mesh);
   return mesh;
 }
@@ -155,11 +216,15 @@ function lay(parent: Object3D, from: Vector3, to: Vector3, radius: number, name:
 
 function eyes(head: Group): void {
   for (const [x, y, z, radius] of EYES) {
-    const mesh = new Mesh(eyeGeo, eyeMat);
+    const mesh = new Mesh(eyeGeo, darkEyeMat);
     mesh.name = 'eye';
     mesh.position.set(x, y, z);
     mesh.scale.setScalar(radius);
-    head.add(mesh);
+    const glint = new Mesh(eyeGeo, glintMat);
+    glint.name = 'eye-glint';
+    glint.scale.setScalar(radius * 0.18);
+    glint.position.set(x - radius * 0.24, y + radius * 0.32, z - radius * 0.88);
+    head.add(mesh, glint);
   }
 }
 
@@ -167,7 +232,7 @@ function mouth(head: Group, side: number): void {
   const pod = new Mesh(podGeo, spiderMat);
   pod.name = 'chelicera';
   pod.position.set(side * 0.05, -0.042, -0.03);
-  pod.scale.set(0.032, 0.05, 0.036);
+  pod.scale.set(0.04, 0.06, 0.045);
   pod.add(new Mesh(podShell, inkSolidMat));
   head.add(pod);
 
@@ -183,7 +248,7 @@ function palp(head: Group, side: number): void {
   const name = side < 0 ? 'pedipalp-left' : 'pedipalp-right';
   const base = new Vector3(side * 0.08, -0.02, 0.04);
   const mid = new Vector3(side * 0.12, -0.045, -0.02);
-  const tip = new Vector3(side * 0.135, -0.06, -0.06);
+  const tip = new Vector3(side * 0.17, -0.07, -0.12);
   lay(head, base, mid, 0.016, name);
   lay(head, mid, tip, 0.01, `${name}-tip`);
 }

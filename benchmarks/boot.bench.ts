@@ -1,16 +1,16 @@
 import { describe, test } from 'vitest';
 import { islandGroup } from '@/src/client/groundView';
 import { buildProp, drapeGrass } from '@/src/client/props';
-import { islandBuffers } from '@/src/shared/island';
+import { islandBuffers } from '@/src/client/islandMesh';
 import { bakeTerrainGrid } from '@/src/shared/terrain';
 import { createWorld } from '@/src/shared/world';
 import { bakeWorkerIsland, SEED } from '@/tests/perf/scenarios';
 
 const world = createWorld(SEED);
 const height = (x: number, z: number): number => world.terrain.height(x, z);
-const nests = world.entities.filter((entity) => entity.kind === 'nest');
-const apples = world.entities.filter((entity) => entity.kind === 'apple');
-const grasses = world.entities.filter((entity) => entity.kind === 'grass');
+const nests = [...world.entities.values()].filter((entity) => entity.kind === 'nest');
+const apples = [...world.entities.values()].filter((entity) => entity.kind === 'apple');
+const grasses = [...world.entities.values()].filter((entity) => entity.kind === 'grass');
 
 function dress(entities: typeof nests): void {
   for (const entity of entities) {
@@ -20,8 +20,8 @@ function dress(entities: typeof nests): void {
 }
 
 describe('boot', () => {
-  test('bake a worker island', async ({ bench }) => {
-    await bench('bake a worker island', () => {
+  test('bake worker island', async ({ bench }) => {
+    await bench('bake worker island', () => {
       return bakeWorkerIsland();
     }).run();
   });

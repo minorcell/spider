@@ -1,6 +1,9 @@
 import {
   Color,
+  BufferGeometry,
   DirectionalLight,
+  Float32BufferAttribute,
+  FogExp2,
   Group,
   HemisphereLight,
   InstancedMesh,
@@ -9,6 +12,8 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  Points,
+  PointsMaterial,
   SphereGeometry,
   Vector3,
   type ColorRepresentation,
@@ -19,15 +24,21 @@ import { worldClock, type WorldClock } from '@/src/shared/ecology';
 import { setGroundLight } from '@/src/client/groundView';
 
 const daySky = new Color(PALETTE.paper);
-const nightSky = new Color(0x07090e);
+const nightSky = new Color(0x0b1423);
 const sky = new Color();
 const cloudDay = new Color(0xf3f1eb);
-const cloudNight = new Color(0x536277);
+const cloudNight = new Color(0x9cacc7);
+const dayFillSky = new Color(0xffffff);
+const dayFillGround = new Color(0xe8e1d4);
+const nightFillSky = new Color(0xb4c8ea);
+const nightFillGround = new Color(0x3f4756);
 
 const dayFill = Math.PI * 0.8;
 const daySun = Math.PI * 0.22;
-const nightFill = Math.PI * 0.012;
-const nightMoon = Math.PI * 0.02;
+// The player reads the paper silhouettes by moonlight. The actor's actual
+// perception range is independent of this exposure and belongs to the world.
+const nightFill = Math.PI * 0.055;
+const nightMoon = Math.PI * 0.16;
 
 export function dayBrightness(clock: WorldClock): number {
   return MathUtils.smoothstep(clock.daylight, 0, 0.35);
@@ -114,8 +125,8 @@ export function applyEcologyLighting(
   const brightness = dayBrightness(clock);
   sky.copy(nightSky).lerp(daySky, brightness);
   renderer.setClearColor(sky, 1);
-  const light = 0.05 + brightness * 0.95;
-  setGroundLight(light * (0.84 + brightness * 0.16), light * (0.89 + brightness * 0.11), light);
+  const light = 0.065 + brightness * 0.935;
+  setGroundLight(light * (0.75 + brightness * 0.25), light * (0.88 + brightness * 0.12), light);
   return clock;
 }
 
@@ -130,6 +141,19 @@ export function enableWorldShadows(root: Object3D): void {
 
 export class EcologySky {
   readonly object = new Group();
+  readonly fog = new FogExp2(daySky, 0);
+  readonly stars = new Points(
+    new BufferGeometry(),
+    new PointsMaterial({
+      color: 0xc8d5e5,
+      size: 0.16,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false,
+    }),
+  );
   readonly clouds = new Group();
   readonly #cloudGeometry = new SphereGeometry(2.6, 10, 6);
   readonly #cloudMaterials = CLOUD_STYLES.map(
@@ -161,6 +185,16 @@ export class EcologySky {
     this.clouds.name = 'clouds';
     this.sun.name = 'sun';
     this.moon.name = 'moon';
+    this.stars.name = 'stars';
+    const next = random(0x57a251);
+    const starPositions: number[] = [];
+    for (let i = 0; i < 220; i++) {
+      const y = 0.06 + next() * 0.94;
+      const angle = next() * Math.PI * 2;
+      const radius = Math.sqrt(1 - y * y);
+      starPositions.push(Math.cos(angle) * radius * 95, y * 95, Math.sin(angle) * radius * 95);
+    }
+    this.stars.geometry.setAttribute('position', new Float32BufferAttribute(starPositions, 3));
     this.light.castShadow = true;
     this.light.shadow.mapSize.set(2048, 2048);
     this.light.shadow.bias = -0.0002;
@@ -190,14 +224,27 @@ export class EcologySky {
       cloud.computeBoundingSphere();
       this.clouds.add(cloud);
     }
-    this.object.add(this.sun, this.moon, this.clouds, this.ambient, this.light, this.light.target);
+    this.object.add(
+      this.sun,
+      this.moon,
+      this.stars,
+      this.clouds,
+      this.ambient,
+      this.light,
+      this.light.target,
+    );
   }
 
   update(clock: WorldClock, focus: Vector3, overlook: boolean, dt = 0): void {
     const brightness = dayBrightness(clock);
+    this.stars.visible = brightness < 1;
+    this.stars.material.opacity = (1 - brightness) ** 2 * 0.6;
+    this.stars.position.copy(focus);
+    this.fog.color.copy(nightSky).lerp(daySky, brightness);
+    this.fog.density = (1 - brightness) * 0.018;
     const angle = clock.dayFraction * Math.PI * 2 - Math.PI / 2;
     this.#sunDirection.set(Math.cos(angle), Math.sin(angle), Math.cos(angle) * 0.35).normalize();
-    const isDay = clock.period !== 'night';
+    const isDay = this.#sunDirection.y >= 0;
     this.sun.visible = isDay;
     this.moon.visible = !isDay;
     this.sun.position.copy(focus).addScaledVector(this.#sunDirection, 90);
@@ -217,8 +264,10 @@ export class EcologySky {
     const altitude = Math.max(0, this.#lightDirection.y);
     const cover = Math.min(1, altitude * 5);
     this.light.intensity = (isDay ? daySun : nightMoon) * cover;
-    this.light.color.setHex(isDay ? 0xfff6e8 : 0xaecbff);
+    this.light.color.setHex(isDay ? 0xfff6e8 : 0x9bbcf4);
     this.ambient.intensity = nightFill + brightness * (dayFill - nightFill);
+    this.ambient.color.copy(nightFillSky).lerp(dayFillSky, brightness);
+    this.ambient.groundColor.copy(nightFillGround).lerp(dayFillGround, brightness);
     this.light.position.copy(focus).addScaledVector(this.#lightDirection, 100);
     this.light.target.position.copy(focus);
     const extent = overlook ? 60 : 24;
@@ -233,6 +282,8 @@ export class EcologySky {
   dispose(): void {
     this.sun.material.dispose();
     this.moon.material.dispose();
+    this.stars.geometry.dispose();
+    this.stars.material.dispose();
     this.#cloudGeometry.dispose();
     for (const cloud of this.clouds.children) (cloud as InstancedMesh).dispose();
     for (const material of this.#cloudMaterials) material.dispose();

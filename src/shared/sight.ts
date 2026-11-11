@@ -1,49 +1,21 @@
-import { grassClumps, grassSeed, type GrassClump } from '@/src/shared/grass';
+import { kindOf, type CoverSpec, type CoverVolume } from '@/src/shared/kinds';
 import type { Block, EntityState } from '@/src/shared/state';
 
-export const HOME = { half: 2.15 } as const;
+export { BODY_RADIUS, blockAt, blockedAt } from '@/src/shared/collision';
 
-export const BODY_RADIUS = 0.48;
-
-export function insideHome(x: number, z: number): boolean {
-  return Math.abs(x) <= HOME.half && Math.abs(z) <= HOME.half;
-}
-
-export function blockAt(
-  x: number,
-  z: number,
-  blocks: readonly Block[],
-  radius = BODY_RADIUS,
-): Block | null {
-  let nearest: Block | null = null;
-  let nearestD = Infinity;
-  const radiusSquared = radius * radius;
-  for (const block of blocks) {
+export function homeAt(x: number, z: number, entities: Iterable<EntityState>): EntityState | null {
+  for (const entity of entities) {
+    const home = kindOf(entity.kind)?.home;
     if (
-      x < block.minX - radius ||
-      x > block.maxX + radius ||
-      z < block.minZ - radius ||
-      z > block.maxZ + radius
+      home &&
+      x >= entity.x - home.half &&
+      x <= entity.x + home.half &&
+      z >= entity.z - home.half &&
+      z <= entity.z + home.half
     )
-      continue;
-    const cx = Math.min(block.maxX, Math.max(block.minX, x));
-    const cz = Math.min(block.maxZ, Math.max(block.minZ, z));
-    const d = (x - cx) ** 2 + (z - cz) ** 2;
-    if (d < radiusSquared && d < nearestD) {
-      nearest = block;
-      nearestD = d;
-    }
+      return entity;
   }
-  return nearest;
-}
-
-export function blockedAt(
-  x: number,
-  z: number,
-  blocks: readonly Block[],
-  radius = BODY_RADIUS,
-): boolean {
-  return blockAt(x, z, blocks, radius) !== null;
+  return null;
 }
 
 export function occluded(
@@ -56,7 +28,7 @@ export function occluded(
   eye: number,
 ): boolean {
   for (const block of blocks) {
-    if (block.id === ignoreId || block.height < eye) continue;
+    if ((block.owner ?? block.id) === ignoreId || block.height < eye) continue;
     if (segmentHits(x0, z0, x1, z1, block)) return true;
   }
   return false;
@@ -91,98 +63,45 @@ export function groundOccluded(
   return false;
 }
 
-export function sightOutline(
-  x: number,
-  z: number,
-  eye: number,
-  view: number,
-  height: (x: number, z: number) => number,
-  blocks: readonly Block[],
-  segments = 72,
-  step = 0.25,
-): { x: number; z: number }[] {
-  const points: { x: number; z: number }[] = [];
-  const outer = Math.max(0, view);
-  const steps = Math.max(1, Math.ceil(outer / step));
-  for (let i = 0; i < segments; i++) {
-    const angle = (i / segments) * Math.PI * 2;
-    const dx = Math.sin(angle);
-    const dz = -Math.cos(angle);
-    let horizon = Number.NEGATIVE_INFINITY;
-    let reach = 0;
-    if (outer <= 0) {
-      points.push({ x, z });
-      continue;
-    }
-    const wall = nearestWall(x, z, dx, dz, blocks, eye, outer);
-    for (let s = 1; s <= steps; s++) {
-      const r = Math.min(outer, s * step);
-      if (r >= wall) break;
-      const px = x + dx * r;
-      const pz = z + dz * r;
-      const ground = height(px, pz);
-      const slope = (ground - eye) / r;
-      if (slope < horizon) break;
-      horizon = Math.max(horizon, (ground - eye - GROUND_CLEARANCE) / r);
-      reach = r;
-      if (r >= outer) break;
-    }
-    points.push({ x: x + dx * reach, z: z + dz * reach });
-  }
-  return points;
-}
-
-export const GRASS_HEIGHT = 1.35;
-
 const coverShapes = new WeakMap<
   EntityState,
-  { id: string; radius: number; clumps: GrassClump[] }
+  { id: string; radius: number; spec: CoverSpec; volumes: readonly CoverVolume[] }
 >();
 
-function coverShape(entity: EntityState, radius: number): GrassClump[] {
+function coverShape(entity: EntityState, radius: number, spec: CoverSpec): readonly CoverVolume[] {
   const cached = coverShapes.get(entity);
-  if (cached && cached.id === entity.id && cached.radius === radius) return cached.clumps;
-  const clumps = grassClumps(radius, grassSeed(entity.id));
-  coverShapes.set(entity, { id: entity.id, radius, clumps });
-  return clumps;
+  if (cached && cached.id === entity.id && cached.radius === radius && cached.spec === spec)
+    return cached.volumes;
+  const volumes = spec.volumes(entity.id, radius);
+  coverShapes.set(entity, { id: entity.id, radius, spec, volumes });
+  return volumes;
 }
 
-export function grassHere(
+/** The strongest containing cover determines perception, independent of the kind name. */
+export function coverAt(
   x: number,
   z: number,
-  entities: readonly EntityState[],
+  entities: Iterable<EntityState>,
   eye = Number.NEGATIVE_INFINITY,
-): boolean {
-  return entities.some(
-    (entity) =>
-      entity.kind === 'grass' &&
+): { kind: string; range: number } | null {
+  let cover: { kind: string; range: number } | null = null;
+  for (const entity of entities) {
+    const spec = kindOf(entity.kind)?.cover;
+    if (
+      spec &&
       entity.footprint?.kind === 'circle' &&
       Math.abs(entity.x - x) <= entity.footprint.r &&
       Math.abs(entity.z - z) <= entity.footprint.r &&
-      coverShape(entity, entity.footprint.r).some(
-        (clump) =>
-          Math.hypot(entity.x + clump.x - x, entity.z + clump.z - z) <= clump.radius &&
-          eye < entity.y + clump.height,
-      ),
-  );
-}
-
-function nearestWall(
-  x: number,
-  z: number,
-  dx: number,
-  dz: number,
-  blocks: readonly Block[],
-  eye: number,
-  reach: number,
-): number {
-  let nearest = Number.POSITIVE_INFINITY;
-  for (const block of blocks) {
-    if (block.height < eye) continue;
-    const entry = segmentEntry(x, z, x + dx * reach, z + dz * reach, block);
-    if (entry != null) nearest = Math.min(nearest, entry * reach);
+      coverShape(entity, entity.footprint.r, spec).some(
+        (volume) =>
+          Math.hypot(entity.x + volume.x - x, entity.z + volume.z - z) <= volume.radius &&
+          eye < entity.y + volume.height,
+      ) &&
+      (!cover || spec.range < cover.range)
+    )
+      cover = { kind: entity.kind, range: spec.range };
   }
-  return nearest;
+  return cover;
 }
 
 function segmentHits(x0: number, z0: number, x1: number, z1: number, block: Block): boolean {

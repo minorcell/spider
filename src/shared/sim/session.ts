@@ -1,3 +1,4 @@
+import { batchWorldChanges, recordWorldChange } from '@/src/shared/changes';
 import {
   toHeading,
   toNear,
@@ -9,39 +10,62 @@ import {
   type Observation,
   type PlaceMark,
   type Sense,
-  type SpiderState,
+  type ActorState,
   type WorldInfo,
   type WorldState,
+  type WorldTime,
 } from '@/src/shared/state';
-import { kindOf, propertiesOf, slicesOf } from '@/src/shared/kinds';
+import { islandActor } from '@/src/shared/islandContent';
+import { kindOf } from '@/src/shared/kinds';
+import { freshnessOf, nourish, tickMetabolism } from '@/src/shared/life';
 import { IDLE_CONTROLS } from '@/src/shared/types';
 import {
   blockedAt,
-  BODY_RADIUS,
   EYE_HEIGHT,
   groundOccluded,
-  insideHome,
+  homeAt,
   occluded,
   SIGHT_TOP,
 } from '@/src/shared/sight';
 import {
+  addEntity,
   createWorld,
+  expireEntities,
   grow,
-  nextPropId,
+  removeEntity,
   REACH,
   REACH_Y,
   restingY,
   VIEW_DISTANCE,
 } from '@/src/shared/world';
-import { insideLand, nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '@/src/shared/terrain';
-import { CARRY_LIMIT, MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
-import { waterAt } from '@/src/shared/water';
-import { heightGoal, routeGoal, turnGoal, walkGoal, type Goal } from '@/src/shared/sim/goals';
+import { nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '@/src/shared/terrain';
+import {
+  MARK_LIMIT,
+  MARK_NAME_MAX,
+  MARK_NOTE_MAX,
+  SIMULATION_STEP_SECONDS,
+} from '@/src/shared/config';
+import {
+  heightGoal,
+  routeGoal,
+  turnGoal,
+  walkGoal,
+  type Goal,
+  type GoalOutcome,
+} from '@/src/shared/sim/goals';
 import { planRoute } from '@/src/shared/route';
+import { registeredFootprint } from '@/src/shared/registeredBodyMotion';
 import { applyBody, type SimBody } from '@/src/shared/sim/snapshot';
-import { bindLegWorld } from '@/src/shared/sim/bindWorld';
-import { stepPhysics } from '@/src/shared/sim/physics';
-import { Spider } from '@/src/shared/sim/Spider';
+import { bindController } from '@/src/shared/sim/bindController';
+import { fitsPlacement, stepPhysics } from '@/src/shared/sim/physics';
+import {
+  carriedItems,
+  attachTether,
+  attachmentFailure,
+  detachTether,
+  heldBy,
+} from '@/src/shared/sim/tether';
+import { Controller } from '@/src/shared/sim/controller';
 import { localDate } from '@/src/shared/dates';
 import { visualRange, worldClock } from '@/src/shared/ecology';
 import { viewDistance } from '@/src/shared/vision';
@@ -60,11 +84,7 @@ function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
-export interface GoalOutcome {
-  ok: boolean;
-  reason?: string;
-  [key: string]: unknown;
-}
+export type { GoalOutcome } from '@/src/shared/sim/goals';
 
 export interface MarkView extends PlaceMark {
   distance: number;
@@ -79,35 +99,39 @@ interface ActiveGoal {
 }
 
 export class SimSession {
-  readonly spider = new Spider();
+  readonly actor: Controller;
+  activity: Readonly<{ kind: 'pick-up'; targetId: string }> | null = null;
+  input = IDLE_CONTROLS;
   readonly world: WorldState;
 
-  constructor(seed?: number, terrain?: Terrain) {
-    this.world = terrain ? createWorld(terrain.seed, terrain) : createWorld(seed);
-    bindLegWorld(this.spider, this.world);
-    this.spider.bindGround((x, z) => this.world.terrain.height(x, z));
-    this.spider.bindWater((x, z) => waterAt(this.world.terrain, x, z));
-    this.spider.bindBlocked(
-      (x, z) =>
-        blockedAt(x, z, this.world.blocks) || !insideLand(this.world.terrain, x, z, BODY_RADIUS),
-    );
+  constructor(seed?: number, terrain?: Terrain, wallNowMs = Date.now()) {
+    this.world = createWorld(terrain?.seed ?? seed, terrain, wallNowMs);
+    const actor = addEntity(this.world, islandActor.kind, islandActor);
+    this.world.controlledId = actor.id;
+    this.actor = new Controller(actor);
+    bindController(this.actor, this.world);
   }
 
   #active: ActiveGoal | null = null;
+  #stepBank = 0;
+  #stepClock: WorldState['clock'] | null = null;
   #landmarkCache: {
     terrain: WorldState['terrain'];
     blocks: WorldState['blocks'];
+    blockCount: number;
     landmarks: Landmark[];
   } | null = null;
 
   landmarks(): Landmark[] {
     if (
       this.#landmarkCache?.terrain !== this.world.terrain ||
-      this.#landmarkCache.blocks !== this.world.blocks
+      this.#landmarkCache.blocks !== this.world.blocks ||
+      this.#landmarkCache.blockCount !== this.world.blocks.length
     ) {
       this.#landmarkCache = {
         terrain: this.world.terrain,
         blocks: this.world.blocks,
+        blockCount: this.world.blocks.length,
         landmarks: homeLandmarks(this.world),
       };
     }
@@ -120,11 +144,11 @@ export class SimSession {
     active.finish({ ok: false, reason: 'cancelled', ...active.goal.result() });
   }
 
-  snapshot(): { state: SpiderState; world: WorldState } {
-    return { state: this.spider.capture(), world: this.world };
+  snapshot(): { state: ActorState; world: WorldState } {
+    return { state: this.actor.capture(), world: this.world };
   }
 
-  worldInfo(now = new Date()): WorldInfo {
+  worldInfo(now = new Date(this.world.clock.wallNowMs)): WorldInfo {
     const clock = worldClock(now);
     const pad = (value: number): string => String(value).padStart(2, '0');
     return {
@@ -134,17 +158,19 @@ export class SimSession {
         phase: clock.period,
         daylight: round3(clock.daylight),
       },
-      lamp: this.spider.lamp,
-      view: round3(visualRange(clock, this.spider.lamp)),
+      lamp: this.actor.lamp,
+      view: round3(visualRange(clock, this.actor.lamp)),
     };
   }
 
   get lamp(): boolean {
-    return this.spider.lamp;
+    return this.actor.lamp;
   }
 
   setLamp(on: boolean): void {
-    this.spider.lamp = on;
+    if (this.actor.lamp === on) return;
+    this.actor.lamp = on;
+    recordWorldChange(this.world, { kind: 'lampChanged', actor: this.actor.entity.id, on });
   }
 
   adopt(body: SimBody): void {
@@ -152,17 +178,17 @@ export class SimSession {
   }
 
   observe(distance = VIEW_DISTANCE): Observation {
-    const { x, z } = this.spider.root.position;
-    const view = viewDistance(this.world, x, z, this.spider.heightSet, this.spider.lamp, distance);
-    return toObservation(this.spider.capture(), this.world, REACH, view, REACH_Y);
+    const { x, z } = this.actor.position;
+    const view = viewDistance(this.world, x, z, this.actor.heightSet, this.actor.lamp, distance);
+    return toObservation(this.actor.capture(), this.world, REACH, view, REACH_Y);
   }
 
   sense(withWays = false): Sense {
-    return toSense(this.spider.capture(), this.world, withWays);
+    return toSense(this.actor.capture(), this.world, withWays);
   }
 
   near(): NearEntity[] {
-    return toNear(this.spider.capture(), this.world, REACH, REACH_Y);
+    return toNear(this.actor.capture(), this.world, REACH, REACH_Y);
   }
 
   mark(name: string, note?: string): GoalOutcome {
@@ -175,10 +201,11 @@ export class SimSession {
       return { ok: false, reason: 'name-taken', name: clean };
     }
     if (this.world.marks.length >= MARK_LIMIT) return { ok: false, reason: 'full' };
-    const { x, z } = this.spider.root.position;
+    const { x, z } = this.actor.position;
     const mark: PlaceMark = { name: clean, x: round3(x), z: round3(z) };
     if (line) mark.note = line;
     this.world.marks.push(mark);
+    recordWorldChange(this.world, { kind: 'marksChanged' });
     return {
       ok: true,
       action: 'mark',
@@ -190,8 +217,8 @@ export class SimSession {
   }
 
   marks(): MarkView[] {
-    const { x, z } = this.spider.root.position;
-    const heading = toHeading(this.spider.yaw);
+    const { x, z } = this.actor.position;
+    const heading = toHeading(this.actor.yaw);
     return this.world.marks
       .map((mark) => {
         const dx = mark.x - x;
@@ -214,6 +241,7 @@ export class SimSession {
     const index = this.world.marks.findIndex((mark) => mark.name === clean);
     if (index === -1) return { ok: false, reason: 'not-found', name: clean };
     this.world.marks.splice(index, 1);
+    recordWorldChange(this.world, { kind: 'marksChanged' });
     return { ok: true, action: 'forget', name: clean };
   }
 
@@ -225,8 +253,36 @@ export class SimSession {
     return { ...(await this.moveTo(mark.x, mark.z, fast)), name: clean };
   }
 
-  frame(dt: number): void {
-    this.#step(Math.min(0.05, Math.max(0, dt)));
+  frame(dt: number, wallNowMs = Date.now()): void {
+    if (!Number.isFinite(dt) || !Number.isFinite(wallNowMs) || wallNowMs < 0) return;
+    this.reconcileWallTime(wallNowMs);
+    if (dt <= 0) return;
+    if (this.#stepClock !== this.world.clock) {
+      this.#stepClock = this.world.clock;
+      this.#stepBank = 0;
+    }
+    this.#stepBank = Math.min(SIMULATION_STEP_SECONDS * 3, this.#stepBank + dt);
+    const steps = Math.floor((this.#stepBank + 1e-9) / SIMULATION_STEP_SECONDS);
+    this.#stepBank = Math.max(0, this.#stepBank - steps * SIMULATION_STEP_SECONDS);
+    for (let i = 0; i < steps; i++)
+      batchWorldChanges(this.world, () => this.#step(SIMULATION_STEP_SECONDS));
+  }
+
+  /** Resume/reload expiry without advancing physics, hunger, actions or populations. */
+  reconcileWallTime(wallNowMs: number): void {
+    if (!Number.isFinite(wallNowMs) || wallNowMs < 0) return;
+    batchWorldChanges(this.world, () => {
+      const previous = { ...this.world.clock };
+      this.world.clock.wallNowMs = wallNowMs;
+      this.#expire(previous);
+    });
+  }
+
+  #expire(previous: WorldTime): void {
+    const removed = expireEntities(this.world, previous);
+    const active = this.#active;
+    if (active?.goal.targets?.some((id) => removed.includes(id)))
+      active.finish({ ...active.goal.result(), ok: false, reason: 'expired' });
   }
 
   run(goal: Goal): Promise<GoalOutcome> {
@@ -236,11 +292,12 @@ export class SimSession {
     return new Promise<GoalOutcome>((resolve) => {
       const active: ActiveGoal = {
         goal,
-        startedAt: this.spider.time,
+        startedAt: this.world.clock.simSeconds,
         guard: undefined as unknown as ReturnType<typeof setTimeout>,
         finish: (outcome: GoalOutcome) => {
           if (this.#active === active) this.#active = null;
           clearTimeout(active.guard);
+          goal.cleanup?.();
           resolve(outcome);
         },
       };
@@ -253,42 +310,40 @@ export class SimSession {
   }
 
   walk(distance: number, fast = false): Promise<GoalOutcome> {
-    return this.run(walkGoal(this.spider, distance, fast));
+    return this.run(walkGoal(this.actor, distance, fast));
   }
 
   turn(degrees: number): Promise<GoalOutcome> {
-    return this.run(turnGoal(this.spider, degrees));
+    return this.run(turnGoal(this.actor, degrees));
   }
 
   turnTo(heading: number): Promise<GoalOutcome> {
-    return this.turn(wrapDegrees(heading - toHeading(this.spider.yaw)));
+    return this.turn(wrapDegrees(heading - toHeading(this.actor.yaw)));
   }
 
   setHeight(level: number): Promise<GoalOutcome> {
-    return this.run(heightGoal(this.spider, level));
+    return this.run(heightGoal(this.actor, level));
   }
 
   async moveTo(x: number, z: number, fast = false): Promise<GoalOutcome> {
-    const limit = WORLD_RADIUS;
-    const blocks = this.world.blocks;
-    const height = (px: number, pz: number) => surfaceOf(this.world.terrain, px, pz);
     let direct = true;
     const around: string[] = [];
     let last: GoalOutcome = { ok: false, reason: 'no-path', detour: null };
 
     for (let attempt = 0; attempt < 3; attempt++) {
-      const { x: x0, z: z0 } = this.spider.root.position;
+      const { x: x0, z: z0 } = this.actor.position;
       if (Math.hypot(x - x0, z - z0) <= 0.28) {
         return { ok: true, reason: 'reached', detour: detourNote(around, direct, true) };
       }
-      const plan = planRoute(x0, z0, x, z, blocks, height, limit);
+      const plan = this.#plan(x0, z0, x, z);
       if (!plan) return { ok: false, reason: 'no-path', detour: detourNote(around, direct, false) };
       direct = direct && plan.direct;
       for (const id of plan.around) if (!around.includes(id)) around.push(id);
-      last = await this.run(routeGoal(this.spider, plan.points, fast));
+      last = await this.run(routeGoal(this.actor, plan.points, fast));
       if (last.reason === 'cancelled') return { ...last, detour: null };
       if (last.ok) return { ok: true, reason: 'reached', detour: detourNote(around, direct, true) };
       if (last.reason !== 'blocked' && last.reason !== 'steep') return { ...last, detour: null };
+      if (Math.hypot(this.actor.position.x - x0, this.actor.position.z - z0) < 0.1) break;
     }
     return {
       ok: false,
@@ -297,16 +352,34 @@ export class SimSession {
     };
   }
 
-  async approach(id: string, standoff = REACH - 0.3, fast = false): Promise<GoalOutcome> {
-    const entity = this.world.entities.find((item) => item.id === id);
-    if (!entity) return { ok: false, reason: 'not-found', id, detour: null };
+  #plan(x0: number, z0: number, x: number, z: number) {
+    const space = this.actor.motionSpace();
+    const { radius, turnRadius } = registeredFootprint(
+      this.actor.spec.clearance,
+      this.actor.radius,
+    );
+    return planRoute(x0, z0, x, z, space.blocks, space.surface, WORLD_RADIUS - radius, {
+      radius,
+      turnRadius,
+      inside: (px, pz) => space.insideRadius(px, pz, radius),
+      maxSlope: space.maxSlope,
+    });
+  }
 
-    const { x, z } = this.spider.root.position;
+  async approach(id: string, standoff = REACH - 0.3, fast = false): Promise<GoalOutcome> {
+    const entity = this.world.entities.get(id);
+    if (!entity || heldBy(this.world, id)) {
+      return { ok: false, reason: 'not-found', id, detour: null };
+    }
+
+    const { x, z } = this.actor.position;
     if (Math.hypot(entity.x - x, entity.z - z) > standoff + 0.05) {
       const spot = this.#standOff(entity, standoff);
       if (!spot) return { ok: false, reason: 'no-path', id, detour: null };
       const moved = await this.moveTo(spot.x, spot.z, fast);
       if (!moved.ok) return { ...moved, id };
+      if (this.world.entities.get(entity.id) !== entity)
+        return { ok: false, reason: 'not-found', id };
       const face = await this.#face(entity.x, entity.z);
       if (!face.ok) return { ...face, id, detour: moved.detour ?? null };
       return { ok: true, reason: 'reached', id, detour: moved.detour ?? null };
@@ -317,111 +390,147 @@ export class SimSession {
   }
 
   eat(id?: string): Promise<GoalOutcome> {
-    const held = id ? this.world.carrying.find((item) => item.id === id) : undefined;
-    let entity = held ?? this.#nearest(id, (item) => propertiesOf(item.kind).includes('edible'));
-    if (!entity && !id)
-      entity =
-        this.world.carrying.find((item) => propertiesOf(item.kind).includes('edible')) ?? null;
+    const edible = (item: EntityState): boolean => {
+      const meal = kindOf(item.kind)?.eat;
+      return !!meal && item.stage < meal.bites && freshnessOf(item, this.world.clock) === 'fresh';
+    };
+    const entity =
+      this.#nearest(id, edible) ?? (!id ? carriedItems(this.world).find(edible) : undefined);
     if (!entity)
       return Promise.resolve({ ok: false, reason: id ? 'not-found' : 'nothing-to-eat', id });
-    if (!propertiesOf(entity.kind).includes('edible')) {
-      return Promise.resolve({ ok: false, reason: 'not-edible', id: entity.id });
-    }
-    if (!this.world.carrying.includes(entity)) {
+    const meal = kindOf(entity.kind)?.eat;
+    if (!meal) return Promise.resolve({ ok: false, reason: 'not-edible', id: entity.id });
+    if (!kindOf(this.actor.entity.kind)?.metabolism || !this.actor.entity.metabolism)
+      return Promise.resolve({ ok: false, reason: 'cannot-eat' });
+    if (entity.stage >= meal.bites)
+      return Promise.resolve({ ok: false, reason: 'depleted', id: entity.id });
+    if (freshnessOf(entity, this.world.clock) !== 'fresh')
+      return Promise.resolve({ ok: false, reason: 'spoiled', id: entity.id });
+    if (!heldBy(this.world, entity.id)) {
       const reach = this.#reachable(entity);
       if (!reach.ok) return Promise.resolve(reach);
     }
 
-    const kind = kindOf(entity.kind);
-    const meal = kind?.eat;
-    if (!kind || !meal) return Promise.resolve({ ok: false, reason: 'not-edible', id: entity.id });
-
-    const startedAt = this.spider.time;
-    const slices = slicesOf(kind);
-    const elapsed0 = slices === 0 ? 0 : (entity.stage * meal.duration) / slices;
-    const remaining = Math.max(0.05, meal.duration - elapsed0);
-    const sync = (): number => {
-      const now = elapsed0 + (this.spider.time - startedAt);
-      if (
-        slices > 0 &&
-        (this.world.entities.includes(entity) || this.world.carrying.includes(entity))
-      ) {
-        const visual = Math.min(meal.stages, Math.floor(now / (meal.duration / slices)));
-        entity.stage = Math.max(entity.stage, visual);
-      }
-      return now;
-    };
+    const target = entity;
+    const startedAt = this.world.clock.simSeconds;
+    const initialBites = target.stage;
+    const biteSeconds =
+      Math.ceil(meal.secondsPerBite / SIMULATION_STEP_SECONDS) * SIMULATION_STEP_SECONDS;
+    const remaining = (meal.bites - initialBites) * biteSeconds;
+    let failure: GoalOutcome | undefined;
+    let nutrition = 0;
+    const result = () => ({
+      action: 'eat',
+      target: target.id,
+      stage: target.stage,
+      nutrition,
+      removed: false,
+    });
 
     return this.run({
+      targets: [target.id],
       timeout: remaining + 1,
       controls: () => IDLE_CONTROLS,
-      done: () => sync() >= meal.duration - 1e-4,
-      result: () => ({ action: 'eat', target: entity.id, stage: entity.stage, removed: false }),
-    }).then((outcome) => {
-      if (!outcome.ok || !meal.removes) return { ...outcome, stage: entity.stage, removed: false };
-      const stage = entity.stage;
-      this.#remove(entity);
-      return { ...outcome, action: 'eat', target: entity.id, stage, removed: true };
+      done: () => {
+        if (this.world.entities.get(target.id) !== target) {
+          failure = { ok: false, reason: 'not-found', id: target.id };
+          return true;
+        }
+        if (freshnessOf(target, this.world.clock) !== 'fresh') {
+          failure = { ok: false, reason: 'spoiled', id: target.id };
+          return true;
+        }
+        const completed = Math.min(
+          meal.bites,
+          initialBites + Math.floor((this.world.clock.simSeconds - startedAt + 1e-8) / biteSeconds),
+        );
+        if (completed <= target.stage) return false;
+        if (!heldBy(this.world, target.id)) {
+          const reach = this.#reachable(target);
+          if (!reach.ok) {
+            failure = reach;
+            return true;
+          }
+        }
+        const gained = (completed - target.stage) * meal.nutritionPerBite;
+        if (!nourish(this.actor.entity, gained)) {
+          failure = { ok: false, reason: 'cannot-eat' };
+          return true;
+        }
+        nutrition += gained;
+        target.stage = completed;
+        recordWorldChange(this.world, {
+          kind: 'bite',
+          actor: this.actor.entity.id,
+          target: target.id,
+          completedBites: completed,
+          nutrition: gained,
+        });
+        return completed === meal.bites;
+      },
+      result,
+      commit: () => {
+        if (failure) return { ...result(), ...failure };
+        if (meal.removes) removeEntity(this.world, target, 'eaten', this.actor.entity.id);
+        return { ...result(), ok: true, reason: 'reached', removed: meal.removes };
+      },
     });
   }
 
   pickUp(id?: string): Promise<GoalOutcome> {
-    if (this.world.carrying.length >= CARRY_LIMIT) {
+    const entity = this.#nearest(id, (item) => kindOf(item.kind)?.carryable !== undefined);
+    if (!entity || this.world.tethers.has(entity.id))
+      return Promise.resolve({ ok: false, reason: id ? 'not-found' : 'nothing-to-carry', id });
+    const failure = attachmentFailure(this.world, this.actor.entity.id, entity.id);
+    if (failure)
       return Promise.resolve({
         ok: false,
-        reason: 'full',
-        carrying: this.world.carrying.map((item) => item.id),
+        reason: failure,
+        id: entity.id,
+        carrying: carriedItems(this.world).map((item) => item.id),
       });
-    }
-    const entity = this.#nearest(id, (item) => propertiesOf(item.kind).includes('carryable'));
-    if (!entity)
-      return Promise.resolve({ ok: false, reason: id ? 'not-found' : 'nothing-to-carry', id });
-    if (!propertiesOf(entity.kind).includes('carryable')) {
-      return Promise.resolve({ ok: false, reason: 'not-carryable', id: entity.id });
-    }
     const reach = this.#reachable(entity);
     if (!reach.ok) return Promise.resolve(reach);
 
-    const startedAt = this.spider.time;
-    this.spider.setInteraction(entity, 'reach');
-    return this.run({
+    const startedAt = this.world.clock.simSeconds;
+    const result = () => ({ action: 'pick-up', target: entity.id });
+    const promise = this.run({
+      targets: [entity.id],
       timeout: 3,
-      controls: () => {
-        const elapsed = this.spider.time - startedAt;
-        if (elapsed < 0.35) {
-          this.spider.setInteraction(entity, 'reach');
-          return IDLE_CONTROLS;
-        }
-        // 拖拽时蜘蛛背向目标施力，果子始终留在地面上，跟在腹部后方。
-        const yaw = this.spider.yaw;
-        const fx = -Math.sin(yaw);
-        const fz = -Math.cos(yaw);
-        entity.x = this.spider.root.position.x - fx * 0.62;
-        entity.z = this.spider.root.position.z - fz * 0.62;
-        entity.y = restingY(this.world.terrain, entity.kind, entity.x, entity.z, entity.footprint);
-        this.spider.setInteraction(entity, 'drag');
-        return { ...IDLE_CONTROLS, throttle: -0.28 };
+      controls: () => IDLE_CONTROLS,
+      done: () => this.world.clock.simSeconds - startedAt >= 0.35,
+      result,
+      commit: () => {
+        if (this.world.entities.get(entity.id) !== entity)
+          return { ok: false, reason: 'not-found', id: entity.id };
+        const reached = this.#reachable(entity);
+        if (!reached.ok) return reached;
+        const attached = attachTether(this.world, this.actor.entity.id, entity.id);
+        if (!attached.ok) return { ok: false, reason: attached.reason, id: entity.id };
+        return { ok: true, ...result(), carrying: carriedItems(this.world).map((item) => item.id) };
       },
-      done: () => this.spider.time - startedAt >= 1.45,
-      result: () => ({ action: 'pick-up', target: entity.id }),
-    }).then((outcome) => {
-      this.spider.setInteraction(null);
-      if (!outcome.ok) return outcome;
-      if (!this.world.entities.includes(entity))
-        return { ok: false, reason: 'not-found', id: entity.id };
-      this.#remove(entity);
-      this.world.carrying.push(entity);
-      return {
-        ok: true,
-        action: 'pick-up',
-        target: entity.id,
-        carrying: this.world.carrying.map((item) => item.id),
-      };
+      cleanup: () => {
+        this.activity = null;
+      },
     });
+    this.activity = { kind: 'pick-up', targetId: entity.id };
+    return promise;
+  }
+
+  release(id?: string): GoalOutcome {
+    const item = this.#carried(id);
+    if (!item) return { ok: false, reason: 'not-carrying', id };
+    detachTether(this.world, item.id, 'released');
+    return {
+      ok: true,
+      action: 'release',
+      target: item.id,
+      carrying: carriedItems(this.world).map((item) => item.id),
+    };
   }
 
   drink(): GoalOutcome {
-    const { x, z } = this.spider.root.position;
+    const { x, z } = this.actor.position;
     const spot = nearestWater(this.world.terrain, x, z, REACH);
     if (!spot) return { ok: false, reason: 'no-water' };
     return {
@@ -436,7 +545,7 @@ export class SimSession {
   drop(id?: string): GoalOutcome {
     const item = this.#carried(id);
     if (!item) return { ok: false, reason: 'not-carrying', id };
-    const spot = this.#spotAhead();
+    const spot = this.#spotAhead(item);
     if (!spot) return { ok: false, reason: 'no-room', id: item.id };
     this.#putDown(item, spot.x, spot.z);
     return {
@@ -445,16 +554,17 @@ export class SimSession {
       target: item.id,
       x: item.x,
       z: item.z,
-      carrying: this.world.carrying.map((held) => held.id),
+      carrying: carriedItems(this.world).map((item) => item.id),
     };
   }
 
   store(id?: string): GoalOutcome {
     const item = this.#carried(id);
     if (!item) return { ok: false, reason: 'not-carrying', id };
-    const { x, z } = this.spider.root.position;
-    if (!insideHome(x, z)) return { ok: false, reason: 'not-home' };
-    const spot = this.#stash();
+    const { x, z } = this.actor.position;
+    const home = homeAt(x, z, this.world.entities.values());
+    if (!home) return { ok: false, reason: 'not-home' };
+    const spot = this.#stash(item, home);
     if (!spot) return { ok: false, reason: 'no-room' };
     this.#putDown(item, spot.x, spot.z);
     return {
@@ -463,59 +573,49 @@ export class SimSession {
       target: item.id,
       x: item.x,
       z: item.z,
-      carrying: this.world.carrying.map((held) => held.id),
+      carrying: carriedItems(this.world).map((item) => item.id),
     };
   }
 
   sleep(): Promise<GoalOutcome> {
-    const { x, z } = this.spider.root.position;
-    if (!insideHome(x, z)) return Promise.resolve({ ok: false, reason: 'not-home' });
+    const { x, z } = this.actor.position;
+    if (!homeAt(x, z, this.world.entities.values()))
+      return Promise.resolve({ ok: false, reason: 'not-home' });
     const duration = 4;
-    const startedAt = this.spider.time;
-    const woke = this.spider.heightSet;
+    const startedAt = this.world.clock.simSeconds;
+    const woke = this.actor.heightSet;
     return this.run({
       timeout: duration + 2,
       controls: () => {
-        const elapsed = this.spider.time - startedAt;
+        const elapsed = this.world.clock.simSeconds - startedAt;
         const target = elapsed < duration * 0.75 ? -0.28 : woke;
         const lift =
-          Math.abs(this.spider.heightSet - target) < 0.02
+          Math.abs(this.actor.heightSet - target) < 0.02
             ? 0
-            : Math.sign(target - this.spider.heightSet);
+            : Math.sign(target - this.actor.heightSet);
         return { ...IDLE_CONTROLS, lift };
       },
       done: () =>
-        this.spider.time - startedAt >= duration && Math.abs(this.spider.heightSet - woke) < 0.05,
+        this.world.clock.simSeconds - startedAt >= duration &&
+        Math.abs(this.actor.heightSet - woke) < 0.05,
       result: () => ({ action: 'sleep', home: true }),
     });
   }
 
-  addEntity(kind: string, x: number, z: number): WorldState['entities'][number] {
-    const entity = {
-      id: nextPropId(this.world, kind),
-      kind,
-      x,
-      y: restingY(this.world.terrain, kind, x, z),
-      z,
-      stage: 0,
-    };
-    this.world.entities.push(entity);
-    return entity;
+  addEntity(kind: string, x: number, z: number): EntityState {
+    return addEntity(this.world, kind, { x, z });
   }
 
   #face(x: number, z: number): Promise<GoalOutcome> {
     const bearing =
-      (Math.atan2(x - this.spider.root.position.x, -(z - this.spider.root.position.z)) * 180) /
-      Math.PI;
-    return this.turn(wrapDegrees(bearing - toHeading(this.spider.yaw)));
+      (Math.atan2(x - this.actor.position.x, -(z - this.actor.position.z)) * 180) / Math.PI;
+    return this.turn(wrapDegrees(bearing - toHeading(this.actor.yaw)));
   }
 
   #standOff(entity: EntityState, standoff: number): { x: number; z: number } | null {
-    const sx = this.spider.root.position.x;
-    const sz = this.spider.root.position.z;
-    const blocks = this.world.blocks;
-    const limit = WORLD_RADIUS;
-    const height = (px: number, pz: number) => surfaceOf(this.world.terrain, px, pz);
+    const sx = this.actor.position.x;
+    const sz = this.actor.position.z;
+    const { blocks, insideRadius } = this.actor.motionSpace();
     const spots: { x: number; z: number; rank: number }[] = [];
     const dx = entity.x - sx;
     const dz = entity.z - sz;
@@ -524,7 +624,7 @@ export class SimSession {
       const travel = Math.max(0, dist - standoff);
       const x = sx + (dx / dist) * travel;
       const z = sz + (dz / dist) * travel;
-      if (!blockedAt(x, z, blocks) && insideLand(this.world.terrain, x, z, BODY_RADIUS)) {
+      if (!blockedAt(x, z, blocks, this.actor.radius) && insideRadius(x, z, this.actor.radius)) {
         spots.push({ x, z, rank: 0 });
       }
     }
@@ -532,33 +632,40 @@ export class SimSession {
       const angle = (i / 12) * Math.PI * 2;
       const x = entity.x + Math.cos(angle) * standoff;
       const z = entity.z + Math.sin(angle) * standoff;
-      if (blockedAt(x, z, blocks) || !insideLand(this.world.terrain, x, z, BODY_RADIUS)) continue;
+      if (blockedAt(x, z, blocks, this.actor.radius) || !insideRadius(x, z, this.actor.radius))
+        continue;
       spots.push({ x, z, rank: Math.hypot(x - sx, z - sz) });
     }
     spots.sort((a, b) => a.rank - b.rank);
     for (const spot of spots) {
-      if (planRoute(sx, sz, spot.x, spot.z, blocks, height, limit)) return spot;
+      if (this.#plan(sx, sz, spot.x, spot.z)) return spot;
     }
     return null;
   }
 
   #nearest(id: string | undefined, want: (entity: EntityState) => boolean): EntityState | null {
-    const { x, z } = this.spider.root.position;
-    const pool = this.world.entities.filter((item) => (id ? item.id === id : want(item)));
-    if (pool.length === 0) return null;
-    return pool.reduce((best, item) =>
-      Math.hypot(item.x - x, item.z - z) < Math.hypot(best.x - x, best.z - z) ? item : best,
-    );
+    const { x, z } = this.actor.position;
+    if (id) return this.world.entities.get(id) ?? null;
+    let nearest: EntityState | null = null;
+    let distance = Infinity;
+    for (const item of this.world.entities.values()) {
+      if (this.world.tethers.has(item.id) || !want(item)) continue;
+      const candidate = Math.hypot(item.x - x, item.z - z);
+      if (candidate >= distance) continue;
+      nearest = item;
+      distance = candidate;
+    }
+    return nearest;
   }
 
   #reachable(entity: EntityState): GoalOutcome {
-    const { x, y, z } = this.spider.root.position;
+    const { x, y, z } = this.actor.position;
     const distance = Math.hypot(entity.x - x, entity.z - z);
     const vertical = Math.abs(entity.y - y);
     if (distance > REACH || vertical > REACH_Y) {
       return { ok: false, reason: 'out-of-reach', id: entity.id, distance };
     }
-    const eye = surfaceOf(this.world.terrain, x, z) + EYE_HEIGHT + this.spider.heightSet;
+    const eye = surfaceOf(this.world.terrain, x, z) + EYE_HEIGHT + this.actor.heightSet;
     if (occluded(x, z, entity.x, entity.z, this.world.blocks, entity.id, eye)) {
       return { ok: false, reason: 'blocked', id: entity.id };
     }
@@ -573,13 +680,14 @@ export class SimSession {
   }
 
   #carried(id?: string): EntityState | null {
-    if (id) return this.world.carrying.find((item) => item.id === id) ?? null;
-    return this.world.carrying[this.world.carrying.length - 1] ?? null;
+    const carried = carriedItems(this.world);
+    if (id) return carried.find((item) => item.id === id) ?? null;
+    return carried.at(-1) ?? null;
   }
 
-  #spotAhead(): { x: number; z: number } | null {
-    const { x, z } = this.spider.root.position;
-    const forward = { x: -Math.sin(this.spider.yaw), z: -Math.cos(this.spider.yaw) };
+  #spotAhead(item: EntityState): { x: number; z: number } | null {
+    const { x, z } = this.actor.position;
+    const forward = { x: -Math.sin(this.actor.yaw), z: -Math.cos(this.actor.yaw) };
     const right = { x: -forward.z, z: forward.x };
     const spots = [
       { x: x + forward.x * 0.85, z: z + forward.z * 0.85 },
@@ -593,25 +701,21 @@ export class SimSession {
         });
       }
     }
-    return spots.find((spot) => this.#roomAt(spot.x, spot.z)) ?? null;
+    return spots.find((spot) => fitsPlacement(this.world, item, spot.x, spot.z)) ?? null;
   }
 
-  #roomAt(x: number, z: number): boolean {
-    if (blockedAt(x, z, this.world.blocks, 0.2)) return false;
-    if (!insideLand(this.world.terrain, x, z, BODY_RADIUS)) return false;
-    return this.world.entities.every((item) => Math.hypot(item.x - x, item.z - z) > 0.4);
-  }
-
-  #stash(): { x: number; z: number } | null {
-    const step = 0.45;
-    const start = 1.15;
+  #stash(item: EntityState, home: EntityState): { x: number; z: number } | null {
+    const {
+      half,
+      storage: { step, start },
+    } = kindOf(home.kind)!.home!;
     for (let column = 0; ; column += 1) {
-      const x = start - column * step;
-      if (!insideHome(x, 0)) break;
+      const x = home.x + start - column * step;
+      if (Math.abs(x - home.x) > half) break;
       for (let row = 0; ; row += 1) {
-        const z = start - row * step;
-        if (!insideHome(x, z)) break;
-        if (this.#roomAt(x, z)) return { x, z };
+        const z = home.z + start - row * step;
+        if (Math.abs(z - home.z) > half) break;
+        if (fitsPlacement(this.world, item, x, z)) return { x, z };
       }
     }
     return null;
@@ -621,80 +725,74 @@ export class SimSession {
     item.x = x;
     item.z = z;
     item.y = restingY(this.world.terrain, item.kind, x, z, item.footprint);
-    this.world.carrying = this.world.carrying.filter((held) => held !== item);
-    this.world.entities.push(item);
-  }
-
-  #remove(entity: EntityState): void {
-    const carried = this.world.carrying.indexOf(entity);
-    if (carried >= 0) {
-      this.world.carrying.splice(carried, 1);
-      return;
-    }
-    const index = this.world.entities.indexOf(entity);
-    if (index >= 0) this.world.entities.splice(index, 1);
+    item.vx = item.vy = item.vz = 0;
+    detachTether(this.world, item.id, 'placed');
   }
 
   #step(dt: number): void {
-    grow(this.world, dt, { x: this.spider.root.position.x, z: this.spider.root.position.z });
+    const previous = { ...this.world.clock };
+    this.world.clock.tick += 1;
+    this.world.clock.simSeconds += dt;
+    this.#expire(previous);
+    tickMetabolism(this.world, dt);
+    const alive =
+      this.world.controlledId === this.actor.entity.id &&
+      this.world.entities.get(this.actor.entity.id) === this.actor.entity;
+    grow(this.world, dt, alive ? this.actor.position : undefined);
+    if (!alive) {
+      this.#active?.finish({ ok: false, reason: 'stale-actor' });
+      this.input = IDLE_CONTROLS;
+      stepPhysics(this.world, undefined, dt);
+      return;
+    }
 
     const active = this.#active;
-    this.spider.update(dt, active ? active.goal.controls() : IDLE_CONTROLS);
-    this.#dragCarried(dt);
-    stepPhysics(
+    const from = {
+      x: this.actor.position.x,
+      y: this.actor.position.y,
+      z: this.actor.position.z,
+    };
+    const stuckBefore = this.actor.stuckFor;
+    const haltBefore = this.actor.halt;
+    const controls = active ? active.goal.controls() : IDLE_CONTROLS;
+    this.actor.update(dt, controls);
+    const position = this.actor.position;
+    const committed = stepPhysics(
       this.world,
       {
-        x: this.spider.root.position.x,
-        z: this.spider.root.position.z,
-        speed: this.spider.speed,
+        x: position.x,
+        z: position.z,
+        speed: this.actor.speed,
+        radius: this.actor.radius,
+        from,
       },
       dt,
     );
+    this.actor.commit(committed, from, stuckBefore, dt, controls);
+    this.input = controls;
+    if (haltBefore === 'clear' && this.actor.halt !== 'clear')
+      recordWorldChange(this.world, {
+        kind: 'blocked',
+        actor: this.actor.entity.id,
+        by: this.actor.halt,
+      });
     if (!active) return;
 
     const reached = active.goal.done();
-    const overtime = this.spider.time - active.startedAt > active.goal.timeout;
+    const overtime = this.world.clock.simSeconds - active.startedAt > active.goal.timeout;
     if (!reached && !overtime) return;
 
     const detail = active.goal.result();
     const halt = detail.halt;
     const stopped = halt === 'solid' || halt === 'steep';
+    if (reached && !stopped && active.goal.commit) {
+      active.finish(active.goal.commit());
+      return;
+    }
     active.finish({
       ok: reached && !stopped,
       reason: stopped ? (halt === 'steep' ? 'steep' : 'blocked') : reached ? 'reached' : 'timeout',
       ...detail,
     });
-  }
-
-  /** Move tethered cargo with spring-damper tension and gravity. */
-  #dragCarried(dt: number): void {
-    if (this.world.carrying.length === 0) return;
-    const yaw = this.spider.yaw;
-    const back = this.spider.root.position;
-    const step = Math.max(dt, 0);
-    for (let i = 0; i < this.world.carrying.length; i++) {
-      const item = this.world.carrying[i];
-      const anchorX = back.x + Math.sin(yaw) * 1.66;
-      const anchorZ = back.z + Math.cos(yaw) * 1.66;
-      const dx = anchorX - item.x;
-      const dz = anchorZ - item.z;
-      const dist = Math.hypot(dx, dz);
-      const rest = 1.2 + i * 0.45;
-      const stretch = Math.max(0, dist - rest);
-      const pull = stretch * 8;
-      item.vx = (item.vx ?? 0) + (dist > 1e-4 ? (dx / dist) * pull * step : 0);
-      item.vz = (item.vz ?? 0) + (dist > 1e-4 ? (dz / dist) * pull * step : 0);
-      item.vx *= Math.exp(-3.5 * step);
-      item.vz *= Math.exp(-3.5 * step);
-      item.x += item.vx * step;
-      item.z += item.vz * step;
-      const floor = restingY(this.world.terrain, item.kind, item.x, item.z, item.footprint);
-      item.vy = (item.vy ?? 0) - 4.5 * step;
-      item.y += item.vy * step;
-      if (item.y < floor) {
-        item.y = floor;
-        item.vy = 0;
-      }
-    }
   }
 }

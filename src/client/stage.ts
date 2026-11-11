@@ -1,11 +1,11 @@
+import { onWorldCommit, type WorldCommit } from '@/src/shared/changes';
 import {
   Group,
   BufferGeometry,
   AdditiveBlending,
-  CatmullRomCurve3,
-  Mesh,
-  MeshBasicMaterial,
-  TubeGeometry,
+  BufferAttribute,
+  Line,
+  LineBasicMaterial,
   MathUtils,
   PerspectiveCamera,
   PCFShadowMap,
@@ -14,11 +14,11 @@ import {
   type Object3D,
 } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
-import { PALETTE } from '@/src/shared/config';
+import { PALETTE, SIMULATION_STEP_SECONDS } from '@/src/shared/config';
 import { kindOf } from '@/src/shared/kinds';
 import { WORLD_RADIUS } from '@/src/shared/terrain';
 import type { EntityState, WorldState } from '@/src/shared/state';
-import type { Spider } from '@/src/shared/sim/Spider';
+import type { Spider } from '@/src/client/rig/Spider';
 import { paintCanvas } from '@/src/ui/dress';
 import { FpsDisplay } from '@/src/client/fps';
 import { onLocalBusy } from '@/src/client/local/activity';
@@ -28,8 +28,16 @@ import { applyEcologyLighting, EcologySky, enableWorldShadows } from '@/src/clie
 import { Headlamp } from '@/src/client/headlamp';
 import { worldClock } from '@/src/shared/ecology';
 import { ObserveOverlay } from '@/src/client/observeView';
-import { buildProp, drapeGrass } from '@/src/client/props';
+import { buildProp, propDrape, showFreshness } from '@/src/client/props';
+import { freshnessOf } from '@/src/shared/life';
 import { createSound } from '@/src/client/sound';
+import { tetherEndpoints } from '@/src/shared/sim/tether';
+import { PoseInterpolation } from '@/src/client/poseInterpolation';
+
+const STEP_SECONDS = SIMULATION_STEP_SECONDS;
+const STEP_MS = STEP_SECONDS * 1000;
+const MAX_STEPS = 3;
+const SILK_SEGMENTS = 8;
 
 // Camera framing. Drag orbits, wheel dollies; both clamp at the same limits.
 const VIEW = {
@@ -55,7 +63,7 @@ const look = new Vector3();
 const desired = new Vector3();
 const bubbleAt = new Vector3();
 
-/** Renderer and camera. It steps the one spider, then paints that same spider. */
+/** Browser renderer and camera over the world and its actor presentation. */
 export class Stage {
   readonly #fps: FpsDisplay;
   readonly #stopLocal: () => void;
@@ -66,38 +74,35 @@ export class Stage {
   readonly #scene = new Scene();
   readonly #camera: PerspectiveCamera;
   readonly #spider: Spider;
+  readonly #poses: PoseInterpolation;
   readonly #props = new Map<string, Group>();
   #island: Group | null = null;
   /** While set, a restored seed waits for the world worker instead of meshing here. */
   #islandPending = false;
   #islandRequest = 0;
   #islandSource: ((seed: number) => Promise<Group>) | null = null;
-  /** Last drawn action stage, so a new bite can make a sound. */
+  /** Last drawn progress, used only to rebuild geometry. */
   readonly #stages = new Map<string, number>();
-  readonly #drapedGrass = new Map<
+  readonly #drapedProps = new Map<
     string,
     { x: number; z: number; terrain: WorldState['terrain'] }
   >();
   #resizeObserver!: ResizeObserver;
   #view = { left: 0, top: 0, width: 1, height: 1 };
   readonly #sound = createSound(window);
-  readonly #silk = new Mesh(
-    new TubeGeometry(new CatmullRomCurve3([new Vector3(), new Vector3()]), 8, 0.014, 6, false),
-    new MeshBasicMaterial({
-      color: 0xbffcff,
-      transparent: true,
-      opacity: 0.95,
-      blending: AdditiveBlending,
-      toneMapped: false,
-    }),
-  );
+  readonly #silks = new Map<string, Line>();
+  readonly #silkMaterial = new LineBasicMaterial({
+    color: 0xbffcff,
+    transparent: true,
+    opacity: 0.95,
+    blending: AdditiveBlending,
+    toneMapped: false,
+  });
   #heard = false;
   readonly #wasLifted: boolean[] = [];
-  /** Ids on the back last frame. Null until the first sync, so birth is silent. */
-  #carried: Set<string> | null = null;
   /** Reused so an idle frame does not allocate a set of ids. */
   readonly #alive = new Set<string>();
-  #halt: 'clear' | 'solid' | 'steep' = 'clear';
+  #stopWorld: (() => void) | null = null;
 
   #yaw: number = VIEW.yaw;
   #pitch: number = VIEW.pitch;
@@ -110,7 +115,7 @@ export class Stage {
   #pointerX = 0;
   #pointerY = 0;
   /** Advance the one simulation, then read its world for the props. */
-  #step: ((dt: number) => void) | null = null;
+  #step: ((dt: number, wallNowMs: number) => void) | null = null;
   /** Cloud hold freezes the spider. The picture keeps drawing. */
   #held = false;
   #world: (() => WorldState) | null = null;
@@ -120,6 +125,7 @@ export class Stage {
   readonly #lookPos = new Vector3();
   #camReady = false;
   #last = performance.now();
+  #stepBank = 0;
   /** Ecology follows local wall time and only needs a once-per-second update. */
   #ecologySecond = -1;
   readonly #sky = new EcologySky();
@@ -129,6 +135,7 @@ export class Stage {
   constructor(host: HTMLElement, spider: Spider) {
     this.#host = host;
     this.#spider = spider;
+    this.#poses = new PoseInterpolation(spider.poseNodes());
 
     // WebGPURenderer defaults to a transparent canvas. The paper sky is opaque.
     this.#renderer = new WebGPURenderer({
@@ -150,6 +157,7 @@ export class Stage {
     });
 
     this.#camera = new PerspectiveCamera(VIEW.fov, 1, VIEW.near, VIEW.far);
+    this.#scene.fog = this.#sky.fog;
     this.#observe = new ObserveOverlay(host);
     enableWorldShadows(this.#spider.root);
     enableWorldShadows(this.#spider.rig);
@@ -160,8 +168,6 @@ export class Stage {
       this.#sky.object,
       waterSplashes,
     );
-    this.#silk.visible = true;
-
     this.#lamp.attach(this.#spider);
 
     this.#bindEvents();
@@ -169,14 +175,19 @@ export class Stage {
   }
 
   /** The render loop steps this once, then draws the same spider. */
-  bind(step: (dt: number) => void, world: () => WorldState): void {
+  bind(step: (dt: number, wallNowMs: number) => void, world: () => WorldState): void {
     this.#step = step;
+    this.#poses.reset();
+    this.#stopWorld?.();
     this.#world = world;
+    this.#stopWorld = onWorldCommit(world(), (commit) => this.#worldFeedback(commit));
   }
 
   /** Freeze the simulation while another computer holds the spider or a choice is open. */
   hold(on: boolean): void {
+    if (this.#held === on) return;
     this.#held = on;
+    this.#resetStepClock();
   }
 
   /** Called after each paint with a point above the spider, in page pixels. */
@@ -197,7 +208,7 @@ export class Stage {
   }
 
   start(): void {
-    this.#last = performance.now();
+    this.#resetStepClock();
     this.#renderer.setAnimationLoop(this.#frame);
   }
 
@@ -217,6 +228,7 @@ export class Stage {
 
   /** The ground mesh is baked once. A restored seed needs a new island. */
   retile(): void {
+    this.#poses.reset();
     const seed = this.#world?.().seed;
     if (this.#islandSource && seed != null) {
       const request = ++this.#islandRequest;
@@ -224,7 +236,10 @@ export class Stage {
       this.#dropIsland();
       void this.#islandSource(seed).then(
         (group) => {
-          if (request !== this.#islandRequest) return;
+          if (request !== this.#islandRequest) {
+            disposeGeometries(group);
+            return;
+          }
           this.placeIsland(group);
         },
         () => {
@@ -242,8 +257,8 @@ export class Stage {
       this.#props.delete(id);
       this.#stages.delete(id);
     }
-    this.#drapedGrass.clear();
-    this.#carried = null;
+    this.#drapedProps.clear();
+    this.#heard = false;
     this.#observe.reset();
     this.#syncWorld();
   }
@@ -257,83 +272,14 @@ export class Stage {
       this.#scene.add(this.#island);
     }
 
-    const held = world.carrying;
-    const carried = this.#carried;
-    if (!carried || carried.size !== held.length || held.some((item) => !carried.has(item.id))) {
-      if (carried) {
-        for (const item of held) if (!carried.has(item.id)) this.#sound.grasp();
-        for (const id of carried) {
-          if (held.some((item) => item.id === id)) continue;
-          if (world.entities.some((item) => item.id === id)) this.#sound.place();
-        }
-      }
-      this.#carried = new Set(held.map((item) => item.id));
-    }
-
     const alive = this.#alive;
     alive.clear();
-    for (const entity of world.entities) {
+    for (const entity of world.entities.values()) {
+      if (entity.id === world.controlledId) continue;
       alive.add(entity.id);
       this.#syncProp(entity, entity.x, entity.y, entity.z, world);
     }
-
-    const back = this.#spider.root.position;
-    const yaw = this.#spider.yaw;
-    // carrying 中的苹果使用自己的物理坐标；蜘蛛只通过蛛丝施加拉力。
-    for (const item of held) {
-      alive.add(item.id);
-      this.#syncProp(item, item.x, item.y, item.z, world);
-    }
-
-    const interaction = this.#spider.interaction;
-    const target = held[0] ?? (interaction?.phase === 'drag' ? interaction.target : null);
-    if (target) {
-      if (!this.#silk.parent) {
-        this.#scene.add(this.#silk);
-      }
-      // spinneret 在腹部最后端，丝线从身体后方出发，而不是从肚子底部垂下。
-      // 腹部轮廓的最后尖端约在身体后方 1.7 个单位、甲壳高度附近。
-      // 端点略微嵌入模型，避免出现一小段悬空。
-      const abdomen = new Vector3(
-        back.x + Math.sin(yaw) * 1.62,
-        back.y + 0.82,
-        back.z + Math.cos(yaw) * 1.62,
-      );
-      const toSpiderX = back.x - target.x;
-      const toSpiderZ = back.z - target.z;
-      const toSpiderLength = Math.hypot(toSpiderX, toSpiderZ) || 1;
-      const appleRadius = 0.32;
-      const silkEnd = new Vector3(
-        target.x + (toSpiderX / toSpiderLength) * appleRadius,
-        target.y + 0.34,
-        target.z + (toSpiderZ / toSpiderLength) * appleRadius,
-      );
-      const points = [abdomen];
-      for (let i = 1; i < 10; i++) {
-        const t = i / 10;
-        points.push(
-          new Vector3(
-            abdomen.x + (silkEnd.x - abdomen.x) * t,
-            abdomen.y + (silkEnd.y - abdomen.y) * t - Math.sin(Math.PI * t) * 0.18,
-            abdomen.z + (silkEnd.z - abdomen.z) * t,
-          ),
-        );
-      }
-      points.push(silkEnd);
-      this.#silk.geometry.dispose();
-      this.#silk.geometry = new TubeGeometry(
-        new CatmullRomCurve3(points),
-        Math.max(8, points.length * 2),
-        0.014,
-        6,
-        false,
-      );
-      this.#silk.visible = true;
-    } else {
-      if (this.#silk.parent) {
-        this.#scene.remove(this.#silk);
-      }
-    }
+    this.#syncSilk(world);
 
     for (const [id, prop] of this.#props) {
       if (alive.has(id)) continue;
@@ -341,8 +287,73 @@ export class Stage {
       this.#scene.remove(prop);
       this.#props.delete(id);
       this.#stages.delete(id);
-      this.#drapedGrass.delete(id);
-      this.#sound.take();
+      this.#drapedProps.delete(id);
+    }
+  }
+
+  #syncSilk(world: WorldState): void {
+    for (const [id, silk] of this.#silks) {
+      const relation = world.tethers.get(id);
+      if (relation && tetherEndpoints(world, relation)) continue;
+      this.#scene.remove(silk);
+      silk.geometry.dispose();
+      this.#silks.delete(id);
+    }
+    if (world.tethers.size === 0) return;
+    for (const [id, relation] of world.tethers) {
+      const ends = tetherEndpoints(world, relation);
+      if (!ends) continue;
+      const { from: anchor, to: target } = ends;
+      // Attach to the same presented pose used by camera and bubble, not the next tick.
+      const pose = this.#spider.root.position;
+      const state = this.#spider.source.position;
+      for (const [id, point] of [
+        [relation.sourceId, anchor],
+        [relation.targetId, target],
+      ] as const) {
+        if (id !== world.controlledId) continue;
+        const q = this.#spider.root.quaternion;
+        const presentedYaw = Math.atan2(
+          2 * (q.w * q.y + q.x * q.z),
+          1 - 2 * (q.y * q.y + q.z * q.z),
+        );
+        const angle = presentedYaw - this.#spider.source.yaw;
+        const c = Math.cos(angle),
+          s = Math.sin(angle);
+        const x = point.x - state.x,
+          z = point.z - state.z;
+        point.x = pose.x + x * c + z * s;
+        point.y += pose.y - state.y;
+        point.z = pose.z - x * s + z * c;
+      }
+      let silk = this.#silks.get(id);
+      if (!silk) {
+        const geometry = new BufferGeometry().setAttribute(
+          'position',
+          new BufferAttribute(new Float32Array((SILK_SEGMENTS + 1) * 3), 3),
+        );
+        silk = new Line(geometry, this.#silkMaterial);
+        silk.name = id;
+        silk.frustumCulled = false;
+        this.#silks.set(id, silk);
+        this.#scene.add(silk);
+      }
+      const dx = target.x - anchor.x;
+      const dy = target.y - anchor.y;
+      const dz = target.z - anchor.z;
+      const slack = Math.max(0, relation.length - Math.hypot(dx, dy, dz));
+      const sag = Math.min(0.18, slack * 0.18);
+      const points = silk.geometry.getAttribute('position');
+      for (let i = 0; i <= SILK_SEGMENTS; i++) {
+        const t = i / SILK_SEGMENTS;
+        points.setXYZ(
+          i,
+          anchor.x + t * dx,
+          anchor.y + t * dy - Math.sin(Math.PI * t) * sag,
+          anchor.z + t * dz,
+        );
+      }
+      points.needsUpdate = true;
     }
   }
 
@@ -354,12 +365,11 @@ export class Stage {
       disposeGeometries(prop);
       this.#scene.remove(prop);
       this.#props.delete(entity.id);
-      this.#drapedGrass.delete(entity.id);
+      this.#drapedProps.delete(entity.id);
       prop = undefined;
-      if (previous != null && entity.stage > previous) this.#sound.bite();
     }
-    const spec = kindOf(entity.kind)?.physics;
-    const roll = spec?.rolls ? spec.radius : 0;
+    const spec = kindOf(entity.kind);
+    const roll = spec?.physics?.rolls ? spec.physics.radius : 0;
     if (!prop) {
       const built = buildProp(entity.kind, entity.stage, entity.footprint, entity.id);
       if (!built) return;
@@ -378,11 +388,17 @@ export class Stage {
       this.#scene.add(prop);
     }
     this.#stages.set(entity.id, entity.stage);
-    if (entity.kind === 'grass') {
-      const draped = this.#drapedGrass.get(entity.id);
+    const freshness = freshnessOf(entity, world.clock);
+    if (prop.userData.freshness !== freshness) {
+      showFreshness(prop, freshness !== 'fresh');
+      prop.userData.freshness = freshness;
+    }
+    const drape = propDrape(entity.kind);
+    if (drape) {
+      const draped = this.#drapedProps.get(entity.id);
       if (!draped || draped.x !== x || draped.z !== z || draped.terrain !== world.terrain) {
-        drapeGrass(prop, x, z, (px, pz) => world.terrain.height(px, pz));
-        this.#drapedGrass.set(entity.id, { x, z, terrain: world.terrain });
+        drape(prop, x, z, (px, pz) => world.terrain.height(px, pz));
+        this.#drapedProps.set(entity.id, { x, z, terrain: world.terrain });
       }
       return;
     }
@@ -390,9 +406,7 @@ export class Stage {
     if (prop.position.x !== x || prop.position.y !== py || prop.position.z !== z) {
       prop.position.set(x, py, z);
     }
-    if (roll > 0) {
-      prop.quaternion.set(entity.qx ?? 0, entity.qy ?? 0, entity.qz ?? 0, entity.qw ?? 1);
-    }
+    prop.quaternion.set(entity.qx ?? 0, entity.qy ?? 0, entity.qz ?? 0, entity.qw ?? 1);
   }
 
   /** A quiet tick for words appearing beside the spider. */
@@ -401,15 +415,22 @@ export class Stage {
   }
 
   dispose(): void {
+    this.#islandRequest += 1;
     this.#stopLocal();
+    this.#stopWorld?.();
+    this.#stopWorld = null;
+    this.#host.ownerDocument.removeEventListener('visibilitychange', this.#resetStepClock);
     this.#renderer.setAnimationLoop(null);
     this.#resizeObserver.disconnect();
     const el = this.#renderer.domElement;
     el.removeEventListener('pointerdown', this.#onPointerDown);
     el.removeEventListener('pointerup', this.#onPointerUp);
+    el.removeEventListener('pointercancel', this.#onPointerUp);
     el.removeEventListener('pointermove', this.#onPointerMove);
     el.removeEventListener('wheel', this.#onWheel);
     disposeGeometries(this.#scene);
+    this.#silkMaterial.dispose();
+    this.#observe.dispose();
     this.#sky.dispose();
     this.#lamp.dispose();
     this.#renderer.dispose();
@@ -422,8 +443,10 @@ export class Stage {
     const el = this.#renderer.domElement;
     el.addEventListener('pointerdown', this.#onPointerDown);
     el.addEventListener('pointerup', this.#onPointerUp);
+    el.addEventListener('pointercancel', this.#onPointerUp);
     el.addEventListener('pointermove', this.#onPointerMove);
     el.addEventListener('wheel', this.#onWheel, { passive: false });
+    this.#host.ownerDocument.addEventListener('visibilitychange', this.#resetStepClock);
 
     this.#resizeObserver = new ResizeObserver(() => this.#resize());
     this.#resizeObserver.observe(this.#host);
@@ -523,6 +546,7 @@ export class Stage {
     }
     this.#camera.position.copy(this.#camPos);
     this.#camera.lookAt(this.#lookPos);
+    this.#camera.updateMatrixWorld();
   }
 
   #resize(): void {
@@ -543,10 +567,24 @@ export class Stage {
     this.#island = null;
   }
 
+  #resetStepClock = (): void => {
+    this.#last = performance.now();
+    this.#stepBank = 0;
+    this.#poses.reset();
+  };
+
   #frame = (now: number): void => {
-    const dt = Math.min(0.05, (now - this.#last) / 1000);
+    const elapsed = Math.max(0, now - this.#last);
     this.#last = now;
-    if (!this.#held) this.#step?.(dt);
+    const dt = Math.min(0.05, elapsed / 1000);
+    const step = this.#step;
+    if (step && !this.#held && !this.#host.ownerDocument.hidden) {
+      this.#stepBank = Math.min(MAX_STEPS * STEP_MS, this.#stepBank + elapsed);
+      const steps = Math.floor((this.#stepBank + 1e-7) / STEP_MS);
+      this.#stepBank = Math.max(0, this.#stepBank - steps * STEP_MS);
+      const wallNowMs = Date.now();
+      for (let i = 0; i < steps; i++) this.#poses.step(() => step(STEP_SECONDS, wallNowMs));
+    }
     const contact = waterContact(this.#spider, this.#wasLifted, this.#world?.() ?? null);
     this.#feedback();
     // Keep simulation and tool execution responsive while leaving GPU time for inference.
@@ -555,6 +593,7 @@ export class Stage {
       ? Math.min(0.05, (now - this.#lastPaint) / 1000)
       : dt;
     this.#lastPaint = now;
+    if (step && !this.#held) this.#poses.present(this.#stepBank / STEP_MS);
     this.#syncEcology();
     tickWater(now * 0.001, contact);
     this.#syncWorld();
@@ -568,20 +607,37 @@ export class Stage {
     );
     this.#lamp.update(this.#clock, this.#spider.lamp);
     const world = this.#world?.();
-    if (world) this.#observe.sync(this.#overlook, this.#camera, this.#spider, world, this.#view);
+    if (world)
+      this.#observe.sync(this.#overlook, this.#camera, this.#spider.source, world, this.#view);
     this.#renderer.render(this.#scene, this.#camera);
     this.#fps.tick(now);
     this.#onAnchor?.(this.#aboveSpider());
   };
 
   #syncEcology(): void {
-    const epochSecond = Math.floor(Date.now() / 1000);
+    const epochSecond = Math.floor((this.#world?.().clock.wallNowMs ?? Date.now()) / 1000);
     if (epochSecond === this.#ecologySecond) return;
     this.#ecologySecond = epochSecond;
     this.#clock = applyEcologyLighting(this.#renderer, new Date(epochSecond * 1000));
   }
 
-  /** One tick when any foot lands, and one when an apple disappears. */
+  /** World effects are delivered even on animation frames that skip drawing. */
+  #worldFeedback(commit: WorldCommit): void {
+    const actor = commit.controlledId;
+    if (actor === undefined) return;
+    for (const event of commit.events) {
+      if (event.kind === 'bite' && event.actor === actor) this.#sound.bite();
+      if (event.kind === 'removed' && event.cause === 'eaten' && event.actor === actor)
+        this.#sound.take();
+      if (event.kind === 'blocked' && event.actor === actor) this.#sound.knock();
+      if (event.kind === 'tetherChanged' && event.tether.sourceId === actor) {
+        if (event.attached) this.#sound.grasp();
+        else if (event.cause === 'released' || event.cause === 'placed') this.#sound.place();
+      }
+    }
+  }
+
+  /** Footfall timing belongs to the browser's cosmetic gait animation. */
   #feedback(): void {
     const legs = this.#spider.legs;
     if (!this.#heard) {
@@ -596,9 +652,6 @@ export class Stage {
       this.#wasLifted[i] = lifted;
     }
     if (landed) this.#sound.step(this.#spider.speed);
-    const halt = this.#spider.halt;
-    if (halt !== 'clear' && this.#halt === 'clear') this.#sound.knock();
-    this.#halt = halt;
   }
 
   /** A point above the shell, or null when it is behind the camera. */

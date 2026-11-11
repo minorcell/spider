@@ -3,6 +3,7 @@ import { buildChrome } from '@/src/client/panel/chrome';
 import { paintDocument, paintStage } from '@/src/ui/dress';
 import { mountPanel } from '@/src/client/panel';
 import { startThemeClock } from '@/src/client/themeClock';
+import { ActorPresenter } from '@/src/client/rig/presenter';
 import { Stage } from '@/src/client/stage';
 import { syncStars } from '@/src/client/stars';
 import { restoreSettings } from '@/src/client/settings';
@@ -63,11 +64,12 @@ window.addEventListener('pagehide', () => {
 });
 
 const note = await restoreWorld(session, new Date(), store);
-stage = new Stage(host, session.spider);
+const presenter = new ActorPresenter(session);
+stage = new Stage(host, presenter.model);
 stage.placeIsland(ready.island);
 stage.setIslandSource(async (seed) => (await prepareWorld(seed)).island);
 stage.bind(
-  (dt) => session.frame(dt),
+  (dt, wallNowMs) => presenter.step(dt, wallNowMs),
   () => session.world,
 );
 stage.start();
@@ -75,6 +77,9 @@ mountPanel(document, session, stage, note, opening);
 installWorldStore(session, store);
 await startCloud({
   hold: (on) => stage.hold(on),
-  retile: () => stage.retile(),
+  retile: () => {
+    presenter.sync(0);
+    stage.retile();
+  },
 });
 if (!cloudHolds()) flushWorld('poke');

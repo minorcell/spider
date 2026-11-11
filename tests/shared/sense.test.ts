@@ -30,7 +30,7 @@ describe('senseBody', () => {
   });
 
   it('reports the wall it faces and the points that clear it', () => {
-    const wall = block('nest-n', -1, 1, -4, -2);
+    const wall = { ...block('nest-n', -1, 1, -4, -2), kind: 'nest' };
     const felt = senseBody(0, 0, 0, 0, flat, [wall]);
     expect(felt.ahead.by).toBe('wall');
     expect(felt.ahead.id).toBe('nest-n');
@@ -62,7 +62,7 @@ describe('senseBody', () => {
   });
 
   it('overrides everything when the body stands inside a solid', () => {
-    const wall = block('nest-n', -1, 1, -1, 1);
+    const wall = { ...block('nest-n', -1, 1, -1, 1), kind: 'nest' };
     const felt = senseBody(0, 0, 0, 0, flat, [wall]);
     expect(felt.ahead).toEqual({ open: 0, by: 'wall', id: 'nest-n', kind: 'nest' });
   });
@@ -70,7 +70,7 @@ describe('senseBody', () => {
   it('lists nearby solids nearest first and caps the list', () => {
     const blocks = [
       block('building-1', 2, 3, -1, 1),
-      block('nest-2', -4, -3, -1, 1),
+      { ...block('nest-2', -4, -3, -1, 1), kind: 'nest' },
       block('building-3', -1, 1, 3, 4),
       block('building-4', -1, 1, -4, -3),
       block('building-5', 3, 4, 3, 4),

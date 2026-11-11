@@ -36,7 +36,7 @@ const observation: Observation = {
   entities: [],
 };
 
-let session: Record<string, ReturnType<typeof vi.fn>> & { lamp?: boolean };
+let session: ReturnType<typeof fakeSession> & { lamp?: boolean };
 
 const world = {
   clock: {
@@ -58,8 +58,9 @@ function execute(tool: { execute?: unknown }, input: unknown): Promise<unknown> 
   });
 }
 
-beforeEach(() => {
-  session = {
+function fakeSession() {
+  return {
+    actor: { entity: { kind: 'spider' } },
     landmarks: vi.fn(() => [{ name: '巢穴', x: 0, z: 0, ground: 0, note: '家' }]),
     observe: vi.fn(() => observation),
     worldInfo: vi.fn(() => world),
@@ -82,6 +83,7 @@ beforeEach(() => {
     pickUp: vi.fn(async () => outcome()),
     drink: vi.fn(() => outcome({ action: 'drink' })),
     drop: vi.fn(() => outcome()),
+    release: vi.fn(() => outcome()),
     store: vi.fn(() => outcome()),
     sleep: vi.fn(async () => outcome()),
     setHeight: vi.fn(async () => outcome()),
@@ -96,6 +98,10 @@ beforeEach(() => {
       },
     ]),
   };
+}
+
+beforeEach(() => {
+  session = fakeSession();
 });
 
 describe('spiderTools', () => {
@@ -218,7 +224,7 @@ describe('spiderTools', () => {
       string,
       any
     >;
-    expect(grass.hint).toMatchObject({ code: 'view-limited-by-grass', next: 'set_height' });
+    expect(grass.hint).toMatchObject({ code: 'view-limited-by-cover', next: 'set_height' });
 
     session.observe.mockReturnValueOnce({ ...observation, beyond: 2, hidden: 1 });
     const partial = (await execute(tools.observe, { distance: VIEW_DISTANCE })) as Record<
@@ -448,12 +454,14 @@ describe('spiderTools', () => {
     await execute(tools.act, { verb: 'eat', id: 'apple-1' });
     await execute(tools.act, { verb: 'pick_up', id: 'apple-1' });
     await execute(tools.act, { verb: 'drop', id: 'apple-1' });
+    await execute(tools.act, { verb: 'release', id: 'apple-1' });
     await execute(tools.act, { verb: 'store', id: 'apple-1' });
     await execute(tools.act, { verb: 'sleep' });
     await execute(tools.set_height, { level: 0.3 });
     expect(session.eat).toHaveBeenCalledWith('apple-1');
     expect(session.pickUp).toHaveBeenCalledWith('apple-1');
     expect(session.drop).toHaveBeenCalledWith('apple-1');
+    expect(session.release).toHaveBeenCalledWith('apple-1');
     expect(session.store).toHaveBeenCalledWith('apple-1');
     expect(session.sleep).toHaveBeenCalled();
     expect(session.setHeight).toHaveBeenCalledWith(0.3);
@@ -515,4 +523,12 @@ describe('spiderTools', () => {
     const tools = spiderTools(session as unknown as SimSession);
     expect(tools.mark.description).toContain(String(MARK_LIMIT));
   });
+});
+
+it('describes the controlled kind’s registered capacity', () => {
+  expect(spiderTools(session as unknown as SimSession).act.description).toContain('7 件');
+  session.actor.entity.kind = 'berry';
+  expect(spiderTools(session as unknown as SimSession).act.description).toContain('0 件');
+  session.actor.entity.kind = 'unregistered';
+  expect(spiderTools(session as unknown as SimSession).act.description).toContain('0 件');
 });

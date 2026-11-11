@@ -1,30 +1,29 @@
+import { describeObservation } from '@/src/client/observationText';
+import { SimSession } from '@/src/shared/sim/session';
+import { indexEntities } from '@/src/shared/world';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BufferAttribute, Line, LineSegments, PerspectiveCamera, Vector3 } from 'three';
 import { ObserveOverlay } from '@/src/client/observeView';
-import type { Spider } from '@/src/shared/sim/Spider';
-import type { EntityState, SpiderState, WorldState } from '@/src/shared/state';
+import type { Controller } from '@/src/shared/sim/controller';
+import type { EntityState, ActorState, WorldState } from '@/src/shared/state';
 import { block, flat } from '@/tests/helpers';
 
 const view = { left: 0, top: 0, width: 800, height: 600 };
 
-function fakeSpider(x: number, z: number, height = 0): Spider {
-  const state: SpiderState = {
+function fakeSpider(x: number, z: number, height = 0): Controller {
+  const state: ActorState = {
     time: 0,
     position: { x, y: 0, z },
     yaw: 0,
     speed: 0,
     height,
-    chassisPitch: 0,
-    chassisRoll: 0,
-    headYaw: 0,
-    feet: [],
   };
   return {
-    root: { position: new Vector3(x, 0, z) },
+    position: new Vector3(x, 0, z),
     yaw: 0,
     heightSet: height,
     capture: () => state,
-  } as unknown as Spider;
+  } as unknown as Controller;
 }
 
 function entity(over: Partial<EntityState>): EntityState {
@@ -35,10 +34,14 @@ function world(over: Partial<WorldState> = {}): WorldState {
   return {
     seed: 1,
     terrain: { height: flat },
-    entities: [],
+    entities: new Map(),
+    entitySerials: new Map(),
+    clock: { tick: 0, simSeconds: 0, wallNowMs: Date.now() },
     blocks: [],
     marks: [],
-    carrying: [],
+    controlledId: 'spider-1',
+    tethers: new Map(),
+    populations: new Map(),
     ...over,
   };
 }
@@ -77,7 +80,7 @@ describe('ObserveOverlay', () => {
     const entities = Array.from({ length: 100 }, (_, index) =>
       entity({ id: `apple-${index}`, x: 30 + index }),
     );
-    const seen = world({ entities });
+    const seen = world({ entities: indexEntities(entities) });
     const cam = camera();
     overlay.sync(true, cam, fakeSpider(0, 0), seen, view);
     const dim = overlay.object.children[4] as LineSegments;
@@ -85,7 +88,7 @@ describe('ObserveOverlay', () => {
     expect(position.count).toBeGreaterThanOrEqual(400);
     expect(dim.geometry.drawRange.count).toBe(400);
     expect(position.getX(396)).toBeCloseTo(129 - 0.28);
-    seen.entities = seen.entities.slice(0, 1);
+    seen.entities = indexEntities([...seen.entities.values()].slice(0, 1));
     clock.mockReturnValue(1000);
     overlay.sync(true, cam, fakeSpider(0, 0), seen, view);
     expect(dim.geometry.getAttribute('position')).toBe(position);
@@ -97,7 +100,7 @@ describe('ObserveOverlay', () => {
     const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
     const overlay = new ObserveOverlay(parent);
     const apple = entity({ x: 2 });
-    const seen = world({ entities: [apple] });
+    const seen = world({ entities: indexEntities([apple]) });
     const cam = camera();
     const spider = fakeSpider(0, 0);
     overlay.sync(true, cam, spider, seen, view);
@@ -150,6 +153,19 @@ describe('ObserveOverlay', () => {
     expect(parent.querySelector<HTMLElement>('#observe')!.hidden).toBe(true);
   });
 
+  it('shows a rotten item using the committed world deadline', () => {
+    const overlay = new ObserveOverlay(parent);
+    const apple = entity({
+      deadline: { clock: 'wall', rotsAtMs: 1, expiresAtMs: 3 },
+    });
+    const state = world({
+      clock: { tick: 0, simSeconds: 0, wallNowMs: 2 },
+      entities: indexEntities([apple]),
+    });
+    overlay.sync(true, camera(), fakeSpider(0, 0), state, view);
+    expect(parent.querySelector('#observe-pins')!.textContent).toContain('已腐烂');
+  });
+
   it('shows and hides with the view flag', () => {
     const overlay = new ObserveOverlay(parent);
     overlay.sync(false, camera(), fakeSpider(0, 0), world(), view);
@@ -168,7 +184,13 @@ describe('ObserveOverlay', () => {
       entity({ id: 'rock-1', kind: 'rock', x: 2, y: 0.5, z: 0 }),
       entity({ id: 'apple-behind', x: 0, y: 0.5, z: 30 }),
     ];
-    overlay.sync(true, camera(), fakeSpider(0, 0), world({ entities, blocks }), view);
+    overlay.sync(
+      true,
+      camera(),
+      fakeSpider(0, 0),
+      world({ entities: indexEntities(entities), blocks }),
+      view,
+    );
     const pins = parent.querySelector('#observe-pins')!;
     expect(pins.innerHTML).toContain('data-state="reach"');
     expect(pins.innerHTML).toContain('data-state="seen"');
@@ -180,7 +202,7 @@ describe('ObserveOverlay', () => {
     );
     expect(behind?.hidden).toBe(true);
     const readout = parent.querySelector('#observe-readout')!;
-    expect(readout.textContent).toContain('在巢里');
+    expect(readout.textContent).toContain('在空地上');
     expect(readout.textContent).toContain('面前');
     expect(readout.textContent).toContain('是 screen');
     expect(readout.textContent).toContain('背上 空');
@@ -193,7 +215,13 @@ describe('ObserveOverlay', () => {
       entity({ id: 'apple-high', x: 2, y: 2.5, z: 0 }),
       entity({ id: 'apple-low', x: -2, y: -0.5, z: 0 }),
     ];
-    overlay.sync(true, camera(), fakeSpider(0, 0), world({ entities }), view);
+    overlay.sync(
+      true,
+      camera(),
+      fakeSpider(0, 0),
+      world({ entities: indexEntities(entities) }),
+      view,
+    );
     const pins = parent.querySelector('#observe-pins')!;
     expect(pins.textContent).toContain('高 2.5');
     expect(pins.textContent).toContain('低 0.5');
@@ -216,8 +244,10 @@ describe('ObserveOverlay', () => {
       camera(),
       fakeSpider(5, 0),
       world({
-        entities: [grass],
-        carrying: [entity({ id: 'apple-back', kind: 'apple', stage: 1 })],
+        entities: indexEntities([grass, entity({ id: 'apple-back', kind: 'apple', stage: 1 })]),
+        tethers: new Map([
+          ['apple-back', { sourceId: 'spider-1', targetId: 'apple-back', length: 1.2 }],
+        ]),
       }),
       view,
     );
@@ -236,7 +266,13 @@ describe('ObserveOverlay', () => {
       z: 0,
       footprint: { kind: 'circle', r: 2 },
     });
-    overlay.sync(true, camera(), fakeSpider(5, 0, 1.6), world({ entities: [grass] }), view);
+    overlay.sync(
+      true,
+      camera(),
+      fakeSpider(5, 0, 1.6),
+      world({ entities: indexEntities([grass]) }),
+      view,
+    );
     const readout = parent.querySelector('#observe-readout')!;
     expect(readout.textContent).not.toContain('在草里');
     expect(readout.textContent).toContain('在空地上');
@@ -257,7 +293,7 @@ describe('ObserveOverlay', () => {
       true,
       camera(),
       fakeSpider(0, 0),
-      world({ entities: [entity({ id: '<img src=x onerror=alert(1)>' })] }),
+      world({ entities: indexEntities([entity({ id: '<img src=x onerror=alert(1)>' })]) }),
       view,
     );
     expect(parent.querySelector('#observe-pins img')).toBeNull();
@@ -269,17 +305,29 @@ describe('ObserveOverlay', () => {
   it('drops pins for entities that leave the map', () => {
     const overlay = new ObserveOverlay(parent);
     const apple = entity({ id: 'apple-1', x: 0, z: 0 });
-    overlay.sync(true, camera(), fakeSpider(0, 0), world({ entities: [apple] }), view);
+    overlay.sync(
+      true,
+      camera(),
+      fakeSpider(0, 0),
+      world({ entities: indexEntities([apple]) }),
+      view,
+    );
     expect(parent.querySelector('#observe-pins')!.children).toHaveLength(1);
-    overlay.sync(false, camera(), fakeSpider(0, 0), world({ entities: [apple] }), view);
-    overlay.sync(true, camera(), fakeSpider(0, 0), world({ entities: [] }), view);
+    overlay.sync(
+      false,
+      camera(),
+      fakeSpider(0, 0),
+      world({ entities: indexEntities([apple]) }),
+      view,
+    );
+    overlay.sync(true, camera(), fakeSpider(0, 0), world({ entities: new Map() }), view);
     expect(parent.querySelector('#observe-pins')!.children).toHaveLength(0);
   });
 
   it('keeps a pin when the same entity is observed again', () => {
     const overlay = new ObserveOverlay(parent);
     const apple = entity({ id: 'apple-1', x: 0, z: 0 });
-    const seen = world({ entities: [apple] });
+    const seen = world({ entities: indexEntities([apple]) });
     overlay.sync(true, camera(), fakeSpider(0, 0), seen, view);
     const pin = parent.querySelector('#observe-pins')!.children[0];
     overlay.sync(false, camera(), fakeSpider(0, 0), seen, view);
@@ -307,7 +355,7 @@ describe('ObserveOverlay', () => {
     ) as BufferAttribute;
     const first = ring.getX(0);
 
-    spider.root.position.x = 3;
+    spider.position.x = 3;
     overlay.sync(true, camera(), spider, plain, view);
     expect(ring.getX(0)).toBe(first);
 
@@ -329,28 +377,24 @@ describe('ObserveOverlay', () => {
     expect(ring.getY(0)).toBeGreaterThan(y0);
   });
 
-  it('draws the sight area around a bank instead of a circle', () => {
+  it('shows circular range and reach outlines over terrain without filled geometry', () => {
     const overlay = new ObserveOverlay(parent);
     const bank = (_x: number, z: number): number => (z < -4 ? 3 : 0);
     overlay.sync(true, camera(), fakeSpider(0, 0), world({ terrain: { height: bank } }), view);
     const ring = (overlay.object.children[0] as Line).geometry.getAttribute(
       'position',
     ) as BufferAttribute;
-    expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeLessThan(5);
+    expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeCloseTo(24);
+    expect(
+      overlay.object.children.every(
+        (object) => object instanceof Line || object instanceof LineSegments,
+      ),
+    ).toBe(true);
+    const reach = (overlay.object.children[1] as Line).geometry.getAttribute(
+      'position',
+    ) as BufferAttribute;
+    expect(Math.hypot(reach.getX(0), reach.getZ(0))).toBeCloseTo(1.2);
     expect(Math.hypot(ring.getX(36), ring.getZ(36))).toBeCloseTo(24);
-  });
-
-  it('widens the sight area when the body rears up', () => {
-    const overlay = new ObserveOverlay(parent);
-    const bank = (_x: number, z: number): number => (z < -4 ? 3 : 0);
-    const ring = (overlay.object.children[0] as Line).geometry.getAttribute(
-      'position',
-    ) as BufferAttribute;
-    overlay.sync(true, camera(), fakeSpider(0, 0), world({ terrain: { height: bank } }), view);
-    const low = Math.hypot(ring.getX(0), ring.getZ(0));
-    overlay.reset();
-    overlay.sync(true, camera(), fakeSpider(0, 0, 1.6), world({ terrain: { height: bank } }), view);
-    expect(Math.hypot(ring.getX(0), ring.getZ(0))).toBeGreaterThan(low);
   });
 
   it('reports the nearest water and standing in it', () => {
@@ -451,4 +495,25 @@ describe('ObserveOverlay', () => {
     ) as BufferAttribute;
     expect(pos.getX(1)).toBeLessThan(3);
   });
+});
+
+it('describes a registered home and unnamed cover without assuming a content kind', () => {
+  const observation = new SimSession(7).observe();
+  expect(describeObservation(observation)).toContain('在家里');
+  observation.self.home = false;
+  observation.self.wet = false;
+  observation.self.cover = 'unnamed-canopy';
+  expect(describeObservation(observation)).toContain('在unnamed-canopy里');
+});
+
+it('does not label the indexed controlled actor as a hidden object', () => {
+  const parent = document.createElement('div');
+  const overlay = new ObserveOverlay(parent);
+  const session = new SimSession(7);
+  overlay.sync(true, camera(), session.actor, session.world, view);
+  expect(parent.querySelector('#observe-pins')!.textContent).not.toContain(
+    session.world.controlledId,
+  );
+  expect(parent.querySelector('#observe-pins')!.textContent).toContain('home');
+  overlay.dispose();
 });

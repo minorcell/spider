@@ -1,5 +1,9 @@
 export function canonicalBytes(value: unknown): Uint8Array {
-  return new TextEncoder().encode(JSON.stringify(canonicalize(value)));
+  return new TextEncoder().encode(canonicalText(value));
+}
+
+export function canonicalText(value: unknown): string {
+  return JSON.stringify(canonicalize(value));
 }
 
 function canonicalize(value: unknown): unknown {

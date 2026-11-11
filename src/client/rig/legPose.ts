@@ -1,5 +1,7 @@
 import { Vector3 } from 'three';
-import { BONES } from '@/src/shared/config';
+import { pushFromBlocks } from '@/src/shared/contact';
+import type { Block } from '@/src/shared/state';
+import { BONES, boneRadius } from '@/src/shared/config';
 
 export interface LegSphere {
   x: number;
@@ -9,7 +11,7 @@ export interface LegSphere {
 }
 
 const RELAX_STEPS = 4;
-const SAMPLE_T = [0.35, 0.7];
+const SAMPLE_T = [0.15, 0.35, 0.55, 0.75, 0.95];
 
 const dir = new Vector3();
 const pole = new Vector3();
@@ -23,6 +25,8 @@ const sample = new Vector3();
 const push = new Vector3();
 const delta = new Vector3();
 const aim = new Vector3();
+const wallPush = new Vector3();
+const wallAt = new Vector3();
 
 export function supportY(
   x: number,
@@ -54,15 +58,18 @@ export function solveLeg(
   mound: (x: number, z: number) => number,
   spheres: readonly LegSphere[],
   out: Vector3[],
+  blocks: readonly Block[] = [],
+  blockHeight: (block: Block, x: number, z: number) => number = (block) => block.height,
 ): void {
   aim.copy(foot);
+  if (pushFromBlocks(aim, boneRadius(3, 1), blocks, wallPush, blockHeight)) aim.add(wallPush);
   const floor = supportY(foot.x, foot.z, ground, mound, spheres);
   if (floor > aim.y) aim.y = floor;
-  writeLegacy(shoulder, aim, hintX, hintZ, out);
-  relax(out, ground, mound, spheres);
+  writeRestPose(shoulder, aim, hintX, hintZ, out);
+  relax(out, ground, mound, spheres, blocks, blockHeight);
 }
 
-function writeLegacy(
+function writeRestPose(
   shoulder: Vector3,
   foot: Vector3,
   hintX: number,
@@ -76,8 +83,11 @@ function writeLegacy(
   dir.normalize();
 
   coxa.copy(shoulder).addScaledVector(dir, BONES[0].len);
-  ankle.copy(foot).addScaledVector(dir, -BONES[3].len * 0.75);
-  ankle.y = foot.y + 0.08;
+  // The tarsus points toward the body as the stance rises. A fixed horizontal
+  // heel made the other sections run out of reach and pulled planted claws up.
+  reach.subVectors(coxa, foot);
+  const heel = Math.min(BONES[3].len * 0.9, reach.length() * 0.4);
+  ankle.copy(foot).addScaledVector(reach.normalize(), heel);
   end.copy(foot);
 
   reach.subVectors(ankle, coxa);
@@ -85,11 +95,11 @@ function writeLegacy(
   const limit = BONES[1].len + BONES[2].len - 0.04;
   if (span > limit) {
     ankle.copy(coxa).addScaledVector(reach, limit / span);
-    end.copy(ankle).addScaledVector(dir, BONES[3].len * 0.75);
-    end.y = ankle.y - 0.08;
+    // Unreachable targets keep the terminal section's direction and length.
+    end.subVectors(foot, coxa).normalize().multiplyScalar(heel).add(ankle);
   }
 
-  pole.set(0, 1, 0).addScaledVector(dir, 0.45);
+  pole.set(hintX * 0.32, 0.8, hintZ * 0.32).addScaledVector(dir, 0.75);
   bendJoint(coxa, ankle, BONES[1].len, BONES[2].len, pole, knee);
   out[0].copy(shoulder);
   out[1].copy(coxa);
@@ -103,14 +113,20 @@ function relax(
   ground: (x: number, z: number) => number,
   mound: (x: number, z: number) => number,
   spheres: readonly LegSphere[],
+  blocks: readonly Block[],
+  blockHeight: (block: Block, x: number, z: number) => number,
 ): void {
   for (let step = 0; step < RELAX_STEPS; step++) {
     let moved = false;
     for (let bone = 0; bone < 4; bone++) {
-      const radius = BONES[bone].radius;
       for (const t of SAMPLE_T) {
+        const radius = boneRadius(bone, t);
         sample.lerpVectors(points[bone], points[bone + 1], t);
-        if (!shove(sample, radius, ground, mound, spheres, push)) continue;
+        const floorHit = shove(sample, radius, ground, mound, spheres, push);
+        wallAt.copy(sample).add(push);
+        const wallHit = pushFromBlocks(wallAt, radius, blocks, wallPush, blockHeight);
+        push.add(wallPush);
+        if (!floorHit && !wallHit) continue;
         moved = true;
         if (bone === 0) points[1].add(push);
         else {

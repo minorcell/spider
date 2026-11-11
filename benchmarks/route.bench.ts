@@ -4,7 +4,7 @@ import { createWorld } from '@/src/shared/world';
 import { planAroundNest, SEED } from '@/tests/perf/scenarios';
 
 const world = createWorld(SEED);
-const nestWalls = world.blocks.filter((wall) => wall.id.startsWith('nest-ring-'));
+const nestWalls = world.blocks.filter((wall) => wall.owner === 'home');
 const height = (x: number, z: number): number => surfaceOf(world.terrain, x, z);
 
 describe('route', () => {

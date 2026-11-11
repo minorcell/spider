@@ -191,7 +191,7 @@ async function readLocal(deviceId: string): Promise<CloudBundle | null> {
     localDate(new Date()),
   );
   if (!chosen) return null;
-  return { format: 1, deviceId, world: worldOf(chosen), memories: await db.getAll('memories') };
+  return { format: 2, deviceId, world: worldOf(chosen), memories: await db.getAll('memories') };
 }
 
 async function adopt(bundle: CloudBundle): Promise<boolean> {

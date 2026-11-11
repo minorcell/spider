@@ -1,11 +1,14 @@
+import { KINDS } from '@/src/shared/kinds';
+import { indexEntities } from '@/src/shared/world';
 import { describe, expect, test } from 'vitest';
-import { CARRY_LIMIT, PHYSICS } from '@/src/shared/config';
+import { PHYSICS } from '@/src/shared/config';
 import { stepPhysics } from '@/src/shared/sim/physics';
 import { SimSession } from '@/src/shared/sim/session';
 import { applyBody, captureBody } from '@/src/shared/sim/snapshot';
 import type { EntityState, WorldState } from '@/src/shared/state';
 import { Terrain } from '@/src/shared/terrain';
 import { SEED, stepDriven } from '@/tests/perf/scenarios';
+import { attachCargo } from '@/tests/simHelpers';
 
 describe('loose-body scaling', () => {
   for (const count of [20, 40, 80, 160]) {
@@ -21,8 +24,11 @@ describe('loose-body scaling', () => {
       const world: WorldState = {
         seed: SEED,
         terrain: { height: () => 0, inside: () => true },
-        entities: [],
-        carrying: [],
+        entities: new Map(),
+        entitySerials: new Map(),
+        clock: { tick: 0, simSeconds: 0, wallNowMs: Date.now() },
+        tethers: new Map(),
+        populations: new Map(),
         blocks: [],
         marks: [],
         physics: PHYSICS,
@@ -30,15 +36,15 @@ describe('loose-body scaling', () => {
       const run = () => {
         for (let i = 0; i < 120; i++) stepPhysics(world, { x: 0, z: -i / 60, speed: 1 }, 1 / 60);
       };
-      world.entities = structuredClone(entities);
+      world.entities = indexEntities(structuredClone(entities));
       run();
-      expect(world.entities).toHaveLength(count);
-      expect(world.entities.every((entity) => Number.isFinite(entity.y))).toBe(true);
+      expect(world.entities.size).toBe(count);
+      expect([...world.entities.values()].every((entity) => Number.isFinite(entity.y))).toBe(true);
       await bench(
         `120 steps with ${count} loose bodies`,
         {
           beforeEach: () => {
-            world.entities = structuredClone(entities);
+            world.entities = indexEntities(structuredClone(entities));
           },
         },
         run,
@@ -48,23 +54,24 @@ describe('loose-body scaling', () => {
 });
 
 describe('tethered cargo runtime', () => {
-  for (const count of [0, 1, CARRY_LIMIT]) {
+  for (const count of [0, 1, KINDS.spider.tether!.limit]) {
     test(`120 driven frames with ${count} tethered items`, async ({ bench }) => {
       const session = new SimSession(SEED);
-      const apples = session.world.entities.filter((entity) => entity.kind === 'apple');
-      session.world.carrying = apples.slice(0, count).map((item, i) => ({
+      const apples = [...session.world.entities.values()].filter(
+        (entity) => entity.kind === 'apple',
+      );
+      const cargo = apples.slice(0, count).map((item, i) => ({
         ...item,
         id: `cargo-${i}`,
+        x: -2 - i * 0.3,
+        z: 2 + i * 0.45,
       }));
-      for (const [i, item] of session.world.carrying.entries()) {
-        item.x = -2 - i * 0.3;
-        item.z = 2 + i * 0.45;
-      }
+      attachCargo(session.world, ...cargo);
       const body = captureBody(session, null);
       const terrain = new Terrain(SEED);
       stepDriven(session);
-      expect(session.world.carrying).toHaveLength(count);
-      expect(session.world.carrying.every((item) => Number.isFinite(item.vx))).toBe(true);
+      expect(session.world.tethers.size).toBe(count);
+      expect(cargo.every((item) => Number.isFinite(item.vx))).toBe(true);
       await bench(
         `120 driven frames with ${count} tethered items`,
         {

@@ -3,9 +3,9 @@ import { Mesh, type Object3D } from 'three';
 import { buildProp, drapeGrass } from '@/src/client/props';
 import { islandGroup } from '@/src/client/groundView';
 import { grassClumps, grassSeed } from '@/src/shared/grass';
-import { groundAttributes, islandBuffers } from '@/src/shared/island';
+import { groundAttributes, islandBuffers } from '@/src/client/islandMesh';
 import { planRoute } from '@/src/shared/route';
-import { grassHere } from '@/src/shared/sight';
+import { coverAt } from '@/src/shared/sight';
 import { SimSession } from '@/src/shared/sim/session';
 import { applyBody, captureBody } from '@/src/shared/sim/snapshot';
 import { surfaceOf, Terrain, TERRAIN, WORLD_RADIUS } from '@/src/shared/terrain';
@@ -26,7 +26,7 @@ legacy.entities = legacy.entities.filter((entity) =>
 const dense = structuredClone(current);
 dense.scenery = 2;
 dense.entities = dense.entities.filter((entity) => entity.kind !== 'grass');
-const grass = world.entities.find((entity) => entity.kind === 'grass')!;
+const grass = [...world.entities.values()].find((entity) => entity.kind === 'grass')!;
 for (let index = 0; index < 60; index++) {
   dense.entities.push({
     ...grass,
@@ -38,7 +38,7 @@ const radius = grass.footprint!.kind === 'circle' ? grass.footprint!.r : 1;
 const clump = grassClumps(radius, grassSeed(grass.id))[0];
 const grassX = grass.x + clump.x;
 const grassZ = grass.z + clump.z;
-const targets = world.entities.filter((entity) => entity.kind === 'apple');
+const targets = [...world.entities.values()].filter((entity) => entity.kind === 'apple');
 const target = targets.find((entity) => {
   const plan = planRoute(0, 0, entity.x, entity.z, world.blocks, surface, WORLD_RADIUS);
   return plan && !plan.direct && plan.points.length > 2;
@@ -55,7 +55,7 @@ function release(root: Object3D): void {
 describe('scenery boot', () => {
   for (const kind of ['tree', 'stone', 'bog-stone', 'nest', 'grass']) {
     test(`build all ${kind} models`, async ({ bench }) => {
-      const entities = world.entities.filter((entity) => entity.kind === kind);
+      const entities = [...world.entities.values()].filter((entity) => entity.kind === kind);
       expect(entities.length).toBeGreaterThan(0);
       await bench(`build ${entities.length} ${kind} models`, () => {
         for (const entity of entities) {
@@ -90,9 +90,9 @@ describe('scenery boot', () => {
 
 describe('scenery runtime', () => {
   test('query grass cover across all patches', async ({ bench }) => {
-    expect(grassHere(grassX, grassZ, world.entities, grass.y + 0.5)).toBe(true);
+    expect(coverAt(grassX, grassZ, world.entities.values(), grass.y + 0.5)).toBeTruthy();
     await bench('120 grass queries', () => {
-      for (let i = 0; i < 120; i++) grassHere(grassX, grassZ, world.entities, grass.y + 0.5);
+      for (let i = 0; i < 120; i++) coverAt(grassX, grassZ, world.entities.values(), grass.y + 0.5);
     }).run();
   });
 

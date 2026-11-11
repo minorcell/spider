@@ -1,3 +1,7 @@
+import type { PopulationState } from '@/src/shared/islandContent';
+import type { ControlState } from '@/src/shared/control';
+import { freshnessOf, type Deadline, type Freshness } from '@/src/shared/life';
+import { carriedItems, heldBy } from '@/src/shared/sim/tether';
 import { propertiesOf } from '@/src/shared/kinds';
 import {
   aheadAt,
@@ -11,9 +15,9 @@ import {
 } from '@/src/shared/sense';
 import {
   EYE_HEIGHT,
-  grassHere,
+  coverAt,
   groundOccluded,
-  insideHome,
+  homeAt,
   occluded,
   SIGHT_TOP,
 } from '@/src/shared/sight';
@@ -46,17 +50,13 @@ export interface Vec3 {
   z: number;
 }
 
-export interface SpiderState {
+export interface ActorState {
   time: number;
   position: Vec3;
   yaw: number;
   speed: number;
   height: number;
-  chassisPitch: number;
-  chassisRoll: number;
-  headYaw: number;
   lamp?: boolean;
-  feet: Vec3[];
 }
 
 export type Footprint = { kind: 'circle'; r: number } | { kind: 'box'; hx: number; hz: number };
@@ -75,6 +75,8 @@ export interface EntityState {
   y: number;
   z: number;
   stage: number;
+  deadline?: Deadline;
+  metabolism?: { hunger: number };
   footprint?: Footprint;
   vx?: number;
   vy?: number;
@@ -83,10 +85,13 @@ export interface EntityState {
   qy?: number;
   qz?: number;
   qw?: number;
+  control?: ControlState;
 }
 
 export interface Block {
   id: string;
+  owner?: string;
+  kind?: string;
   minX: number;
   maxX: number;
   minZ: number;
@@ -94,19 +99,35 @@ export interface Block {
   height: number;
 }
 
+export interface TetherRelation {
+  sourceId: string;
+  targetId: string;
+  length: number;
+}
+
+/** Time belongs to the world, including when there is no controlled actor. */
+export interface WorldTime {
+  tick: number;
+  simSeconds: number;
+  wallNowMs: number;
+}
+
 export interface WorldState {
   seed: number;
+  clock: WorldTime;
   terrain: {
     height(x: number, z: number): number;
     surface?(x: number, z: number): number;
     inside?(x: number, z: number, margin?: number): boolean;
   };
-  entities: EntityState[];
+  entities: Map<string, EntityState>;
+  controlledId?: string;
+  entitySerials: Map<string, number>;
   blocks: Block[];
   marks: PlaceMark[];
-  carrying: EntityState[];
-  appleIn?: number;
-  sprouts?: number;
+  /** One incoming relation per target, in attachment order. */
+  tethers: Map<string, TetherRelation>;
+  populations: Map<string, PopulationState>;
   physics?: {
     gravity: number;
     damping: number;
@@ -134,6 +155,7 @@ export interface WorldInfo {
 }
 
 export interface SeenEntity {
+  freshness?: Freshness;
   id: string;
   kind: string;
   x: number;
@@ -148,6 +170,7 @@ export interface SeenEntity {
 }
 
 export interface Carried {
+  freshness?: Freshness;
   id: string;
   kind: string;
   stage: number;
@@ -155,6 +178,7 @@ export interface Carried {
 }
 
 export interface NearEntity {
+  freshness?: Freshness;
   id: string;
   kind: string;
   stage: number;
@@ -172,6 +196,7 @@ export interface Observation {
   hiddenByGround: number;
   terrain: TerrainDirection[];
   self: {
+    hunger?: number;
     x: number;
     y: number;
     z: number;
@@ -179,7 +204,7 @@ export interface Observation {
     heading: number;
     height: number;
     speed: number;
-    cover: 'grass' | null;
+    cover: string | null;
     home: boolean;
     wet: boolean;
     waterDepth: number;
@@ -196,6 +221,7 @@ export interface Observation {
 
 export type Sense = Pick<
   Observation['self'],
+  | 'hunger'
   | 'x'
   | 'y'
   | 'z'
@@ -238,7 +264,16 @@ function canAct(kind: string): boolean {
   return propertiesOf(kind).some((property) => property !== 'cover' && property !== 'home');
 }
 
-export function toSense(state: SpiderState, world: WorldState, withWays = false): Sense {
+function freshnessView(entity: EntityState, world: WorldState): { freshness?: Freshness } {
+  return entity.deadline ? { freshness: freshnessOf(entity, world.clock) } : {};
+}
+
+function needsView(world: WorldState): { hunger?: number } {
+  const needs = world.entities.get(world.controlledId ?? '')?.metabolism;
+  return needs ? { hunger: round3(needs.hunger) } : {};
+}
+
+export function toSense(state: ActorState, world: WorldState, withWays = false): Sense {
   const heading = toHeading(state.yaw);
   const px = state.position.x;
   const pz = state.position.z;
@@ -253,6 +288,7 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
   const water = readWater(world.terrain, px, pz, WATER_SENSE);
   const shore = waterDepth > 0 ? nearestShore(world.terrain, px, pz, WATER_SENSE) : null;
   const sense: Sense = {
+    ...needsView(world),
     x: round3(px),
     y: round3(state.position.y),
     z: round3(pz),
@@ -260,8 +296,8 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
     heading: Math.round(heading * 10) / 10,
     height: round3(state.height),
     speed: round3(state.speed),
-    cover: grassHere(px, pz, world.entities, eye) ? 'grass' : null,
-    home: insideHome(px, pz),
+    cover: coverAt(px, pz, world.entities.values(), eye)?.kind ?? null,
+    home: homeAt(px, pz, world.entities.values()) !== null,
     wet: waterDepth > 0,
     waterDepth: round3(waterDepth),
     swimming,
@@ -283,11 +319,12 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
           bearing: bearingFrom(shore.x - px, shore.z - pz, heading),
         }
       : null,
-    carrying: world.carrying.map((item) => ({
+    carrying: carriedItems(world).map((item) => ({
       id: item.id,
       kind: item.kind,
       stage: item.stage,
       properties: propertiesOf(item.kind),
+      ...freshnessView(item, world),
     })),
     ahead: aheadAt(px, pz, heading, height, world.blocks, inside),
   };
@@ -296,7 +333,7 @@ export function toSense(state: SpiderState, world: WorldState, withWays = false)
 }
 
 export function toObservation(
-  state: SpiderState,
+  state: ActorState,
   world: WorldState,
   reach: number,
   view: number,
@@ -320,7 +357,9 @@ export function toObservation(
   const water = readWater(world.terrain, px, pz, WATER_SENSE);
   const shore = waterDepth > 0 ? nearestShore(world.terrain, px, pz, WATER_SENSE) : null;
   const eye = ground + EYE_HEIGHT + state.height;
-  for (const entity of world.entities) {
+  for (const entity of world.entities.values()) {
+    if (entity.id === world.controlledId) continue;
+    if (heldBy(world, entity.id)) continue;
     const dx = entity.x - px;
     const dz = entity.z - pz;
     const distance = Math.hypot(dx, dz);
@@ -346,13 +385,14 @@ export function toObservation(
       z: round3(entity.z),
       stage: entity.stage,
       properties: propertiesOf(entity.kind),
+      ...freshnessView(entity, world),
       distance: round3(distance),
       bearing: bearingFrom(dx, dz, heading),
       rise: round3(entity.y - ground),
       inReach: distance <= reach && vertical <= reachY,
     });
   }
-  const carrying = world.carrying;
+  const carrying = carriedItems(world);
   const felt = senseBody(
     px,
     pz,
@@ -363,7 +403,7 @@ export function toObservation(
     inside,
   );
   return {
-    time: round3(state.time),
+    time: round3(world.clock.simSeconds),
     view: round3(view),
     beyond,
     hidden,
@@ -380,6 +420,7 @@ export function toObservation(
       inside,
     ),
     self: {
+      ...needsView(world),
       x: round3(px),
       y: round3(state.position.y),
       z: round3(pz),
@@ -387,8 +428,8 @@ export function toObservation(
       heading: Math.round(heading * 10) / 10,
       height: round3(state.height),
       speed: round3(state.speed),
-      cover: grassHere(px, pz, world.entities, eye) ? 'grass' : null,
-      home: insideHome(px, pz),
+      cover: coverAt(px, pz, world.entities.values(), eye)?.kind ?? null,
+      home: homeAt(px, pz, world.entities.values()) !== null,
       wet: waterDepth > 0,
       waterDepth: round3(waterDepth),
       swimming,
@@ -415,6 +456,7 @@ export function toObservation(
         kind: item.kind,
         stage: item.stage,
         properties: propertiesOf(item.kind),
+        ...freshnessView(item, world),
       })),
       ahead: felt.ahead,
       nearby: felt.nearby,
@@ -425,7 +467,7 @@ export function toObservation(
 }
 
 export function toNear(
-  state: SpiderState,
+  state: ActorState,
   world: WorldState,
   reach: number,
   reachY: number,
@@ -436,8 +478,9 @@ export function toNear(
   const height = (x: number, z: number): number => world.terrain.height(x, z);
   const eye = surfaceOf(world.terrain, px, pz) + EYE_HEIGHT + state.height;
   const near: NearEntity[] = [];
-  for (const entity of world.entities) {
-    if (!canAct(entity.kind)) continue;
+  for (const entity of world.entities.values()) {
+    if (entity.id === world.controlledId || heldBy(world, entity.id) || !canAct(entity.kind))
+      continue;
     const dx = entity.x - px;
     const dz = entity.z - pz;
     const distance = Math.hypot(dx, dz);
@@ -450,6 +493,7 @@ export function toNear(
       kind: entity.kind,
       stage: entity.stage,
       properties: propertiesOf(entity.kind),
+      ...freshnessView(entity, world),
       distance: round3(distance),
       bearing: bearingFrom(dx, dz, heading),
     });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import { BONES } from '@/src/shared/config';
-import { solveLeg, supportY, type LegSphere } from '@/src/shared/sim/legPose';
+import { solveLeg, supportY, type LegSphere } from '@/src/client/rig/legPose';
 
 const flat = (): number => 0;
 const none = (): number => Number.NEGATIVE_INFINITY;
@@ -61,6 +61,32 @@ describe('solveLeg', () => {
     expect(Number.isFinite(chain[2].y)).toBe(true);
   });
 
+  it('keeps a finite bent chain when the foot is tucked to the coxa', () => {
+    const shoulder = new Vector3(0, 1, 0);
+    const foot = shoulder.clone().add(new Vector3(BONES[0].len, 0, 0));
+    solveLeg(shoulder, foot, 1, 0, flat, none, [], chain);
+
+    expect(chain[4].distanceTo(foot)).toBeLessThan(1e-4);
+    expect(chain[2].y).toBeGreaterThan(shoulder.y + 0.3);
+    lengths().forEach((length, index) => {
+      expect(length).toBeLessThanOrEqual(BONES[index].len + 1e-4);
+    });
+  });
+
+  it('keeps a stable bend when stepping along the knee guide', () => {
+    const shoulder = new Vector3(0, 1, 0);
+    const foot = new Vector3(BONES[0].len + 1.07, 1.8, 0);
+    solveLeg(shoulder, foot, 1, 0, flat, none, [], chain);
+
+    expect(chain[4].distanceTo(foot)).toBeLessThan(1e-4);
+    const ankleDirection = chain[3].clone().sub(chain[1]).normalize();
+    const kneeOffset = chain[2].clone().sub(chain[1]).cross(ankleDirection).length();
+    expect(kneeOffset).toBeGreaterThan(0.3);
+    lengths().forEach((length, index) => {
+      expect(length).toBeLessThanOrEqual(BONES[index].len + 1e-4);
+    });
+  });
+
   it('lifts a leg over a ridge and out of an apple', () => {
     const shoulder = new Vector3(0, 0.9, 0);
     const foot = new Vector3(1.3, 0.16, 0);
@@ -80,14 +106,27 @@ describe('solveLeg', () => {
     }
   });
 
+  it('resolves a planted toe against a static block using its registered top', () => {
+    const shoulder = new Vector3(0, 0.85, 0);
+    const foot = new Vector3(1.2, 0.12, 0);
+    const obstacle = { id: 'ledge', minX: 0.9, maxX: 1.5, minZ: -0.3, maxZ: 0.3, height: 0.17 };
+    solveLeg(shoulder, foot, 1, 0, flat, none, [], chain, [obstacle]);
+
+    expect(chain[4].y).toBeGreaterThanOrEqual(obstacle.height);
+    expect(chain[4].x).toBeCloseTo(foot.x);
+    lengths().forEach((length, index) => {
+      expect(length).toBeLessThanOrEqual(BONES[index].len + 1e-4);
+    });
+  });
+
   it('pushes a sample that lands on a sphere center, and stands on a mound', () => {
     const shoulder = new Vector3(0, 1, 0);
     const foot = new Vector3(1.1, 0.2, 0);
     solveLeg(shoulder, foot, 1, 0, flat, none, [], chain);
-    const onCoxa = chain[0].clone().lerp(chain[1], 0.35);
+    const onCoxa = chain[0].clone().lerp(chain[1], 0.15);
     const center: LegSphere = { x: onCoxa.x, y: onCoxa.y, z: onCoxa.z, radius: 0.2 };
     solveLeg(shoulder, foot, 1, 0, flat, none, [center], chain);
-    const again = chain[0].clone().lerp(chain[1], 0.35);
+    const again = chain[0].clone().lerp(chain[1], 0.15);
     expect(again.distanceTo(onCoxa)).toBeGreaterThan(0.05);
 
     const mound = (x: number, z: number): number => (Math.hypot(x, z) < 2 ? 0.4 : 0);
