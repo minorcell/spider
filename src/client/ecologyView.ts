@@ -19,15 +19,21 @@ import { worldClock, type WorldClock } from '@/src/shared/ecology';
 import { setGroundLight } from '@/src/client/groundView';
 
 const daySky = new Color(PALETTE.paper);
-const nightSky = new Color(0x07090e);
+const nightSky = new Color(0x1b2638);
 const sky = new Color();
 const cloudDay = new Color(0xf3f1eb);
-const cloudNight = new Color(0x536277);
+const cloudNight = new Color(0x9cacc7);
+const dayFillSky = new Color(0xffffff);
+const dayFillGround = new Color(0xe8e1d4);
+const nightFillSky = new Color(0xb4c8ea);
+const nightFillGround = new Color(0x62677a);
 
 const dayFill = Math.PI * 0.8;
 const daySun = Math.PI * 0.22;
-const nightFill = Math.PI * 0.012;
-const nightMoon = Math.PI * 0.02;
+// The player reads the paper silhouettes by moonlight. The actor's actual
+// perception range is independent of this exposure and belongs to the world.
+const nightFill = Math.PI * 0.22;
+const nightMoon = Math.PI * 0.28;
 
 export function dayBrightness(clock: WorldClock): number {
   return MathUtils.smoothstep(clock.daylight, 0, 0.35);
@@ -114,8 +120,8 @@ export function applyEcologyLighting(
   const brightness = dayBrightness(clock);
   sky.copy(nightSky).lerp(daySky, brightness);
   renderer.setClearColor(sky, 1);
-  const light = 0.05 + brightness * 0.95;
-  setGroundLight(light * (0.84 + brightness * 0.16), light * (0.89 + brightness * 0.11), light);
+  const light = 0.19 + brightness * 0.81;
+  setGroundLight(light * (0.75 + brightness * 0.25), light * (0.88 + brightness * 0.12), light);
   return clock;
 }
 
@@ -197,7 +203,7 @@ export class EcologySky {
     const brightness = dayBrightness(clock);
     const angle = clock.dayFraction * Math.PI * 2 - Math.PI / 2;
     this.#sunDirection.set(Math.cos(angle), Math.sin(angle), Math.cos(angle) * 0.35).normalize();
-    const isDay = clock.period !== 'night';
+    const isDay = this.#sunDirection.y >= 0;
     this.sun.visible = isDay;
     this.moon.visible = !isDay;
     this.sun.position.copy(focus).addScaledVector(this.#sunDirection, 90);
@@ -219,6 +225,8 @@ export class EcologySky {
     this.light.intensity = (isDay ? daySun : nightMoon) * cover;
     this.light.color.setHex(isDay ? 0xfff6e8 : 0xaecbff);
     this.ambient.intensity = nightFill + brightness * (dayFill - nightFill);
+    this.ambient.color.copy(nightFillSky).lerp(dayFillSky, brightness);
+    this.ambient.groundColor.copy(nightFillGround).lerp(dayFillGround, brightness);
     this.light.position.copy(focus).addScaledVector(this.#lightDirection, 100);
     this.light.target.position.copy(focus);
     const extent = overlook ? 60 : 24;
