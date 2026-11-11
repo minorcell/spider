@@ -17,7 +17,7 @@ export const PALETTE = {
   grid: 0xc8bfb2,
 } as const;
 
-export const APPLE_SCALE = 0.72;
+export const SIMULATION_STEP_SECONDS = 1 / 60;
 
 export const DECK_Y = 0.78;
 

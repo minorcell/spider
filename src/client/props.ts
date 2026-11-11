@@ -1,4 +1,4 @@
-import { Group, Mesh, MeshLambertMaterial, SphereGeometry } from 'three';
+import { Color, Group, Mesh, MeshLambertMaterial, SphereGeometry } from 'three';
 import { kindOf } from '@/src/shared/kinds';
 import type { Footprint } from '@/src/shared/state';
 import { buildApple } from '@/src/client/appleMesh';
@@ -10,6 +10,29 @@ import { buildNest } from '@/src/client/nest';
 export { drapeGrass } from '@/src/client/grassMesh';
 
 const roundMaterials = new Map<number, MeshLambertMaterial>();
+const rottenMaterials = new WeakMap<MeshLambertMaterial, MeshLambertMaterial>();
+const freshMaterials = new WeakMap<MeshLambertMaterial, MeshLambertMaterial>();
+const rottenColor = new Color(0x756345);
+
+/** Palette variants are shared assets; changing one item never recolors its neighbours. */
+export function showFreshness(group: Group, rotten: boolean): void {
+  group.traverse((node) => {
+    if (!(node instanceof Mesh) || !(node.material instanceof MeshLambertMaterial)) return;
+    const base = freshMaterials.get(node.material) ?? node.material;
+    if (!rotten) {
+      node.material = base;
+      return;
+    }
+    let material = rottenMaterials.get(base);
+    if (!material) {
+      material = base.clone();
+      material.color.lerp(rottenColor, 0.78);
+      rottenMaterials.set(base, material);
+      freshMaterials.set(material, base);
+    }
+    node.material = material;
+  });
+}
 
 const STYLES: readonly GrassStyle[] = ['thin', 'seed', 'broad'];
 
@@ -40,9 +63,10 @@ export function buildProp(
   const spec = kindOf(kind);
   const model = spec?.model;
   if (!model) return null;
+  const progress = spec.eat ? Math.max(0, Math.min(1, stage / spec.eat.bites)) : 0;
   if (typeof model === 'object') {
     const radius = spec.physics?.radius ?? 0.2;
-    const size = radius / (1 + Math.max(0, stage) * 0.25);
+    const size = radius * Math.cbrt(Math.max(0.15, 1 - progress));
     let material = roundMaterials.get(model.color);
     if (!material) {
       material = new MeshLambertMaterial({ color: model.color, flatShading: true });
@@ -50,9 +74,14 @@ export function buildProp(
     }
     const mesh = new Mesh(new SphereGeometry(size, model.segments, 8), material);
     mesh.position.y = radius;
-    return new Group().add(mesh);
+    const group = new Group().add(mesh);
+    group.scale.setScalar(spec.modelScale ?? 1);
+    return group;
   }
-  return modelOf(model)?.build(stage, footprint, id) ?? null;
+  const group = modelOf(model)?.build(progress, footprint, id);
+  if (!group) return null;
+  group.scale.multiplyScalar(spec.modelScale ?? 1);
+  return group;
 }
 
 interface ModelSpec {

@@ -18,6 +18,8 @@ interface IslandFamily extends ScatterOptions {
   readonly kind: string;
   readonly count: number;
   readonly home: number;
+  /** Stagger the ages of the first population without any item-specific engine rule. */
+  readonly initialAgeStep?: number;
 }
 
 export interface PopulationRule extends Pick<ScatterOptions, 'gap'> {
@@ -78,7 +80,7 @@ export const islandFamilies: readonly IslandFamily[] = [
     home: 6.5,
     gap: 5,
   },
-  { ...applePopulation },
+  { ...applePopulation, initialAgeStep: 24 },
   {
     kind: 'tree',
     count: TREES,

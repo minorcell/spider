@@ -13,7 +13,7 @@ import {
   type Object3D,
 } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
-import { PALETTE } from '@/src/shared/config';
+import { PALETTE, SIMULATION_STEP_SECONDS } from '@/src/shared/config';
 import { kindOf } from '@/src/shared/kinds';
 import { WORLD_RADIUS } from '@/src/shared/terrain';
 import type { EntityState, WorldState } from '@/src/shared/state';
@@ -27,11 +27,12 @@ import { applyEcologyLighting, EcologySky, enableWorldShadows } from '@/src/clie
 import { Headlamp } from '@/src/client/headlamp';
 import { worldClock } from '@/src/shared/ecology';
 import { ObserveOverlay } from '@/src/client/observeView';
-import { buildProp, propDrape } from '@/src/client/props';
+import { buildProp, propDrape, showFreshness } from '@/src/client/props';
+import { freshnessOf } from '@/src/shared/life';
 import { createSound } from '@/src/client/sound';
 import { carriedItems, tetherEndpoints } from '@/src/shared/sim/tether';
 
-const STEP_SECONDS = 1 / 60;
+const STEP_SECONDS = SIMULATION_STEP_SECONDS;
 const STEP_MS = STEP_SECONDS * 1000;
 const MAX_STEPS = 3;
 const SILK_SEGMENTS = 8;
@@ -374,6 +375,11 @@ export class Stage {
       this.#scene.add(prop);
     }
     this.#stages.set(entity.id, entity.stage);
+    const freshness = freshnessOf(entity, world.clock);
+    if (prop.userData.freshness !== freshness) {
+      showFreshness(prop, freshness !== 'fresh');
+      prop.userData.freshness = freshness;
+    }
     const drape = propDrape(entity.kind);
     if (drape) {
       const draped = this.#drapedProps.get(entity.id);

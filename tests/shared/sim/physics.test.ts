@@ -4,6 +4,7 @@ import { Quaternion, Vector3 } from 'three';
 import { groundSupport } from '@/src/shared/contact';
 import { CONTACT, PHYSICS } from '@/src/shared/config';
 import { KINDS } from '@/src/shared/kinds';
+import { submergedFraction, WATER } from '@/src/shared/water';
 import { fitsPlacement, stepPhysics } from '@/src/shared/sim/physics';
 import type { Block, EntityState, WorldState } from '@/src/shared/state';
 
@@ -158,7 +159,10 @@ describe('stepPhysics', () => {
     for (let i = 0; i < 600; i++) stepPhysics(pond, body, 1 / 60);
     const floated = [...pond.entities.values()][0];
     expect(floated).toMatchObject({ x: 2, z: 3, vx: 0, vz: 0 });
-    expect(floated.y).toBeCloseTo(-1.17, 1);
+    const spec = KINDS.apple.physics!;
+    expect(
+      submergedFraction(floated.y, -0.8, spec.radius) * WATER.density * spec.volume!,
+    ).toBeCloseTo(spec.mass!, 3);
     expect(floated.y + APPLE_RADIUS).toBeLessThan(-0.8);
   });
 
@@ -208,7 +212,7 @@ describe('stepPhysics', () => {
     const land = (x: number, z: number, margin = 0): boolean => Math.hypot(x, z) < 6 - margin;
     const edge = world({
       terrain: { height: () => 0, inside: land },
-      entities: indexEntities([apple({ x: 5.5, vx: 2 })]),
+      entities: indexEntities([apple({ x: 6 - APPLE_RADIUS - 0.25, vx: 2 })]),
     });
     stepPhysics(edge, body, 1 / 2);
     expect([...edge.entities.values()][0].x).toBeCloseTo(6 - APPLE_RADIUS, 6);
@@ -223,7 +227,10 @@ describe('stepPhysics', () => {
 
     const pair = world({
       terrain: { height: () => 0, inside: land },
-      entities: indexEntities([apple({ id: 'a', x: 5.7 }), apple({ id: 'b', x: 5.3 })]),
+      entities: indexEntities([
+        apple({ id: 'a', x: 6 - APPLE_RADIUS - 0.02 }),
+        apple({ id: 'b', x: 6 - 2 * APPLE_RADIUS }),
+      ]),
     });
     stepPhysics(pair, body, 1 / 60);
     expect([...pair.entities.values()][0].x).toBeCloseTo(6 - APPLE_RADIUS, 6);
@@ -267,7 +274,7 @@ describe('stepPhysics', () => {
     stepPhysics(blocked, body, 1 / 60);
     expect([...blocked.entities.values()][0].vx).toBe(0);
     expect([...blocked.entities.values()][0].vz).toBe(0);
-    expect([...blocked.entities.values()][0].x).toBe(0.8);
+    expect([...blocked.entities.values()][0].x).toBeCloseTo(wall.minX - APPLE_RADIUS, 6);
   });
 
   it('does not push a loose body through a wall', () => {
@@ -388,7 +395,7 @@ describe('stepPhysics', () => {
     });
     for (let i = 0; i < 180; i++) stepPhysics(pile, body, 1 / 60);
     const [top, low] = pile.entities.values();
-    expect(top.y).toBeGreaterThan(low.y + 0.5);
+    expect(top.y).toBeGreaterThan(low.y + APPLE_RADIUS * 1.9);
     expect(Math.hypot(top.vx ?? 0, top.vy ?? 0, top.vz ?? 0)).toBeLessThan(0.05);
   });
 

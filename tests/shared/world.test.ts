@@ -228,8 +228,8 @@ describe('settle', () => {
 
 describe('createWorld', () => {
   it('builds the same island for a seed', () => {
-    const a = createWorld(1234);
-    const b = createWorld(1234);
+    const a = createWorld(1234, undefined, 0);
+    const b = createWorld(1234, undefined, 0);
     expect(a.entities).toEqual(b.entities);
     expect(a.blocks).toEqual(b.blocks);
     expect(a.seed).toBe(1234);
@@ -314,7 +314,7 @@ describe('createWorld', () => {
 });
 
 function bare(seed = 11) {
-  const world = createWorld(seed);
+  const world = createWorld(seed, undefined, 0);
   world.entities = indexEntities(
     [...world.entities.values()].filter((entity) => entity.kind !== 'apple'),
   );

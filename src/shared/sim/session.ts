@@ -14,7 +14,8 @@ import {
   type WorldState,
 } from '@/src/shared/state';
 import { islandActor } from '@/src/shared/islandContent';
-import { kindOf, slicesOf } from '@/src/shared/kinds';
+import { kindOf } from '@/src/shared/kinds';
+import { freshnessOf, nourish, tickMetabolism } from '@/src/shared/life';
 import { IDLE_CONTROLS } from '@/src/shared/types';
 import {
   blockedAt,
@@ -37,7 +38,12 @@ import {
   VIEW_DISTANCE,
 } from '@/src/shared/world';
 import { insideLand, nearestWater, surfaceOf, Terrain, WORLD_RADIUS } from '@/src/shared/terrain';
-import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
+import {
+  MARK_LIMIT,
+  MARK_NAME_MAX,
+  MARK_NOTE_MAX,
+  SIMULATION_STEP_SECONDS,
+} from '@/src/shared/config';
 import {
   heightGoal,
   routeGoal,
@@ -99,6 +105,8 @@ export class SimSession {
   }
 
   #active: ActiveGoal | null = null;
+  #stepBank = 0;
+  #stepClock: WorldState['clock'] | null = null;
   #landmarkCache: {
     terrain: WorldState['terrain'];
     blocks: WorldState['blocks'];
@@ -232,8 +240,30 @@ export class SimSession {
 
   frame(dt: number, wallNowMs = Date.now()): void {
     if (!Number.isFinite(dt) || !Number.isFinite(wallNowMs) || wallNowMs < 0) return;
+    this.reconcileWallTime(wallNowMs);
+    if (dt <= 0) return;
+    if (this.#stepClock !== this.world.clock) {
+      this.#stepClock = this.world.clock;
+      this.#stepBank = 0;
+    }
+    this.#stepBank = Math.min(SIMULATION_STEP_SECONDS * 3, this.#stepBank + dt);
+    const steps = Math.floor((this.#stepBank + 1e-9) / SIMULATION_STEP_SECONDS);
+    this.#stepBank = Math.max(0, this.#stepBank - steps * SIMULATION_STEP_SECONDS);
+    for (let i = 0; i < steps; i++) this.#step(SIMULATION_STEP_SECONDS);
+  }
+
+  /** Resume/reload expiry without advancing physics, hunger, actions or populations. */
+  reconcileWallTime(wallNowMs: number): void {
+    if (!Number.isFinite(wallNowMs) || wallNowMs < 0) return;
     this.world.clock.wallNowMs = wallNowMs;
-    this.#step(Math.min(0.05, Math.max(0, dt)));
+    this.#expire();
+  }
+
+  #expire(): void {
+    const removed = expireEntities(this.world);
+    const active = this.#active;
+    if (active?.goal.targets?.some((id) => removed.includes(id)))
+      active.finish({ ...active.goal.result(), ok: false, reason: 'expired' });
   }
 
   run(goal: Goal): Promise<GoalOutcome> {
@@ -329,15 +359,22 @@ export class SimSession {
   }
 
   eat(id?: string): Promise<GoalOutcome> {
-    let entity = this.#nearest(id, (item) => kindOf(item.kind)?.eat !== undefined);
-    if (!entity && !id)
-      entity =
-        carriedItems(this.world).find((item) => kindOf(item.kind)?.eat !== undefined) ?? null;
+    const edible = (item: EntityState): boolean => {
+      const meal = kindOf(item.kind)?.eat;
+      return !!meal && item.stage < meal.bites && freshnessOf(item, this.world.clock) === 'fresh';
+    };
+    const entity =
+      this.#nearest(id, edible) ?? (!id ? carriedItems(this.world).find(edible) : undefined);
     if (!entity)
       return Promise.resolve({ ok: false, reason: id ? 'not-found' : 'nothing-to-eat', id });
-    const kind = kindOf(entity.kind);
-    const meal = kind?.eat;
-    if (!kind || !meal) return Promise.resolve({ ok: false, reason: 'not-edible', id: entity.id });
+    const meal = kindOf(entity.kind)?.eat;
+    if (!meal) return Promise.resolve({ ok: false, reason: 'not-edible', id: entity.id });
+    if (!kindOf(this.actor.entity.kind)?.metabolism || !this.actor.entity.metabolism)
+      return Promise.resolve({ ok: false, reason: 'cannot-eat' });
+    if (entity.stage >= meal.bites)
+      return Promise.resolve({ ok: false, reason: 'depleted', id: entity.id });
+    if (freshnessOf(entity, this.world.clock) !== 'fresh')
+      return Promise.resolve({ ok: false, reason: 'spoiled', id: entity.id });
     if (!heldBy(this.world, entity.id)) {
       const reach = this.#reachable(entity);
       if (!reach.ok) return Promise.resolve(reach);
@@ -345,18 +382,22 @@ export class SimSession {
 
     const target = entity;
     const startedAt = this.world.clock.simSeconds;
-    const slices = slicesOf(kind);
-    const elapsed0 = slices === 0 ? 0 : (target.stage * meal.duration) / slices;
-    const remaining = Math.max(0.05, meal.duration - elapsed0);
+    const initialBites = target.stage;
+    const biteSeconds =
+      Math.ceil(meal.secondsPerBite / SIMULATION_STEP_SECONDS) * SIMULATION_STEP_SECONDS;
+    const remaining = (meal.bites - initialBites) * biteSeconds;
     let failure: GoalOutcome | undefined;
+    let nutrition = 0;
     const result = () => ({
       action: 'eat',
       target: target.id,
       stage: target.stage,
+      nutrition,
       removed: false,
     });
 
     return this.run({
+      targets: [target.id],
       timeout: remaining + 1,
       controls: () => IDLE_CONTROLS,
       done: () => {
@@ -364,13 +405,15 @@ export class SimSession {
           failure = { ok: false, reason: 'not-found', id: target.id };
           return true;
         }
-        const elapsed = elapsed0 + this.world.clock.simSeconds - startedAt;
-        const finished = elapsed >= meal.duration - 1e-4;
-        const stage = Math.min(
-          meal.stages,
-          Math.floor(((elapsed + 1e-8) * slices) / meal.duration),
+        if (freshnessOf(target, this.world.clock) !== 'fresh') {
+          failure = { ok: false, reason: 'spoiled', id: target.id };
+          return true;
+        }
+        const completed = Math.min(
+          meal.bites,
+          initialBites + Math.floor((this.world.clock.simSeconds - startedAt + 1e-8) / biteSeconds),
         );
-        if (!finished && stage <= target.stage) return false;
+        if (completed <= target.stage) return false;
         if (!heldBy(this.world, target.id)) {
           const reach = this.#reachable(target);
           if (!reach.ok) {
@@ -378,8 +421,14 @@ export class SimSession {
             return true;
           }
         }
-        target.stage = Math.max(target.stage, stage);
-        return finished;
+        const gained = (completed - target.stage) * meal.nutritionPerBite;
+        if (!nourish(this.actor.entity, gained)) {
+          failure = { ok: false, reason: 'cannot-eat' };
+          return true;
+        }
+        nutrition += gained;
+        target.stage = completed;
+        return completed === meal.bites;
       },
       result,
       commit: () => {
@@ -408,6 +457,7 @@ export class SimSession {
     const startedAt = this.world.clock.simSeconds;
     const result = () => ({ action: 'pick-up', target: entity.id });
     const promise = this.run({
+      targets: [entity.id],
       timeout: 3,
       controls: () => IDLE_CONTROLS,
       done: () => this.world.clock.simSeconds - startedAt >= 0.35,
@@ -643,9 +693,10 @@ export class SimSession {
   }
 
   #step(dt: number): void {
-    if (dt > 0) this.world.clock.tick += 1;
+    this.world.clock.tick += 1;
     this.world.clock.simSeconds += dt;
-    expireEntities(this.world);
+    this.#expire();
+    tickMetabolism(this.world, dt);
     const alive =
       this.world.controlledId === this.actor.entity.id &&
       this.world.entities.get(this.actor.entity.id) === this.actor.entity;

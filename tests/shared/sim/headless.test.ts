@@ -28,7 +28,7 @@ it('creates, moves, interacts, collides and restores using only world data in No
   const obstacle = session.addEntity('tree', 3.5, 0);
   const wall = session.world.blocks.find((block) => (block.owner ?? block.id) === obstacle.id)!;
   Object.assign(item, { x: wall.minX - 0.23, z: 0, vx: 100, vy: 0, vz: 0 });
-  session.frame(0.05);
+  session.frame(1 / 60);
   expect(item.x).toBeCloseTo(wall.minX - 0.19, 6);
   expect(item.vx).toBe(0);
   const saved = captureBody(session, null);

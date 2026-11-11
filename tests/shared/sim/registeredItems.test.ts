@@ -108,7 +108,7 @@ describe('registered items in the island', () => {
     restored.adopt(decode(captureBody(session, null)));
     expect(restored.world.entities.get(berry.id)).toMatchObject({
       stage: 1,
-      expiresAt: berry.expiresAt,
+      deadline: berry.deadline,
     });
     const finishing = restored.eat(berry.id);
     pump(restored, 31);
@@ -119,11 +119,15 @@ describe('registered items in the island', () => {
   it('expires berries only with simulation time and preserves the ID sequence across reloads', () => {
     const session = new SimSession(7);
     const berry = session.addEntity('berry', 0, -0.8);
-    expect(berry.expiresAt).toBe(KINDS.berry.lifetime);
+    expect(berry.deadline).toMatchObject({
+      clock: 'simulation',
+      expiresAtSeconds: KINDS.berry.lifetime!.lifetimeSeconds,
+    });
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 86_400_000);
     pump(session, 1);
     expect(session.world.entities.get(berry.id)).toBe(berry);
-    session.world.clock.simSeconds = berry.expiresAt! - 1 / 60;
+    session.world.clock.simSeconds =
+      (berry.deadline as { expiresAtSeconds: number }).expiresAtSeconds - 1 / 60;
     pump(session, 1);
     expect(session.world.entities.has(berry.id)).toBe(false);
 

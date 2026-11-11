@@ -2,6 +2,7 @@ import { groundSupport } from '@/src/shared/contact';
 import { PHYSICS } from '@/src/shared/config';
 import { kindOf } from '@/src/shared/kinds';
 import { initialControl } from '@/src/shared/control';
+import { deadlineAt, freshnessOf } from '@/src/shared/life';
 import {
   initialPopulations,
   islandFamilies,
@@ -13,7 +14,7 @@ import {
 import { mulberry32 } from '@/src/shared/noise';
 import { blockedAt } from '@/src/shared/sight';
 import { stepPhysics } from '@/src/shared/sim/physics';
-import type { Block, EntityState, Footprint, WorldState } from '@/src/shared/state';
+import type { Block, EntityState, Footprint, WorldState, WorldTime } from '@/src/shared/state';
 import { Terrain, TERRAIN } from '@/src/shared/terrain';
 
 export const REACH = 1.2;
@@ -71,6 +72,7 @@ export function createWorld(
   terrain = new Terrain(seed),
   wallNowMs = Date.now(),
 ): WorldState {
+  const clock: WorldTime = { tick: 0, simSeconds: 0, wallNowMs };
   const rng = mulberry32(seed ^ 0x9e3779b9);
   const entities: EntityState[] = islandPlacements.map((placement) => ({
     ...makeEntity(
@@ -78,7 +80,7 @@ export function createWorld(
       placement.id,
       placement.kind,
       placement,
-      0,
+      clock,
       placement.footprint ?? kindOf(placement.kind)?.placement?.footprint(placement.id),
     ),
     ...structuredClone(placement),
@@ -98,12 +100,14 @@ export function createWorld(
         family.home,
         family,
         offset,
+        clock,
+        family.initialAgeStep,
       ),
     );
   }
   return {
     seed: terrain.seed,
-    clock: { tick: 0, simSeconds: 0, wallNowMs },
+    clock,
     terrain,
     entities: indexEntities(entities),
     entitySerials: new Map(),
@@ -126,7 +130,7 @@ export function addEntity(
     id,
     kind,
     position,
-    world.clock.simSeconds,
+    world.clock,
     kindOf(kind)?.placement?.footprint(id),
   );
   world.entities.set(id, entity);
@@ -147,11 +151,15 @@ export function removeEntity(world: WorldState, entity: EntityState): void {
   world.blocks = world.blocks.filter((block) => (block.owner ?? block.id) !== entity.id);
 }
 
-export function expireEntities(world: WorldState): void {
+export function expireEntities(world: WorldState): string[] {
+  const removed: string[] = [];
   for (const entity of world.entities.values()) {
-    if (entity.expiresAt !== undefined && entity.expiresAt <= world.clock.simSeconds)
+    if (freshnessOf(entity, world.clock) === 'expired') {
       removeEntity(world, entity);
+      removed.push(entity.id);
+    }
   }
+  return removed;
 }
 
 function makeEntity(
@@ -159,8 +167,9 @@ function makeEntity(
   id: string,
   kind: string,
   { x, z }: { x: number; z: number },
-  time: number,
+  clock: WorldTime,
   footprint?: Footprint,
+  ageSeconds = 0,
 ): EntityState {
   const entity: EntityState = {
     id,
@@ -170,9 +179,10 @@ function makeEntity(
     z,
     stage: 0,
   };
-  const lifetime = kindOf(kind)?.lifetime;
-  if (kindOf(kind)?.control) entity.control = initialControl();
-  if (lifetime !== undefined) entity.expiresAt = time + lifetime;
+  const spec = kindOf(kind);
+  if (spec?.control) entity.control = initialControl();
+  if (spec?.lifetime) entity.deadline = deadlineAt(spec.lifetime, clock, ageSeconds);
+  if (spec?.metabolism) entity.metabolism = { hunger: spec.metabolism.initialHunger };
   if (footprint !== undefined) entity.footprint = footprint;
   return entity;
 }
@@ -275,7 +285,9 @@ function scatter(
   count: number,
   minFromHome: number,
   options: ScatterOptions,
-  offset = 0,
+  offset: number,
+  clock: WorldTime,
+  initialAgeStep = 0,
 ): EntityState[] {
   const entities: EntityState[] = [];
   let guard = 0;
@@ -294,7 +306,15 @@ function scatter(
             r: quantize(options.radius[0] + rng() * (options.radius[1] - options.radius[0])),
           }
         : placement?.footprint(id);
-    const entity = makeEntity(terrain, id, kind, settled, 0, footprint);
+    const entity = makeEntity(
+      terrain,
+      id,
+      kind,
+      settled,
+      clock,
+      footprint,
+      entities.length * initialAgeStep,
+    );
     if (placement && !placement.fits(terrain, entity)) continue;
     placed.push(entity);
     entities.push(entity);

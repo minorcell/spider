@@ -28,6 +28,7 @@ export function describeObservation(observation: Observation): string {
       : '附近没有水';
   return [
     `${where}　地面 ${meters(observation.self.ground)} 米　离地 ${meters(observation.self.height)} 米`,
+    ...(observation.self.hunger === undefined ? [] : [`饥饿 ${meters(observation.self.hunger)}`]),
     `朝向 ${observation.self.heading}°　速度 ${observation.self.speed}`,
     `看见 ${observation.view}　够得着 ${REACH}　${front}`,
     `背上 ${carrying}　超出视线 ${observation.beyond}　被挡住 ${observation.hidden}`,

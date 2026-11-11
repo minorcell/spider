@@ -1,6 +1,7 @@
 import { MARK_LIMIT, MARK_NAME_MAX, MARK_NOTE_MAX } from '@/src/shared/config';
 import type { ControlSpec, ControlState } from '@/src/shared/control';
 import { kindOf } from '@/src/shared/kinds';
+import type { Deadline } from '@/src/shared/life';
 import { populationRules, type PopulationState } from '@/src/shared/islandContent';
 import type {
   EntityState,
@@ -92,14 +93,16 @@ export function applyBody(
   session: Restorable,
   body: SimBody,
   terrain = new Terrain(body.seed),
+  wallNowMs = Date.now(),
 ): void {
+  if (!Number.isFinite(wallNowMs) || wallNowMs < 0) throw new Error('Invalid world time');
   const decoded = bodyOf(body as unknown as Record<string, unknown>);
   if (!decoded) throw new Error('Invalid world snapshot');
   const entities = indexEntities(decoded.entities);
   const actor = entities.get(decoded.controlledId)!;
   const candidate: WorldState = {
     seed: terrain.seed,
-    clock: decoded.clock,
+    clock: { ...decoded.clock, wallNowMs },
     terrain,
     entities,
     controlledId: actor.id,
@@ -310,7 +313,8 @@ function readEntity(value: unknown): EntityState | null {
     !placed(raw.x, raw.y, raw.z) ||
     !isFiniteNumber(raw.stage) ||
     raw.stage < 0 ||
-    raw.stage > Math.max(8, kind.eat?.stages ?? 0)
+    !Number.isInteger(raw.stage) ||
+    raw.stage > (kind.eat?.bites ?? 0)
   ) {
     return null;
   }
@@ -332,12 +336,16 @@ function readEntity(value: unknown): EntityState | null {
     if (!control) return null;
     entity.control = control;
   } else if (raw.control !== undefined) return null;
-  const expiry = optionalNumber(raw.expiresAt);
-  if (expiry === null) return null;
-  if (expiry !== undefined) {
-    if (expiry < 0 || kind.lifetime === undefined) return null;
-    entity.expiresAt = expiry;
-  }
+  if (kind.lifetime) {
+    const deadline = readDeadline(raw.deadline);
+    if (!deadline) return null;
+    entity.deadline = deadline;
+  } else if (raw.deadline !== undefined) return null;
+  if (kind.metabolism) {
+    const hunger = (raw.metabolism as { hunger?: unknown } | null)?.hunger;
+    if (!isFiniteNumber(hunger) || hunger < 0 || hunger > kind.metabolism.maxHunger) return null;
+    entity.metabolism = { hunger };
+  } else if (raw.metabolism !== undefined) return null;
   if (raw.footprint) entity.footprint = raw.footprint as Footprint;
   if (vx !== undefined) entity.vx = vx;
   if (vy !== undefined) entity.vy = vy;
@@ -351,6 +359,19 @@ function readEntity(value: unknown): EntityState | null {
     entity.qw = spin.qw;
   }
   return entity;
+}
+
+function readDeadline(raw: unknown): Deadline | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  const wall = value.clock === 'wall';
+  if (!wall && value.clock !== 'simulation') return null;
+  const rots = wall ? value.rotsAtMs : value.rotsAtSeconds;
+  const expires = wall ? value.expiresAtMs : value.expiresAtSeconds;
+  if (!isFiniteNumber(rots) || !isFiniteNumber(expires) || rots < 0 || expires < rots) return null;
+  return wall
+    ? { clock: 'wall', rotsAtMs: rots, expiresAtMs: expires }
+    : { clock: 'simulation', rotsAtSeconds: rots, expiresAtSeconds: expires };
 }
 
 function readSpin(

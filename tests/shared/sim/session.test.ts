@@ -689,7 +689,7 @@ describe('eat', () => {
     const apple = session.addEntity('apple', 0, -0.8);
     apple.stage = 1;
     const outcome = await settle(session.eat(apple.id), session, 20, 60);
-    expect(outcome).toMatchObject({ ok: true, removed: true, stage: 2 });
+    expect(outcome).toMatchObject({ ok: true, removed: true, stage: 6 });
   });
 
   it('eats from the back and commits removal before the result is delivered', async () => {
@@ -749,7 +749,7 @@ describe('eat', () => {
   it('keeps a thing that does not disappear', async () => {
     KINDS.candy = {
       rest: 0,
-      eat: { duration: 0.2, stages: 2, removes: false },
+      eat: { bites: 2, secondsPerBite: 0.1, nutritionPerBite: 2, removes: false },
     };
     const session = new SimSession(7);
     const candy = session.addEntity('candy', 0, -0.5);
@@ -768,15 +768,15 @@ describe('eat', () => {
     });
   });
 
-  it('handles a meal with no slices', async () => {
+  it('rejects an already depleted permanent food', async () => {
     KINDS.zero = {
       rest: 0,
-      eat: { duration: 0.1, stages: 0, removes: false },
+      eat: { bites: 1, secondsPerBite: 0.1, nutritionPerBite: 2, removes: false },
     };
     const session = new SimSession(7);
     const zero = session.addEntity('zero', 0, -0.5);
-    const outcome = await settle(session.eat(zero.id), session, 5, 20);
-    expect(outcome).toMatchObject({ ok: true, removed: false });
+    zero.stage = 1;
+    await expect(session.eat(zero.id)).resolves.toMatchObject({ ok: false, reason: 'depleted' });
   });
 });
 

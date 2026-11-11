@@ -10,7 +10,6 @@ import {
   Vector2,
   Vector3,
 } from 'three';
-import { APPLE_SCALE } from '@/src/shared/config';
 import {
   appleMat,
   growShell,
@@ -212,10 +211,10 @@ function radiusAtY(y: number): number {
   return best * 0.995;
 }
 
-export function buildApple(stage: number): Group {
+export function buildApple(progress: number): Group {
   const group = new Group();
   const geometry = appleGeometry();
-  const amount = stage <= 0 ? 0 : stage === 1 ? 0.42 : 0.8;
+  const amount = Math.max(0, Math.min(1, progress)) * 0.96;
   const cutLines: number[] = [];
 
   if (amount > 0) {
@@ -316,7 +315,7 @@ export function buildApple(stage: number): Group {
       face.push(Math.cos(a0) * r, y, Math.sin(a0) * r, Math.cos(a1) * r, y, Math.sin(a1) * r);
     }
   };
-  if (stage <= 0) {
+  if (progress <= 0) {
     curveLine(0.5, 0.16, 0.55, 0.012);
     curveLine(-0.7, 0.14, 0.5, 0.01);
     curveLine(2.2, 0.22, 0.58, 0.008);
@@ -342,6 +341,5 @@ export function buildApple(stage: number): Group {
   leaf.rotation.x = -0.2;
   group.add(leaf);
 
-  group.scale.setScalar(APPLE_SCALE);
   return group;
 }

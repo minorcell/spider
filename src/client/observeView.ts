@@ -21,6 +21,7 @@ import { viewDistance } from '@/src/shared/vision';
 import { REACH, REACH_Y } from '@/src/shared/world';
 import type { Controller } from '@/src/shared/sim/controller';
 import { describeObservation, meters } from './observationText';
+import { freshnessOf } from '@/src/shared/life';
 
 const RING = 72;
 const OBSERVE_REFRESH_MS = 100;
@@ -236,7 +237,8 @@ export class ObserveOverlay {
         pin.dataset.state = state;
         paintPin(pin, state);
       }
-      const label = `${entity.id}　${name}　${note}${climb}`;
+      const spoil = freshnessOf(entity, world.clock) === 'rotten' ? '　已腐烂' : '';
+      const label = `${entity.id}　${name}　${note}${climb}${spoil}`;
       if (pin.textContent !== label) pin.textContent = label;
       const py = ground(entity.x, entity.z) + 0.4;
       const previous = this.#at.get(entity.id);

@@ -279,7 +279,11 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
   const dirty =
     !lastBody ||
     (reason === 'hide'
-      ? canonicalText(lastBody) !== canonicalText(body)
+      ? // A fresh host wall sample alone needs no write: deadlines are absolute.
+        canonicalText({
+          ...lastBody,
+          clock: { ...lastBody.clock, wallNowMs: body.clock.wallNowMs },
+        }) !== canonicalText(body)
       : changed(lastBody, body, slack));
   const revision = ++writeRevision;
 
@@ -590,7 +594,8 @@ function sameList(a: SimBody['entities'], b: SimBody['entities'], controlledId: 
     return (
       item.id === other.id &&
       item.stage === other.stage &&
-      item.expiresAt === other.expiresAt &&
+      canonicalText(item.deadline) === canonicalText(other.deadline) &&
+      item.metabolism?.hunger === other.metabolism?.hunger &&
       (item.id === controlledId ||
         (quant(item.x) === quant(other.x) && quant(item.z) === quant(other.z))) &&
       item.control?.lamp === other.control?.lamp &&

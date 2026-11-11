@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Box3, Group, LineSegments, Mesh, Vector3 } from 'three';
-import { buildProp, drapeGrass, MODELS, propDrape } from '@/src/client/props';
+import { buildProp, drapeGrass, MODELS, propDrape, showFreshness } from '@/src/client/props';
 import { KINDS } from '@/src/shared/kinds';
 import { nestSurface } from '@/src/shared/nestShape';
 
@@ -40,10 +40,32 @@ describe('buildProp', () => {
   );
 
   it('builds an apple at each bite stage', () => {
-    for (const stage of [0, 1, 2, 3]) {
+    for (const stage of [0, 1, 2, 3, 4, 5]) {
       const apple = buildProp('apple', stage);
       expect(apple).toBeInstanceOf(Group);
       expect(apple!.children.length).toBeGreaterThan(1);
+      expect(apple!.scale.x).toBe(0.54);
+    }
+  });
+
+  it('colors rotten items through shared palette variants without changing fresh neighbours', () => {
+    const fresh = buildProp('apple', 0)!;
+    const old = buildProp('apple', 0)!;
+    const before = (fresh.children[0] as Mesh).material;
+    expect((old.children[0] as Mesh).material).toBe(before);
+    showFreshness(old, true);
+    const rotten = (old.children[0] as Mesh).material;
+    expect(rotten).not.toBe(before);
+    expect((fresh.children[0] as Mesh).material).toBe(before);
+    showFreshness(old, true);
+    expect((old.children[0] as Mesh).material).toBe(rotten);
+    showFreshness(old, false);
+    expect((old.children[0] as Mesh).material).toBe(before);
+    KINDS['scaled-round'] = { ...KINDS.berry, modelScale: 0.8 };
+    try {
+      expect(buildProp('scaled-round', 0)!.scale.x).toBe(0.8);
+    } finally {
+      delete KINDS['scaled-round'];
     }
   });
 

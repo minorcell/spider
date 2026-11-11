@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kindOf, KINDS, propertiesOf, slicesOf } from '@/src/shared/kinds';
+import { kindOf, KINDS, propertiesOf } from '@/src/shared/kinds';
 
 describe('kinds', () => {
   it('finds every known kind', () => {
@@ -17,17 +17,6 @@ describe('kinds', () => {
 
   it('reports no properties for something unknown', () => {
     expect(propertiesOf('rock')).toEqual([]);
-  });
-
-  it('counts slices including the removal step', () => {
-    expect(slicesOf(KINDS.apple)).toBe(3);
-    expect(slicesOf(KINDS.grass)).toBe(0);
-    expect(
-      slicesOf({
-        rest: 0,
-        eat: { duration: 1, stages: 4, removes: false },
-      }),
-    ).toBe(4);
   });
 });
 

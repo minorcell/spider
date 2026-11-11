@@ -1,5 +1,6 @@
 import type { PopulationState } from '@/src/shared/islandContent';
 import type { ControlState } from '@/src/shared/control';
+import { freshnessOf, type Deadline, type Freshness } from '@/src/shared/life';
 import { carriedItems, heldBy } from '@/src/shared/sim/tether';
 import { propertiesOf } from '@/src/shared/kinds';
 import {
@@ -74,7 +75,8 @@ export interface EntityState {
   y: number;
   z: number;
   stage: number;
-  expiresAt?: number;
+  deadline?: Deadline;
+  metabolism?: { hunger: number };
   footprint?: Footprint;
   vx?: number;
   vy?: number;
@@ -153,6 +155,7 @@ export interface WorldInfo {
 }
 
 export interface SeenEntity {
+  freshness?: Freshness;
   id: string;
   kind: string;
   x: number;
@@ -167,6 +170,7 @@ export interface SeenEntity {
 }
 
 export interface Carried {
+  freshness?: Freshness;
   id: string;
   kind: string;
   stage: number;
@@ -174,6 +178,7 @@ export interface Carried {
 }
 
 export interface NearEntity {
+  freshness?: Freshness;
   id: string;
   kind: string;
   stage: number;
@@ -191,6 +196,7 @@ export interface Observation {
   hiddenByGround: number;
   terrain: TerrainDirection[];
   self: {
+    hunger?: number;
     x: number;
     y: number;
     z: number;
@@ -215,6 +221,7 @@ export interface Observation {
 
 export type Sense = Pick<
   Observation['self'],
+  | 'hunger'
   | 'x'
   | 'y'
   | 'z'
@@ -257,6 +264,15 @@ function canAct(kind: string): boolean {
   return propertiesOf(kind).some((property) => property !== 'cover' && property !== 'home');
 }
 
+function freshnessView(entity: EntityState, world: WorldState): { freshness?: Freshness } {
+  return entity.deadline ? { freshness: freshnessOf(entity, world.clock) } : {};
+}
+
+function needsView(world: WorldState): { hunger?: number } {
+  const needs = world.entities.get(world.controlledId ?? '')?.metabolism;
+  return needs ? { hunger: round3(needs.hunger) } : {};
+}
+
 export function toSense(state: ActorState, world: WorldState, withWays = false): Sense {
   const heading = toHeading(state.yaw);
   const px = state.position.x;
@@ -272,6 +288,7 @@ export function toSense(state: ActorState, world: WorldState, withWays = false):
   const water = readWater(world.terrain, px, pz, WATER_SENSE);
   const shore = waterDepth > 0 ? nearestShore(world.terrain, px, pz, WATER_SENSE) : null;
   const sense: Sense = {
+    ...needsView(world),
     x: round3(px),
     y: round3(state.position.y),
     z: round3(pz),
@@ -307,6 +324,7 @@ export function toSense(state: ActorState, world: WorldState, withWays = false):
       kind: item.kind,
       stage: item.stage,
       properties: propertiesOf(item.kind),
+      ...freshnessView(item, world),
     })),
     ahead: aheadAt(px, pz, heading, height, world.blocks, inside),
   };
@@ -367,6 +385,7 @@ export function toObservation(
       z: round3(entity.z),
       stage: entity.stage,
       properties: propertiesOf(entity.kind),
+      ...freshnessView(entity, world),
       distance: round3(distance),
       bearing: bearingFrom(dx, dz, heading),
       rise: round3(entity.y - ground),
@@ -401,6 +420,7 @@ export function toObservation(
       inside,
     ),
     self: {
+      ...needsView(world),
       x: round3(px),
       y: round3(state.position.y),
       z: round3(pz),
@@ -436,6 +456,7 @@ export function toObservation(
         kind: item.kind,
         stage: item.stage,
         properties: propertiesOf(item.kind),
+        ...freshnessView(item, world),
       })),
       ahead: felt.ahead,
       nearby: felt.nearby,
@@ -472,6 +493,7 @@ export function toNear(
       kind: entity.kind,
       stage: entity.stage,
       properties: propertiesOf(entity.kind),
+      ...freshnessView(entity, world),
       distance: round3(distance),
       bearing: bearingFrom(dx, dz, heading),
     });

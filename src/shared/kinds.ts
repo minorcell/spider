@@ -3,6 +3,7 @@ import { nestSolidSurface } from '@/src/shared/nestCollision';
 import { ringBoxes } from '@/src/shared/shapes';
 import { GAIT } from '@/src/shared/config';
 import type { ControlSpec } from '@/src/shared/control';
+import type { LifetimeSpec, MetabolismSpec } from '@/src/shared/life';
 import type { Block, EntityState, Footprint, Vec3, WorldState } from '@/src/shared/state';
 
 export interface CoverVolume {
@@ -30,8 +31,9 @@ export interface HomeSpec {
 }
 
 export interface EatSpec {
-  duration: number;
-  stages: number;
+  bites: number;
+  secondsPerBite: number;
+  nutritionPerBite: number;
   removes: boolean;
 }
 
@@ -68,8 +70,9 @@ export interface KindSpec {
   tether?: TetherSpec;
   label?: string;
   model?: PropModel;
-  /** Lifetime measured in simulation seconds. */
-  lifetime?: number;
+  modelScale?: number;
+  lifetime?: LifetimeSpec;
+  metabolism?: MetabolismSpec;
   eat?: EatSpec;
   rest: number;
   physics?: PhysicsSpec;
@@ -90,6 +93,7 @@ export const KINDS: Record<string, KindSpec> = {
   spider: {
     label: '蜘蛛',
     rig: 'spider',
+    metabolism: { initialHunger: 25, hungerPerSecond: 1 / 6, maxHunger: 100, forageAt: 60 },
     tether: {
       anchor: { x: 0, y: 0.82, z: 1.66 },
       limit: 7,
@@ -110,12 +114,14 @@ export const KINDS: Record<string, KindSpec> = {
     },
   },
   apple: {
-    carryable: { anchor: { x: 0, y: 0.26, z: 0 } },
+    carryable: { anchor: { x: 0, y: 0.1944, z: 0 } },
     label: '苹果',
     model: 'apple',
-    eat: { duration: 3, stages: 2, removes: true },
+    modelScale: 0.54,
+    lifetime: { clock: 'wall', lifetimeSeconds: 720, rottenSeconds: 90 },
+    eat: { bites: 6, secondsPerBite: 0.5, nutritionPerBite: 10, removes: true },
     rest: 0,
-    physics: { solid: true, radius: 0.26, loose: true, rolls: true, mass: 0.059, volume: 0.074 },
+    physics: { solid: true, radius: 0.1944, loose: true, rolls: true, mass: 0.025, volume: 0.031 },
   },
   pebble: {
     carryable: { anchor: { x: 0, y: 0.19, z: 0 } },
@@ -127,8 +133,8 @@ export const KINDS: Record<string, KindSpec> = {
   berry: {
     label: '浆果',
     model: { color: 0xa05f9d, segments: 14 },
-    lifetime: 180,
-    eat: { duration: 1, stages: 1, removes: true },
+    lifetime: { clock: 'simulation', lifetimeSeconds: 180, rottenSeconds: 30 },
+    eat: { bites: 2, secondsPerBite: 0.5, nutritionPerBite: 4, removes: true },
     rest: 0,
     physics: { solid: true, radius: 0.16, loose: true, rolls: true, mass: 0.018 },
   },
@@ -206,9 +212,4 @@ export function propertiesOf(kind: string): readonly string[] {
   if (spec.cover) result.push('cover');
   if (spec.home) result.push('home');
   return result;
-}
-
-export function slicesOf(kind: KindSpec): number {
-  if (!kind.eat) return 0;
-  return kind.eat.stages + (kind.eat.removes ? 1 : 0);
 }

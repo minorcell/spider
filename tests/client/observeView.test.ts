@@ -153,6 +153,19 @@ describe('ObserveOverlay', () => {
     expect(parent.querySelector<HTMLElement>('#observe')!.hidden).toBe(true);
   });
 
+  it('shows a rotten item using the committed world deadline', () => {
+    const overlay = new ObserveOverlay(parent);
+    const apple = entity({
+      deadline: { clock: 'wall', rotsAtMs: 1, expiresAtMs: 3 },
+    });
+    const state = world({
+      clock: { tick: 0, simSeconds: 0, wallNowMs: 2 },
+      entities: indexEntities([apple]),
+    });
+    overlay.sync(true, camera(), fakeSpider(0, 0), state, view);
+    expect(parent.querySelector('#observe-pins')!.textContent).toContain('已腐烂');
+  });
+
   it('shows and hides with the view flag', () => {
     const overlay = new ObserveOverlay(parent);
     overlay.sync(false, camera(), fakeSpider(0, 0), world(), view);
@@ -171,7 +184,13 @@ describe('ObserveOverlay', () => {
       entity({ id: 'rock-1', kind: 'rock', x: 2, y: 0.5, z: 0 }),
       entity({ id: 'apple-behind', x: 0, y: 0.5, z: 30 }),
     ];
-    overlay.sync(true, camera(), fakeSpider(0, 0), world({ entities, blocks }), view);
+    overlay.sync(
+      true,
+      camera(),
+      fakeSpider(0, 0),
+      world({ entities: indexEntities(entities), blocks }),
+      view,
+    );
     const pins = parent.querySelector('#observe-pins')!;
     expect(pins.innerHTML).toContain('data-state="reach"');
     expect(pins.innerHTML).toContain('data-state="seen"');
@@ -196,7 +215,13 @@ describe('ObserveOverlay', () => {
       entity({ id: 'apple-high', x: 2, y: 2.5, z: 0 }),
       entity({ id: 'apple-low', x: -2, y: -0.5, z: 0 }),
     ];
-    overlay.sync(true, camera(), fakeSpider(0, 0), world({ entities }), view);
+    overlay.sync(
+      true,
+      camera(),
+      fakeSpider(0, 0),
+      world({ entities: indexEntities(entities) }),
+      view,
+    );
     const pins = parent.querySelector('#observe-pins')!;
     expect(pins.textContent).toContain('高 2.5');
     expect(pins.textContent).toContain('低 0.5');

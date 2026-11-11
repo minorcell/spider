@@ -280,10 +280,16 @@ describe('snapshot', () => {
         ),
       });
     expect(withBerry({ kind: null })).toBe('malformed');
-    expect(withBerry({ expiresAt: Number.NaN })).toBe('malformed');
-    expect(withBerry({ expiresAt: -1 })).toBe('malformed');
+    expect(
+      withBerry({ deadline: { clock: 'simulation', rotsAtSeconds: NaN, expiresAtSeconds: 1 } }),
+    ).toBe('malformed');
+    expect(
+      withBerry({ deadline: { clock: 'simulation', rotsAtSeconds: 2, expiresAtSeconds: 1 } }),
+    ).toBe('malformed');
     const [home, ...others] = record.entities;
-    expect(status({ entities: [{ ...home, expiresAt: 1 }, ...others] })).toBe('malformed');
+    expect(status({ entities: [{ ...home, deadline: berry.deadline }, ...others] })).toBe(
+      'malformed',
+    );
   });
 
   it('requires an explicit world clock and rejects invalid counters or wall timestamps', () => {
@@ -453,7 +459,7 @@ describe('entity snapshots', () => {
       expect(classify({ ...base, tethers }).status).toBe('malformed');
     }
     expect(classify({ ...base, tethers: [relation] }).status).toBe('ok');
-    berry.expiresAt = 0;
+    berry.deadline = { clock: 'simulation', rotsAtSeconds: 0, expiresAtSeconds: 0 };
     const target = session();
     applyBody(target, base);
     expect(target.world.entities.has(berry.id)).toBe(false);
@@ -464,8 +470,12 @@ it('rejects a candidate whose controlled entity expires before publication', () 
   const target = session();
   const before = target.world.entities;
   const body = captureBody(target, null);
-  body.entities.find((item) => item.id === body.controlledId)!.expiresAt = 0;
-  KINDS.spider.lifetime = 1;
+  body.entities.find((item) => item.id === body.controlledId)!.deadline = {
+    clock: 'simulation',
+    rotsAtSeconds: 0,
+    expiresAtSeconds: 0,
+  };
+  KINDS.spider.lifetime = { clock: 'simulation', lifetimeSeconds: 1, rottenSeconds: 0 };
   try {
     expect(() => applyBody(target, body)).toThrow('Controlled entity expired');
     expect(target.world.entities).toBe(before);

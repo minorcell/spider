@@ -21,6 +21,7 @@ export interface GoalOutcome {
 }
 
 export interface Goal {
+  readonly targets?: readonly string[];
   readonly timeout: number;
   controls(): Controls;
   done(): boolean;
