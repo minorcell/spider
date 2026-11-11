@@ -1,15 +1,15 @@
 import { h } from '@/src/ui/dom';
 import { button } from '@/src/ui/button';
 import { paint } from '@/src/ui/style';
-import { border, color } from '@/src/ui/token';
+import { border, color, panelStyle } from '@/src/ui/token';
 
 export function localModelPanel(doc: Document): HTMLElement {
   const panel = h(doc, 'div', { id: 'local-model-panel', hidden: true });
   paint(panel, { marginTop: '18px', maxWidth: '760px' });
   const card = h(doc, 'section', { 'aria-label': '本机模型' });
   paint(card, {
+    ...panelStyle,
     padding: 'clamp(16px, 3vw, 24px)',
-    border: border.hairline,
     background: color.paperDeep,
   });
   const title = h(doc, 'h2', {}, 'Qwen3 0.6B');
@@ -36,8 +36,7 @@ export function localModelPanel(doc: Document): HTMLElement {
   }
   const actions = h(doc, 'div');
   paint(actions, { display: 'flex', flexWrap: 'wrap', gap: '12px' });
-  const load = button(doc, '加载本机模型', { id: 'local-load', type: 'button' });
-  paint(load, { padding: '8px 16px', background: color.ink, color: color.paper });
+  const load = button(doc, '加载本机模型', { id: 'local-load', variant: 'primary' });
   const unload = button(doc, '释放缓存', { id: 'local-unload', type: 'button', variant: 'ghost' });
   actions.append(load, unload);
   const hint = h(doc, 'p', {}, '释放缓存只释放运行时占用，已下载的模型会保留。');
@@ -51,7 +50,7 @@ export function localModelPanel(doc: Document): HTMLElement {
     'aria-label': '模型加载进度',
     'aria-describedby': 'local-status local-progress-detail',
   });
-  paint(progress, { width: '100%', height: '10px', accentColor: color.ink });
+  paint(progress, { width: '100%', height: '10px', accentColor: color.accent });
   const detail = h(doc, 'p', { id: 'local-progress-detail' });
   paint(detail, { margin: '6px 0 0', color: color.muted, fontSize: '12px' });
   const offline = h(

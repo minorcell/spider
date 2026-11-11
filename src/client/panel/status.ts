@@ -1,6 +1,6 @@
 import { h } from '@/src/ui/dom';
 import { paint } from '@/src/ui/style';
-import { border, color, font } from '@/src/ui/token';
+import { border, color, font, panelStyle, typeface } from '@/src/ui/token';
 import { contextTokensOf, type PilotSettings } from '@/src/client/settings';
 import type { AgentEvent } from '@/src/client/agent/loop';
 import type { Journal } from '@/src/client/journal/api';
@@ -76,10 +76,15 @@ function metric(
   const heading = h(doc, 'span', {}, label);
   paint(heading, { color: color.muted, fontSize: '12px', display: 'block' });
   const value = h(doc, 'strong', {}, initial);
-  paint(value, { display: 'block', fontWeight: '400', fontSize: '17px', overflowWrap: 'anywhere' });
+  paint(value, {
+    display: 'block',
+    fontFamily: typeface.mono,
+    fontSize: '17px',
+    overflowWrap: 'anywhere',
+  });
   const node = h(doc, 'div', {}, heading, value);
   paint(node, {
-    border: border.hairline,
+    ...panelStyle,
     padding: '10px 12px',
     minWidth: '0',
     background: color.paperDeep,
@@ -135,7 +140,7 @@ export function bindStatus(options: {
     value: '0',
     hidden: true,
   });
-  paint(meter, { width: '100%', accentColor: color.ink });
+  paint(meter, { width: '100%', accentColor: color.accent });
   const explanation = h(
     doc,
     'p',

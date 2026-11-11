@@ -2,6 +2,10 @@ export type ThemeName = 'day' | 'night';
 
 export interface ThemePalette {
   ink: string;
+  control: string;
+  accent: string;
+  onAccent: string;
+  selected: string;
   paper: string;
   paperDeep: string;
   veil: string;
@@ -19,41 +23,53 @@ export interface ThemePalette {
 
 export const themes: Record<ThemeName, ThemePalette> = {
   day: {
-    ink: '#1b1714',
-    paper: '#f3efe6',
-    paperDeep: '#e9e4da',
-    veil: 'rgba(243, 239, 230, 0.78)',
-    muted: 'rgba(27, 23, 20, 0.62)',
-    hairline: 'rgba(27, 23, 20, 0.18)',
-    hatch: 'rgba(27, 23, 20, 0.25)',
-    hatchStrong: 'rgba(27, 23, 20, 0.35)',
-    grid: 'rgba(27, 23, 20, 0.08)',
-    output: 'rgba(27, 23, 20, 0.68)',
-    cache: '#8e877e',
-    cacheWrite: '#c8c1b7',
-    prose: '#5e5750',
-    reason: '#aaa298',
+    ink: '#eff3e6',
+    control: '#23322a',
+    accent: '#dcf889',
+    onAccent: '#192417',
+    selected: '#33452a',
+    paper: '#19241f',
+    paperDeep: '#131d19',
+    veil: 'rgba(10, 17, 14, 0.68)',
+    muted: '#acbdb1',
+    hairline: '#42574b',
+    hatch: 'rgba(176, 199, 183, 0.25)',
+    hatchStrong: 'rgba(176, 199, 183, 0.42)',
+    grid: 'rgba(176, 199, 183, 0.12)',
+    output: '#79c8bb',
+    cache: '#a8cc7b',
+    cacheWrite: '#658c6c',
+    prose: '#ccd9cd',
+    reason: '#b5c59b',
   },
   night: {
-    ink: '#e8e3d8',
-    paper: '#172235',
-    paperDeep: '#1e2b3d',
-    veil: 'rgba(8, 13, 22, 0.82)',
-    muted: 'rgba(232, 227, 216, 0.64)',
-    hairline: 'rgba(232, 227, 216, 0.2)',
-    hatch: 'rgba(232, 227, 216, 0.26)',
-    hatchStrong: 'rgba(232, 227, 216, 0.38)',
-    grid: 'rgba(232, 227, 216, 0.1)',
-    output: 'rgba(232, 227, 216, 0.72)',
-    cache: '#9aa7b8',
-    cacheWrite: '#6c7a8c',
-    prose: '#b5ac9e',
-    reason: '#8b94a2',
+    ink: '#ebf0e6',
+    control: '#202e28',
+    accent: '#cfe981',
+    onAccent: '#182218',
+    selected: '#2d3e28',
+    paper: '#16201d',
+    paperDeep: '#101917',
+    veil: 'rgba(6, 12, 10, 0.76)',
+    muted: '#aabcb4',
+    hairline: '#3c5149',
+    hatch: 'rgba(158, 185, 173, 0.25)',
+    hatchStrong: 'rgba(158, 185, 173, 0.42)',
+    grid: 'rgba(158, 185, 173, 0.12)',
+    output: '#75b7bc',
+    cache: '#a4c779',
+    cacheWrite: '#5d8975',
+    prose: '#c4d3ca',
+    reason: '#aebf9a',
   },
 };
 
 export const color: Record<keyof ThemePalette, string> = {
   ink: 'var(--ui-ink)',
+  control: 'var(--ui-control)',
+  accent: 'var(--ui-accent)',
+  onAccent: 'var(--ui-on-accent)',
+  selected: 'var(--ui-selected)',
   paper: 'var(--ui-paper)',
   paperDeep: 'var(--ui-paper-deep)',
   veil: 'var(--ui-veil)',
@@ -74,14 +90,14 @@ export function variableName(key: keyof ThemePalette): string {
 }
 
 export const typeface = {
-  serif: "'Iowan Old Style', 'Palatino Linotype', 'Songti SC', serif",
-  mono: "'SFMono-Regular', Consolas, monospace",
+  sans: "Inter, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif",
+  mono: "'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace",
 } as const;
 
 export const font = {
-  body: `14px/1.65 ${typeface.serif}`,
-  read: `13px/1.55 ${typeface.serif}`,
-  pin: `12px/1.3 ${typeface.serif}`,
+  body: `14px/1.65 ${typeface.sans}`,
+  read: `13px/1.55 ${typeface.sans}`,
+  pin: `12px/1.3 ${typeface.sans}`,
   axis: `10px/1 ${typeface.mono}`,
   mono: `11px ${typeface.mono}`,
   step: `10px ${typeface.mono}`,
@@ -89,7 +105,23 @@ export const font = {
 
 export const border = {
   ink: `1px solid ${color.ink}`,
+  focus: `1px solid ${color.accent}`,
   hairline: `1px solid ${color.hairline}`,
+} as const;
+
+export const controlStyle = {
+  boxSizing: 'border-box',
+  minHeight: '36px',
+  border: border.hairline,
+  borderRadius: '5px',
+  background: color.control,
+  color: color.ink,
+} as const;
+
+export const panelStyle = {
+  border: border.hairline,
+  borderRadius: '9px',
+  background: color.paper,
 } as const;
 
 export const media = {

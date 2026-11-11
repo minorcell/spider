@@ -8,6 +8,8 @@ export function pill(doc: Document, text: string): HTMLElement {
     display: 'inline-block',
     padding: '2px 6px',
     border: border.hairline,
+    borderRadius: '4px',
+    background: color.control,
     color: color.muted,
     fontSize: '10px',
   });

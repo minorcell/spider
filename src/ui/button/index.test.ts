@@ -11,21 +11,21 @@ describe('button', () => {
     expect(plain.textContent).toBe('保存');
     expect(plain.type).toBe('button');
     expect(plain.hasAttribute('id')).toBe(false);
-    expect(plain.style.background).toBe('var(--ui-paper)');
+    expect(plain.style.background).toBe('var(--ui-control)');
 
     const pressed = button(document, '观察', { pressed: true });
     expect(pressed.getAttribute('aria-pressed')).toBe('true');
-    expect(pressed.style.background).toBe('var(--ui-ink)');
+    expect(pressed.style.background).toBe('var(--ui-selected)');
 
     const node = button(document, '观察', { id: 'observe-open', pressed: false });
     document.body.append(node);
     expect(node.id).toBe('observe-open');
     expect(node.getAttribute('aria-pressed')).toBe('false');
-    expect(node.style.background).toBe('var(--ui-paper)');
+    expect(node.style.background).toBe('var(--ui-control)');
     node.setAttribute('aria-pressed', 'true');
     await Promise.resolve();
-    expect(node.style.background).toBe('var(--ui-ink)');
-    expect(node.style.color).toBe('var(--ui-paper)');
+    expect(node.style.background).toBe('var(--ui-selected)');
+    expect(node.style.color).toBe('var(--ui-accent)');
     node.remove();
   });
 
@@ -34,7 +34,7 @@ describe('button', () => {
     expect(node.type).toBe('submit');
     expect(node.style.background).toBe('transparent');
     node.dispatchEvent(new MouseEvent('mouseenter'));
-    expect(node.style.borderColor).toBe('var(--ui-ink)');
+    expect(node.style.borderColor).toBe('var(--ui-accent)');
     node.dispatchEvent(new MouseEvent('mouseleave'));
     expect(node.style.borderColor).toBe('var(--ui-hairline)');
   });
@@ -74,7 +74,7 @@ describe('button', () => {
     node.setAttribute('aria-current', 'page');
     await new Promise((resolve) => setTimeout(resolve, 0));
     node.dispatchEvent(new MouseEvent('mouseleave'));
-    expect(node.style.color).toBe('var(--ui-ink)');
+    expect(node.style.color).toBe('var(--ui-accent)');
     node.remove();
   });
 });

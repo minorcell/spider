@@ -269,25 +269,25 @@ describe('GitHub badge', () => {
     expect(count.textContent).toBe('');
     expect(count.hidden).toBe(true);
     for (const control of document.querySelector('#corner')!.children) {
-      expect((control as HTMLElement).style.height).toBe('32px');
+      expect((control as HTMLElement).style.minHeight).toBe('36px');
       expect((control as HTMLElement).style.boxSizing).toBe('border-box');
       expect((control as HTMLElement).style.alignItems).toBe('center');
     }
   });
 
-  it('inverts on hover and outlines on focus', () => {
+  it('highlights on hover and outlines on focus', () => {
     installChrome();
     const badge = document.querySelector<HTMLAnchorElement>('#github')!;
     const star = badge.querySelector('svg') as SVGElement;
-    expect(badge.style.background).toBe('var(--ui-paper)');
+    expect(badge.style.background).toBe('var(--ui-control)');
 
     badge.dispatchEvent(new MouseEvent('mouseenter'));
-    expect(badge.style.background).toBe('var(--ui-ink)');
-    expect(badge.style.color).toBe('var(--ui-paper)');
+    expect(badge.style.background).toBe('var(--ui-selected)');
+    expect(badge.style.color).toBe('var(--ui-accent)');
     expect(star.style.opacity).toBe('1');
 
     badge.dispatchEvent(new MouseEvent('mouseleave'));
-    expect(badge.style.background).toBe('var(--ui-paper)');
+    expect(badge.style.background).toBe('var(--ui-control)');
     expect(badge.style.color).toBe('var(--ui-ink)');
     expect(star.style.opacity).toBe('0.85');
 
@@ -915,7 +915,7 @@ describe('diary panel', () => {
     expect(box.checked).toBe(true);
     expect(
       box.closest('label')!.querySelector<HTMLElement>('.ui-switch-track span')!.style.background,
-    ).toBe('var(--ui-ink)');
+    ).toBe('var(--ui-accent)');
     box.checked = false;
     box.dispatchEvent(new Event('change', { bubbles: true }));
     expect(readPilot().autoMemory).toBe(false);

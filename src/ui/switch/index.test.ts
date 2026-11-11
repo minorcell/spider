@@ -13,19 +13,19 @@ describe('switch', () => {
     const thumb = label.querySelector('.ui-switch-track span') as HTMLElement;
     expect(input.getAttribute('role')).toBe('switch');
     expect(label.querySelectorAll('.ui-switch-track')).toHaveLength(1);
-    expect(thumb.style.background).toBe('transparent');
+    expect(thumb.style.background).toBe('var(--ui-muted)');
     input.checked = true;
     reflectSwitch(input);
-    expect(thumb.style.background).toBe('var(--ui-ink)');
+    expect(thumb.style.background).toBe('var(--ui-accent)');
     input.checked = false;
     input.dispatchEvent(new Event('change'));
-    expect(thumb.style.background).toBe('transparent');
+    expect(thumb.style.background).toBe('var(--ui-muted)');
     input.checked = true;
     input.dispatchEvent(new Event('change'));
-    expect(thumb.style.background).toBe('var(--ui-ink)');
+    expect(thumb.style.background).toBe('var(--ui-accent)');
     input.dispatchEvent(new FocusEvent('focus'));
     expect(label.querySelector<HTMLElement>('.ui-switch-track')!.style.outline).toBe(
-      '1px solid var(--ui-ink)',
+      '1px solid var(--ui-accent)',
     );
     input.dispatchEvent(new FocusEvent('blur'));
     expect(label.querySelector<HTMLElement>('.ui-switch-track')!.style.outline).toBe('');
@@ -47,7 +47,7 @@ describe('switch', () => {
     expect(onInput.checked).toBe(true);
     expect(on.textContent).toContain('自动记忆');
     expect((on.querySelector('.ui-switch-track span') as HTMLElement).style.background).toBe(
-      'var(--ui-ink)',
+      'var(--ui-accent)',
     );
     expect(offInput.checked).toBe(false);
     expect(off.querySelector('.ui-switch-track')).not.toBeNull();

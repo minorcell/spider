@@ -1,6 +1,6 @@
 import { h } from '@/src/ui/dom';
 import { onMedia, paint } from '@/src/ui/style';
-import { border, color, media } from '@/src/ui/token';
+import { color, media, panelStyle, typeface } from '@/src/ui/token';
 
 export type KpiValue = string | Node[];
 
@@ -13,14 +13,19 @@ export function kpi(
   const value = h(doc, 'div', { class: 'kpi-value' });
   if (typeof options.value === 'string') value.textContent = options.value;
   else value.append(...options.value);
-  paint(value, { marginTop: '13px', fontSize: '28px', letterSpacing: '0.02em' });
+  paint(value, { marginTop: '13px', fontSize: '28px', fontFamily: typeface.mono });
   for (const unit of value.querySelectorAll<HTMLElement>('.kpi-unit')) {
     paint(unit, { fontSize: '16px' });
   }
   const foot = h(doc, 'span', { class: 'kpi-foot' }, options.foot);
   paint(foot, { display: 'block', marginTop: '5px', color: color.muted, fontSize: '11px' });
   const node = h(doc, 'article', { class: 'kpi' }, label, value, foot);
-  paint(node, { minHeight: '108px', padding: '15px 16px 12px', border: border.hairline });
+  paint(node, {
+    ...panelStyle,
+    minHeight: '108px',
+    padding: '15px 16px 12px',
+    background: color.paperDeep,
+  });
   return node;
 }
 

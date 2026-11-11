@@ -17,7 +17,7 @@ export function onMedia(query: string, apply: (matches: boolean) => void): void 
 
 export function bindFocus(node: HTMLElement): void {
   node.addEventListener('focus', () => {
-    node.style.outline = border.ink;
+    node.style.outline = border.focus;
     node.style.outlineOffset = '2px';
   });
   node.addEventListener('blur', () => {

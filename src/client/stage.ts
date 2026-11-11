@@ -82,8 +82,6 @@ export class Stage {
     this.#readout.id = 'observe-readout';
     const pins = doc.createElement('div');
     paintObserve(this.#layer, this.#readout, pins);
-    this.#readout.style.background = 'var(--ui-paper)';
-    this.#readout.style.padding = '4px 7px';
     this.#layer.append(this.#readout, pins);
     host.append(this.#layer);
 

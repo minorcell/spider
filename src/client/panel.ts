@@ -1,11 +1,9 @@
 import { bindLocalPanel } from '@/src/client/local/panel';
 import { closeDialog, showDialog } from '@/src/ui/dialog';
-import { h } from '@/src/ui/dom';
 import { placeTail } from '@/src/ui/dress';
 import type { MenuSelect } from '@/src/ui/select';
-import { paint as style } from '@/src/ui/style';
+import { button } from '@/src/ui/button';
 import { enhanceSwitch, reflectSwitch } from '@/src/ui/switch';
-import { border, color } from '@/src/ui/token';
 import { openJournal, type Journal, type OpenedJournal } from '@/src/client/journal/api';
 import {
   flushSoon,
@@ -237,8 +235,6 @@ export function mountPanel(
     for (const card of providerCards) {
       const on = card.dataset.provider === id;
       card.setAttribute('aria-pressed', String(on));
-      card.style.border = on ? border.ink : border.hairline;
-      card.style.background = on ? color.paperDeep : color.paper;
     }
   };
 
@@ -262,23 +258,12 @@ export function mountPanel(
     for (const chip of quickModels.querySelectorAll<HTMLButtonElement>('[data-quick-model]')) {
       const on = chip.dataset.quickModel === active;
       chip.setAttribute('aria-pressed', String(on));
-      chip.style.border = on ? border.ink : border.hairline;
-      chip.style.background = on ? color.ink : color.paper;
-      chip.style.color = on ? color.paper : color.ink;
     }
   };
 
   const modelChip = (id: string): HTMLButtonElement => {
-    const chip = h(doc, 'button', { type: 'button', 'data-quick-model': id }, id);
-    style(chip, {
-      border: border.hairline,
-      padding: '4px 9px',
-      background: color.paper,
-      color: color.ink,
-      font: 'inherit',
-      letterSpacing: 'inherit',
-      cursor: 'pointer',
-    });
+    const chip = button(doc, id, { pressed: false });
+    chip.dataset.quickModel = id;
     chip.addEventListener('click', () => {
       field('model').value = id;
       persist();

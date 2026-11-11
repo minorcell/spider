@@ -1,17 +1,26 @@
 import { h } from '@/src/ui/dom';
 import { bindFocus, paint } from '@/src/ui/style';
-import { border, color } from '@/src/ui/token';
+import { color, controlStyle } from '@/src/ui/token';
 
 export type FieldKind = 'text' | 'url' | 'password' | 'number' | 'textarea';
 
+export function fieldGrid(doc: Document, ...fields: HTMLLabelElement[]): HTMLElement {
+  const grid = h(doc, 'div', {}, ...fields);
+  paint(grid, {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
+    columnGap: '14px',
+  });
+  return grid;
+}
+
 function paintControl(node: HTMLElement): void {
   paint(node, {
-    border: border.ink,
-    background: color.paper,
-    color: 'inherit',
+    ...controlStyle,
+    width: '100%',
+    background: color.paperDeep,
     font: 'inherit',
-    letterSpacing: 'inherit',
-    padding: '0.2em 0.45em',
+    padding: '7px 10px',
   });
   bindFocus(node);
 }
@@ -50,6 +59,6 @@ export function field(
         });
   paintControl(control);
   const label = h(doc, 'label', {}, options.label, control);
-  paint(label, { display: 'grid', gap: '4px', margin: '0 0 12px' });
+  paint(label, { display: 'grid', gap: '6px', margin: '0 0 14px', color: color.muted });
   return label;
 }

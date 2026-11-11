@@ -1,12 +1,12 @@
 import { h } from '@/src/ui/dom';
 import { button } from '@/src/ui/button';
 import { dialog, dialogActions, dialogTitle } from '@/src/ui/dialog';
-import { field } from '@/src/ui/field';
+import { field, fieldGrid } from '@/src/ui/field';
 import { menuSelect } from '@/src/ui/select';
 import { icon, iconButton } from '@/src/ui/icon';
 import { dressChrome, paintTrace } from '@/src/ui/dress';
 import { bindFocus, paint } from '@/src/ui/style';
-import { border, color, font } from '@/src/ui/token';
+import { border, color, controlStyle, font, panelStyle } from '@/src/ui/token';
 import { switchField } from '@/src/ui/switch';
 import { localModelPanel } from '@/src/client/local/view';
 import { QUICK_PROVIDERS } from '@/src/client/providers';
@@ -30,8 +30,8 @@ function pageTitle(doc: Document, text: string): HTMLHeadingElement {
   paint(node, {
     margin: '0 0 16px',
     fontSize: 'clamp(25px, 3vw, 32px)',
-    fontWeight: '400',
-    letterSpacing: '0.06em',
+    fontWeight: '750',
+    lineHeight: '1.15',
   });
   return node;
 }
@@ -52,32 +52,12 @@ function quickProviders(doc: Document): HTMLElement {
   const row = h(doc, 'div', { id: 'providers' });
   paint(row, { display: 'flex', flexWrap: 'wrap', gap: '8px' });
   for (const provider of QUICK_PROVIDERS) {
-    const card = h(
-      doc,
-      'button',
-      {
-        type: 'button',
-        class: 'provider-card',
-        'data-provider': provider.id,
-        'aria-pressed': 'false',
-        title: provider.summary,
-      },
-      icon(doc, provider.icon),
-      h(doc, 'span', {}, provider.name),
-    );
-    paint(card, {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '7px',
-      border: border.hairline,
-      padding: '7px 11px',
-      background: color.paper,
-      color: color.ink,
-      font: 'inherit',
-      letterSpacing: 'inherit',
-      cursor: 'pointer',
-    });
-    bindFocus(card);
+    const card = button(doc, '', { pressed: false });
+    card.classList.add('provider-card');
+    card.dataset.provider = provider.id;
+    card.title = provider.summary;
+    card.append(icon(doc, provider.icon), h(doc, 'span', {}, provider.name));
+    paint(card, { display: 'inline-flex', alignItems: 'center', gap: '7px' });
     row.append(card);
   }
   return row;
@@ -98,13 +78,11 @@ function githubBadge(doc: Document): HTMLAnchorElement {
   badge.append(stars);
 
   paint(badge, {
+    ...controlStyle,
     display: 'inline-flex',
     alignItems: 'center',
     gap: '8px',
     padding: '5px 9px',
-    border: border.ink,
-    background: color.paper,
-    color: color.ink,
     font: font.read,
     letterSpacing: '0.02em',
     textDecoration: 'none',
@@ -118,8 +96,8 @@ function githubBadge(doc: Document): HTMLAnchorElement {
   });
   const invert = (on: boolean): void => {
     paint(badge, {
-      background: on ? color.ink : color.paper,
-      color: on ? color.paper : color.ink,
+      background: on ? color.selected : color.control,
+      color: on ? color.accent : color.ink,
     });
     star.style.opacity = on ? '1' : '0.85';
   };
@@ -143,22 +121,6 @@ export function buildChrome(doc: Document): DocumentFragment {
   settingsOpen.setAttribute('aria-controls', 'settings');
   settingsOpen.setAttribute('aria-expanded', 'false');
   corner.append(observe, githubBadge(doc), settingsOpen);
-  for (const control of [
-    observe,
-    corner.querySelector<HTMLAnchorElement>('#github')!,
-    settingsOpen,
-  ]) {
-    paint(control, {
-      boxSizing: 'border-box',
-      height: '32px',
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      font: font.read,
-      lineHeight: '1',
-    });
-  }
-  paint(settingsOpen, { width: '32px' });
 
   const trace = h(doc, 'ol', { id: 'trace', hidden: true });
   const tail = h(doc, 'span', { id: 'trace-tail', hidden: true });
@@ -172,12 +134,20 @@ export function buildChrome(doc: Document): DocumentFragment {
     placeholder: '未填写模型',
     autocomplete: 'off',
   }).querySelector('input')!;
-  goal.style.width = 'min(22rem, 42vw)';
-  goal.style.padding = '0 0.5em';
+  goal.setAttribute('aria-label', '给蛛小八的指令');
+  const pilotModel = h(doc, 'span', { id: 'pilot-model' });
+  paint(pilotModel, {
+    maxWidth: '8rem',
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+    textOverflow: 'ellipsis',
+    color: color.muted,
+    font: font.mono,
+  });
   pilot.append(
-    h(doc, 'span', { id: 'pilot-model' }),
+    pilotModel,
     goal,
-    button(doc, '发送', { id: 'pilot-send', type: 'submit' }),
+    button(doc, '发送', { id: 'pilot-send', type: 'submit', variant: 'primary' }),
   );
 
   const settings = dialog(doc, { id: 'settings', label: '设置', kind: 'sheet' });
@@ -200,8 +170,7 @@ export function buildChrome(doc: Document): DocumentFragment {
     h(doc, 'br'),
     '模型密钥留在这台电脑。进度可以交给你自己的对象存储。',
   );
-  const close = button(doc, '关闭', { id: 'settings-close' });
-  paint(close, { marginTop: '12px' });
+  const close = button(doc, '关闭', { id: 'settings-close', variant: 'ghost' });
   rail.append(brand, nav, foot, close);
 
   const body = h(doc, 'div', { class: 'settings-body' });
@@ -232,36 +201,39 @@ export function buildChrome(doc: Document): DocumentFragment {
       doc,
       'div',
       { id: 'online-model-panel' },
-      field(doc, {
-        label: 'Base URL',
-        name: 'baseURL',
-        kind: 'url',
-        autocomplete: 'off',
-        spellcheck: false,
-        placeholder: 'https://api.deepseek.com/v1',
-      }),
-      field(doc, {
-        label: 'Model ID',
-        name: 'model',
-        autocomplete: 'off',
-        spellcheck: false,
-        placeholder: 'deepseek-flash',
-      }),
-      field(doc, {
-        label: 'API Key',
-        name: 'apiKey',
-        kind: 'password',
-        autocomplete: 'off',
-        spellcheck: false,
-      }),
-      field(doc, {
-        label: '上下文长度 k token',
-        name: 'contextTokens',
-        kind: 'number',
-        min: 1,
-        step: 1,
-        placeholder: '不限制',
-      }),
+      fieldGrid(
+        doc,
+        field(doc, {
+          label: 'Base URL',
+          name: 'baseURL',
+          kind: 'url',
+          autocomplete: 'off',
+          spellcheck: false,
+          placeholder: 'https://api.deepseek.com/v1',
+        }),
+        field(doc, {
+          label: 'Model ID',
+          name: 'model',
+          autocomplete: 'off',
+          spellcheck: false,
+          placeholder: 'deepseek-flash',
+        }),
+        field(doc, {
+          label: 'API Key',
+          name: 'apiKey',
+          kind: 'password',
+          autocomplete: 'off',
+          spellcheck: false,
+        }),
+        field(doc, {
+          label: '上下文长度 k token',
+          name: 'contextTokens',
+          kind: 'number',
+          min: 1,
+          step: 1,
+          placeholder: '不限制',
+        }),
+      ),
       switchField(doc, { name: 'thinking', label: '思考', checked: true }),
       note(
         doc,
@@ -302,42 +274,45 @@ export function buildChrome(doc: Document): DocumentFragment {
   cloudForm.append(
     eyebrow(doc, '设置 / 云端'),
     pageTitle(doc, '云端'),
-    field(doc, {
-      label: '端点',
-      name: 'endpoint',
-      kind: 'url',
-      autocomplete: 'off',
-      spellcheck: false,
-      placeholder: 'https://s3.amazonaws.com',
-    }),
-    field(doc, {
-      label: '区域',
-      name: 'region',
-      autocomplete: 'off',
-      spellcheck: false,
-      placeholder: 'us-east-1',
-    }),
-    field(doc, {
-      label: '桶',
-      name: 'bucket',
-      autocomplete: 'off',
-      spellcheck: false,
-      placeholder: 'spider',
-    }),
-    field(doc, {
-      label: 'Access Key',
-      name: 'accessKeyId',
-      autocomplete: 'off',
-      spellcheck: false,
-    }),
-    field(doc, {
-      label: 'Secret Key',
-      name: 'secretAccessKey',
-      kind: 'password',
-      autocomplete: 'off',
-      spellcheck: false,
-    }),
-    button(doc, '检查并启用', { id: 'cloud-probe', type: 'submit' }),
+    fieldGrid(
+      doc,
+      field(doc, {
+        label: '端点',
+        name: 'endpoint',
+        kind: 'url',
+        autocomplete: 'off',
+        spellcheck: false,
+        placeholder: 'https://s3.amazonaws.com',
+      }),
+      field(doc, {
+        label: '区域',
+        name: 'region',
+        autocomplete: 'off',
+        spellcheck: false,
+        placeholder: 'us-east-1',
+      }),
+      field(doc, {
+        label: '桶',
+        name: 'bucket',
+        autocomplete: 'off',
+        spellcheck: false,
+        placeholder: 'spider',
+      }),
+      field(doc, {
+        label: 'Access Key',
+        name: 'accessKeyId',
+        autocomplete: 'off',
+        spellcheck: false,
+      }),
+      field(doc, {
+        label: 'Secret Key',
+        name: 'secretAccessKey',
+        kind: 'password',
+        autocomplete: 'off',
+        spellcheck: false,
+      }),
+    ),
+    button(doc, '检查并启用', { id: 'cloud-probe', type: 'submit', variant: 'primary' }),
     h(doc, 'p', { id: 'cloud-status' }),
     note(
       doc,
@@ -359,7 +334,7 @@ export function buildChrome(doc: Document): DocumentFragment {
 
   const leaveClose = button(doc, '确定关闭', { id: 'leave-close' });
   leaveClose.value = 'cancel';
-  const leaveSummarize = button(doc, '总结', { id: 'leave-summarize' });
+  const leaveSummarize = button(doc, '总结', { id: 'leave-summarize', variant: 'primary' });
   leaveSummarize.value = 'default';
   const leave = dialog(doc, { id: 'leave', label: '离开', kind: 'card' });
   const leaveForm = h(doc, 'form', { method: 'dialog' });
@@ -372,9 +347,10 @@ export function buildChrome(doc: Document): DocumentFragment {
 
   const hold = h(doc, 'div', { id: 'cloud-hold' });
   const holdText = h(doc, 'p', {}, '另一台电脑正在玩这只蜘蛛。');
-  const takeover = button(doc, '改在这台电脑玩', { id: 'cloud-takeover', type: 'button' });
+  const takeover = button(doc, '改在这台电脑玩', { id: 'cloud-takeover', variant: 'primary' });
   hold.append(holdText, takeover);
   paint(hold, {
+    ...panelStyle,
     display: 'none',
     position: 'absolute',
     top: '18px',
@@ -384,8 +360,6 @@ export function buildChrome(doc: Document): DocumentFragment {
     alignItems: 'center',
     gap: '12px',
     padding: '8px 12px',
-    border: border.ink,
-    background: color.paper,
     color: color.ink,
   });
   paint(holdText, { margin: '0' });
@@ -413,6 +387,7 @@ export function buildChrome(doc: Document): DocumentFragment {
     brand,
     nav,
     foot,
+    close,
     body,
   });
   return fragment;
