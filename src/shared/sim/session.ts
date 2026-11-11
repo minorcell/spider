@@ -90,9 +90,9 @@ export class SimSession {
   input = IDLE_CONTROLS;
   readonly world: WorldState;
 
-  constructor(seed?: number, terrain?: Terrain) {
-    this.world = terrain ? createWorld(terrain.seed, terrain) : createWorld(seed);
-    const actor = addEntity(this.world, islandActor.kind, islandActor, 0);
+  constructor(seed?: number, terrain?: Terrain, wallNowMs = Date.now()) {
+    this.world = createWorld(terrain?.seed ?? seed, terrain, wallNowMs);
+    const actor = addEntity(this.world, islandActor.kind, islandActor);
     this.world.controlledId = actor.id;
     this.actor = new Controller(actor);
     bindController(this.actor, this.world);
@@ -129,7 +129,7 @@ export class SimSession {
     return { state: this.actor.capture(), world: this.world };
   }
 
-  worldInfo(now = new Date()): WorldInfo {
+  worldInfo(now = new Date(this.world.clock.wallNowMs)): WorldInfo {
     const clock = worldClock(now);
     const pad = (value: number): string => String(value).padStart(2, '0');
     return {
@@ -230,7 +230,9 @@ export class SimSession {
     return { ...(await this.moveTo(mark.x, mark.z, fast)), name: clean };
   }
 
-  frame(dt: number): void {
+  frame(dt: number, wallNowMs = Date.now()): void {
+    if (!Number.isFinite(dt) || !Number.isFinite(wallNowMs) || wallNowMs < 0) return;
+    this.world.clock.wallNowMs = wallNowMs;
     this.#step(Math.min(0.05, Math.max(0, dt)));
   }
 
@@ -241,7 +243,7 @@ export class SimSession {
     return new Promise<GoalOutcome>((resolve) => {
       const active: ActiveGoal = {
         goal,
-        startedAt: this.actor.time,
+        startedAt: this.world.clock.simSeconds,
         guard: undefined as unknown as ReturnType<typeof setTimeout>,
         finish: (outcome: GoalOutcome) => {
           if (this.#active === active) this.#active = null;
@@ -342,7 +344,7 @@ export class SimSession {
     }
 
     const target = entity;
-    const startedAt = this.actor.time;
+    const startedAt = this.world.clock.simSeconds;
     const slices = slicesOf(kind);
     const elapsed0 = slices === 0 ? 0 : (target.stage * meal.duration) / slices;
     const remaining = Math.max(0.05, meal.duration - elapsed0);
@@ -362,7 +364,7 @@ export class SimSession {
           failure = { ok: false, reason: 'not-found', id: target.id };
           return true;
         }
-        const elapsed = elapsed0 + this.actor.time - startedAt;
+        const elapsed = elapsed0 + this.world.clock.simSeconds - startedAt;
         const finished = elapsed >= meal.duration - 1e-4;
         const stage = Math.min(
           meal.stages,
@@ -403,12 +405,12 @@ export class SimSession {
     const reach = this.#reachable(entity);
     if (!reach.ok) return Promise.resolve(reach);
 
-    const startedAt = this.actor.time;
+    const startedAt = this.world.clock.simSeconds;
     const result = () => ({ action: 'pick-up', target: entity.id });
     const promise = this.run({
       timeout: 3,
       controls: () => IDLE_CONTROLS,
-      done: () => this.actor.time - startedAt >= 0.35,
+      done: () => this.world.clock.simSeconds - startedAt >= 0.35,
       result,
       commit: () => {
         if (this.world.entities.get(entity.id) !== entity)
@@ -492,12 +494,12 @@ export class SimSession {
     if (!homeAt(x, z, this.world.entities.values()))
       return Promise.resolve({ ok: false, reason: 'not-home' });
     const duration = 4;
-    const startedAt = this.actor.time;
+    const startedAt = this.world.clock.simSeconds;
     const woke = this.actor.heightSet;
     return this.run({
       timeout: duration + 2,
       controls: () => {
-        const elapsed = this.actor.time - startedAt;
+        const elapsed = this.world.clock.simSeconds - startedAt;
         const target = elapsed < duration * 0.75 ? -0.28 : woke;
         const lift =
           Math.abs(this.actor.heightSet - target) < 0.02
@@ -506,13 +508,14 @@ export class SimSession {
         return { ...IDLE_CONTROLS, lift };
       },
       done: () =>
-        this.actor.time - startedAt >= duration && Math.abs(this.actor.heightSet - woke) < 0.05,
+        this.world.clock.simSeconds - startedAt >= duration &&
+        Math.abs(this.actor.heightSet - woke) < 0.05,
       result: () => ({ action: 'sleep', home: true }),
     });
   }
 
   addEntity(kind: string, x: number, z: number): EntityState {
-    return addEntity(this.world, kind, { x, z }, this.actor.time);
+    return addEntity(this.world, kind, { x, z });
   }
 
   #face(x: number, z: number): Promise<GoalOutcome> {
@@ -640,16 +643,19 @@ export class SimSession {
   }
 
   #step(dt: number): void {
-    if (
-      this.world.controlledId !== this.actor.entity.id ||
-      this.world.entities.get(this.actor.entity.id) !== this.actor.entity
-    ) {
+    if (dt > 0) this.world.clock.tick += 1;
+    this.world.clock.simSeconds += dt;
+    expireEntities(this.world);
+    const alive =
+      this.world.controlledId === this.actor.entity.id &&
+      this.world.entities.get(this.actor.entity.id) === this.actor.entity;
+    grow(this.world, dt, alive ? this.actor.position : undefined);
+    if (!alive) {
       this.#active?.finish({ ok: false, reason: 'stale-actor' });
+      this.input = IDLE_CONTROLS;
+      stepPhysics(this.world, undefined, dt);
       return;
     }
-    const time = this.actor.time + dt;
-    expireEntities(this.world, time);
-    grow(this.world, dt, this.actor.position, time);
 
     const active = this.#active;
     const from = {
@@ -677,7 +683,7 @@ export class SimSession {
     if (!active) return;
 
     const reached = active.goal.done();
-    const overtime = this.actor.time - active.startedAt > active.goal.timeout;
+    const overtime = this.world.clock.simSeconds - active.startedAt > active.goal.timeout;
     if (!reached && !overtime) return;
 
     const detail = active.goal.result();

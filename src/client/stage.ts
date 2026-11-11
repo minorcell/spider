@@ -113,7 +113,7 @@ export class Stage {
   #pointerX = 0;
   #pointerY = 0;
   /** Advance the one simulation, then read its world for the props. */
-  #step: ((dt: number) => void) | null = null;
+  #step: ((dt: number, wallNowMs: number) => void) | null = null;
   /** Cloud hold freezes the spider. The picture keeps drawing. */
   #held = false;
   #world: (() => WorldState) | null = null;
@@ -171,7 +171,7 @@ export class Stage {
   }
 
   /** The render loop steps this once, then draws the same spider. */
-  bind(step: (dt: number) => void, world: () => WorldState): void {
+  bind(step: (dt: number, wallNowMs: number) => void, world: () => WorldState): void {
     this.#step = step;
     this.#world = world;
   }
@@ -558,7 +558,8 @@ export class Stage {
       this.#stepBank = Math.min(MAX_STEPS * STEP_MS, this.#stepBank + elapsed);
       const steps = Math.floor((this.#stepBank + 1e-7) / STEP_MS);
       this.#stepBank = Math.max(0, this.#stepBank - steps * STEP_MS);
-      for (let i = 0; i < steps; i++) step(STEP_SECONDS);
+      const wallNowMs = Date.now();
+      for (let i = 0; i < steps; i++) step(STEP_SECONDS, wallNowMs);
     }
     const contact = waterContact(this.#spider, this.#wasLifted, this.#world?.() ?? null);
     this.#feedback();
@@ -589,7 +590,7 @@ export class Stage {
   };
 
   #syncEcology(): void {
-    const epochSecond = Math.floor(Date.now() / 1000);
+    const epochSecond = Math.floor((this.#world?.().clock.wallNowMs ?? Date.now()) / 1000);
     if (epochSecond === this.#ecologySecond) return;
     this.#ecologySecond = epochSecond;
     this.#clock = applyEcologyLighting(this.#renderer, new Date(epochSecond * 1000));

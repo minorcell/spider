@@ -30,6 +30,7 @@ function world(over: Partial<WorldState> = {}): WorldState {
     terrain: { height: flat },
     entities: new Map(),
     entitySerials: new Map(),
+    clock: { tick: 74, simSeconds: 1.23456, wallNowMs: Date.now() },
     blocks: [],
     marks: [],
     controlledId: 'spider-1',

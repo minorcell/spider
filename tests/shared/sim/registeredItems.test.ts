@@ -123,7 +123,7 @@ describe('registered items in the island', () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 86_400_000);
     pump(session, 1);
     expect(session.world.entities.get(berry.id)).toBe(berry);
-    session.actor.state.time = berry.expiresAt! - 1 / 60;
+    session.world.clock.simSeconds = berry.expiresAt! - 1 / 60;
     pump(session, 1);
     expect(session.world.entities.has(berry.id)).toBe(false);
 

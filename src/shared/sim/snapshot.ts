@@ -8,6 +8,7 @@ import type {
   PlaceMark,
   TetherRelation,
   WorldState,
+  WorldTime,
 } from '@/src/shared/state';
 import { expireEntities, indexEntities, propBlocks } from '@/src/shared/world';
 import { Terrain } from '@/src/shared/terrain';
@@ -26,6 +27,7 @@ const PLACE_Y = 1_000;
 
 export interface SimBody {
   seed: number;
+  clock: WorldTime;
   controlledId: string;
   populations: Record<string, PopulationState>;
   entitySerials: Record<string, number>;
@@ -74,6 +76,7 @@ export function captureBody(session: Restorable, pending: SimBody['pending']): S
   const world = session.world;
   return {
     seed: world.seed,
+    clock: { ...world.clock },
     controlledId: world.controlledId!,
     populations: structuredClone(Object.fromEntries(world.populations)),
     entitySerials: Object.fromEntries(world.entitySerials),
@@ -96,6 +99,7 @@ export function applyBody(
   const actor = entities.get(decoded.controlledId)!;
   const candidate: WorldState = {
     seed: terrain.seed,
+    clock: decoded.clock,
     terrain,
     entities,
     controlledId: actor.id,
@@ -106,7 +110,7 @@ export function applyBody(
     entitySerials: new Map(Object.entries(decoded.entitySerials)),
     physics: session.world.physics,
   };
-  expireEntities(candidate, actor.control!.time);
+  expireEntities(candidate);
   if (!candidate.entities.has(actor.id)) throw new Error('Controlled entity expired');
   session.cancel();
   Object.assign(session.world, candidate);
@@ -199,13 +203,15 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
     relations.tethers.set(targetId, { sourceId, targetId, length });
   }
   const tethers = [...relations.tethers.values()];
+  const clock = readClock(raw.clock);
   const serials = readEntitySerials(raw.entitySerials);
   const populations = readPopulations(raw.populations);
   const pending = readPending(raw.pending);
   const marks = readMarks(raw.marks);
-  if (!serials || !populations || pending === undefined || !marks) return null;
+  if (!clock || !serials || !populations || pending === undefined || !marks) return null;
   return {
     seed: raw.seed >>> 0,
+    clock,
     controlledId: raw.controlledId,
     entities,
     entitySerials: serials,
@@ -214,6 +220,15 @@ function bodyOf(raw: Record<string, unknown>): SimBody | null {
     tethers,
     pending,
   };
+}
+
+function readClock(value: unknown): WorldTime | null {
+  if (!value || typeof value !== 'object') return null;
+  const { tick, simSeconds, wallNowMs } = value as Partial<WorldTime>;
+  if (!Number.isSafeInteger(tick) || tick! < 0) return null;
+  if (!isFiniteNumber(simSeconds) || simSeconds < 0) return null;
+  if (!isFiniteNumber(wallNowMs) || wallNowMs < 0) return null;
+  return { tick: tick!, simSeconds, wallNowMs };
 }
 
 function readEntitySerials(value: unknown): SimBody['entitySerials'] | null {

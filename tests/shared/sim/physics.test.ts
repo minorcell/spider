@@ -24,6 +24,7 @@ function world(over: Partial<WorldState> = {}): WorldState {
     terrain: { height: () => 0 },
     entities: new Map(),
     entitySerials: new Map(),
+    clock: { tick: 0, simSeconds: 0, wallNowMs: Date.now() },
     blocks: [],
     marks: [],
     tethers: new Map(),

@@ -43,7 +43,7 @@ function campSession(): SimSession {
   session.world.entities = new Map([[session.actor.entity.id, session.actor.entity]]);
   session.world.blocks = [];
   session.world.terrain = { height: () => 0 };
-  const camp = addEntity(session.world, 'camp', { x: 8, z: -6 }, 0);
+  const camp = addEntity(session.world, 'camp', { x: 8, z: -6 });
   // The scene's authored home ID survives replacing its registered definition.
   session.world.entities.delete(camp.id);
   camp.id = 'home';
@@ -122,7 +122,7 @@ describe('registered scenery composition', () => {
     await walk;
     expect(session.actor.position.x).toBeLessThan(10);
     expect(session.actor.position.x).toBeGreaterThan(8);
-    const stone = addEntity(session.world, 'pebble', { x: 8, z: -7.5 }, 0);
+    const stone = addEntity(session.world, 'pebble', { x: 8, z: -7.5 });
     stone.vx = 4;
     pump(session, 90);
     expect(stone.x).toBeLessThanOrEqual(10 - KINDS.pebble.physics!.radius);
@@ -131,7 +131,7 @@ describe('registered scenery composition', () => {
 
   it('stores and sleeps relative to the registered home, then restores its shapes', async () => {
     const session = campSession();
-    const item = addEntity(session.world, 'pebble', { x: 8, z: -6.8 }, 0);
+    const item = addEntity(session.world, 'pebble', { x: 8, z: -6.8 });
     attachCargo(session.world, item);
     expect(session.store(item.id)).toMatchObject({ ok: true, x: 9, z: -5 });
     const sleep = session.sleep();
@@ -163,7 +163,7 @@ describe('registered scenery composition', () => {
 
   it('supports feet on every registered surface, including a second instance', () => {
     const session = campSession();
-    const second = addEntity(session.world, 'camp', { x: -8, z: 6 }, 0);
+    const second = addEntity(session.world, 'camp', { x: -8, z: 6 });
     second.y = 1;
     const model = new Spider(session.actor);
     const binding = vi.spyOn(model, 'bindLegs');
@@ -181,7 +181,7 @@ describe('registered scenery composition', () => {
   it('chooses the strongest overlapping cover and invalidates a changed definition', () => {
     const session = campSession();
     KINDS.canopy = { ...KINDS.camp, cover: { range: 2, volumes: KINDS.camp.cover!.volumes } };
-    const canopy = addEntity(session.world, 'canopy', { x: 8, z: -6 }, 0);
+    const canopy = addEntity(session.world, 'canopy', { x: 8, z: -6 });
     expect(coverAt(8, -6, session.world.entities.values(), 1)).toEqual({
       kind: 'canopy',
       range: 2,

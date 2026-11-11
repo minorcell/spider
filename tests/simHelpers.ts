@@ -26,7 +26,7 @@ export function drive(
 }
 
 export function attachCargo(world: WorldState, ...items: EntityState[]): void {
-  if (!world.controlledId) world.controlledId = addEntity(world, 'spider', { x: 0, z: 0 }, 0).id;
+  if (!world.controlledId) world.controlledId = addEntity(world, 'spider', { x: 0, z: 0 }).id;
   for (const item of items) {
     world.entities.set(item.id, item);
     world.tethers.set(item.id, {

@@ -554,7 +554,36 @@ describe('flushWorld', () => {
     expect(pendingNow()).toBeNull();
   });
 
-  it('writes a move, and ignores a small apple tick until the page hides', async () => {
+  it('saves idle world time periodically and preserves the exact clock on hide', async () => {
+    const session = new SimSession(2);
+    await restoreWorld(session);
+    installWorldStore(session);
+    flushWorld('poke');
+    await writesDone();
+    const first = JSON.parse(localStorage.getItem(KEY) ?? '').seq as number;
+    session.world.clock.simSeconds = 1;
+    session.world.clock.tick = 60;
+    flushWorld('interval');
+    await writesDone();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '').seq).toBe(first);
+    session.world.clock.simSeconds = 5;
+    session.world.clock.tick = 300;
+    flushWorld('interval');
+    await writesDone();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '')).toMatchObject({
+      seq: first + 1,
+      clock: { tick: 300, simSeconds: 5 },
+    });
+    session.world.clock.simSeconds = 5.02;
+    session.world.clock.tick = 301;
+    flushWorld('hide');
+    await writesDone();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '')).toMatchObject({
+      clock: { tick: 301, simSeconds: 5.02 },
+    });
+  });
+
+  it('writes a move, and ignores a small population tick until the page hides', async () => {
     const session = new SimSession(2);
     await restoreWorld(session);
     installWorldStore(session);

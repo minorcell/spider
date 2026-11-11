@@ -119,12 +119,12 @@ export function fitsPlacement(world: WorldState, item: EntityState, x: number, z
 
 export function stepPhysics(
   world: WorldState,
-  body: Body,
+  body: Body | undefined,
   dt: number,
 ): { x: number; z: number } | undefined {
   if (dt <= 0) return;
   const rules = world.physics ?? PHYSICS;
-  const resting = Math.abs(body.speed) < 0.05;
+  const resting = !body || Math.abs(body.speed) < 0.05;
   const movers: Mover[] = [];
   const pulled = pullTethers(world, dt);
   for (const entity of world.entities.values()) {
@@ -134,17 +134,17 @@ export function stepPhysics(
     const vx = entity.vx ?? 0;
     const vy = entity.vy ?? 0;
     const vz = entity.vz ?? 0;
-    const dx = entity.x - body.x;
-    const dz = entity.z - body.z;
-    const reach = (body.radius ?? BODY_RADIUS) + loose.radius;
+    const dx = entity.x - (body?.x ?? 0);
+    const dz = entity.z - (body?.z ?? 0);
+    const reach = (body?.radius ?? BODY_RADIUS) + loose.radius;
     const asleep =
-      (!body.from || (body.from.x === body.x && body.from.z === body.z)) &&
+      (!body?.from || (body.from.x === body.x && body.from.z === body.z)) &&
       resting &&
       asleepBodies.has(entity) &&
       vx === 0 &&
       vy === 0 &&
       vz === 0 &&
-      dx * dx + dz * dz >= reach * reach;
+      (!body || dx * dx + dz * dz >= reach * reach);
     movers.push({
       solid: loose.solid,
       entity,
@@ -237,7 +237,7 @@ export function stepPhysics(
   }
 
   const reached = advanceMotion(movers, world, body, dt);
-  pushFromController(movers, world, { ...body, ...reached });
+  if (body) pushFromController(movers, world, { ...body, ...reached });
 
   if (movers.some((mover) => !mover.asleep)) resolveContacts(movers, world);
 
@@ -274,7 +274,7 @@ export function stepPhysics(
     if (stayed) asleepBodies.set(mover.entity, mover.floor);
     else asleepBodies.delete(mover.entity);
   }
-  return reached;
+  return body ? reached : undefined;
 }
 
 const CONTACT_STEPS = 6;
@@ -479,12 +479,12 @@ type MotionEvent =
 function advanceMotion(
   movers: Mover[],
   world: WorldState,
-  body: Body,
+  body: Body | undefined,
   dt: number,
 ): { x: number; z: number } {
-  const from = body.from ?? body;
-  let controllerVX = (body.x - from.x) / dt;
-  let controllerVZ = (body.z - from.z) / dt;
+  const from = body?.from ?? body ?? { x: 0, z: 0 };
+  let controllerVX = body ? (body.x - from.x) / dt : 0;
+  let controllerVZ = body ? (body.z - from.z) / dt : 0;
   let controllerX = from.x;
   let controllerZ = from.z;
   let elapsed = 0;
@@ -522,7 +522,7 @@ function advanceMotion(
       dx: controllerVX * remaining,
       dy: 0,
       dz: controllerVZ * remaining,
-      radius: body.radius ?? BODY_RADIUS,
+      radius: body?.radius ?? BODY_RADIUS,
     };
     for (let i = 0; i < movers.length; i++) {
       const mover = movers[i];
@@ -533,7 +533,7 @@ function advanceMotion(
       }
       if (!mover.solid) continue;
       // Controllers currently use a vertical column; loose bodies use full 3D spheres.
-      const controllerHit = sweepSpheres(controller, { ...path, y: 0, dy: 0 });
+      const controllerHit = body && sweepSpheres(controller, { ...path, y: 0, dy: 0 });
       if (controllerHit)
         offer({ kind: 'controller', time: controllerHit.time, mover, normal: controllerHit });
       for (let j = i + 1; j < movers.length; j++) {

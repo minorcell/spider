@@ -70,7 +70,7 @@ describe('registered two-entity tethers', () => {
     source.control = { ...initialControl(), yaw: Math.PI / 2 };
     const local = { x: 1, y: 2, z: 3 };
     expect(tetherAnchor(source, local)).toEqual({ x: 6, y: 6, z: 4 });
-    const parcel = addEntity(session.world, 'parcel', { x: 2, z: 5 }, 0);
+    const parcel = addEntity(session.world, 'parcel', { x: 2, z: 5 });
     parcel.y = 3;
     expect(tetherAnchor(parcel, local)).toEqual({ x: 3, y: 5, z: 8 });
     Object.assign(parcel, { qx: 0, qy: 0, qz: Math.SQRT1_2, qw: Math.SQRT1_2 });
@@ -116,10 +116,10 @@ describe('registered two-entity tethers', () => {
   it('keeps independent inventories and capacities for two owners through save and removal', () => {
     const session = scene();
     const { world } = session;
-    const winch = addEntity(world, 'winch', { x: 3, z: 0 }, 0);
-    const a = addEntity(world, 'parcel', { x: 0.8, z: 0 }, 0);
-    const b = addEntity(world, 'parcel', { x: 3.1, z: 0 }, 0);
-    const c = addEntity(world, 'parcel', { x: 3.2, z: 0 }, 0);
+    const winch = addEntity(world, 'winch', { x: 3, z: 0 });
+    const a = addEntity(world, 'parcel', { x: 0.8, z: 0 });
+    const b = addEntity(world, 'parcel', { x: 3.1, z: 0 });
+    const c = addEntity(world, 'parcel', { x: 3.2, z: 0 });
     expect(attachTether(world, session.actor.entity.id, a.id).ok).toBe(true);
     expect(attachTether(world, winch.id, b.id)).toMatchObject({
       ok: true,
@@ -152,9 +152,9 @@ describe('registered two-entity tethers', () => {
 
   it('validates registered capabilities, exclusive targets and each owner’s capacity', () => {
     const { world } = scene();
-    const winch = addEntity(world, 'winch', { x: 0, z: 0 }, 0);
-    const parcels = [0, 1, 2].map((x) => addEntity(world, 'parcel', { x, z: 1 }, 0));
-    const berry = addEntity(world, 'berry', { x: 0, z: 0 }, 0);
+    const winch = addEntity(world, 'winch', { x: 0, z: 0 });
+    const parcels = [0, 1, 2].map((x) => addEntity(world, 'parcel', { x, z: 1 }));
+    const berry = addEntity(world, 'berry', { x: 0, z: 0 });
     expect(attachmentFailure(world, 'absent', parcels[0].id)).toBe('not-found');
     expect(attachmentFailure(world, winch.id, 'absent')).toBe('not-found');
     expect(attachmentFailure(world, winch.id, winch.id)).toBe('same-entity');
@@ -197,8 +197,8 @@ describe('registered two-entity tethers', () => {
 
   it('pulls both loose endpoints by registered mass and preserves total momentum', () => {
     const { world } = scene();
-    const cart = addEntity(world, 'cart', { x: -2, z: 0 }, 0);
-    const parcel = addEntity(world, 'parcel', { x: 2, z: 0 }, 0);
+    const cart = addEntity(world, 'cart', { x: -2, z: 0 });
+    const parcel = addEntity(world, 'parcel', { x: 2, z: 0 });
     attachTether(world, cart.id, parcel.id);
     world.tethers.get(parcel.id)!.length = 1;
     stepPhysics(world, far, 0.1);
@@ -211,9 +211,9 @@ describe('registered two-entity tethers', () => {
 
   it('adds chain impulses from one velocity state regardless of relation iteration order', () => {
     const { world } = scene();
-    const a = addEntity(world, 'cart', { x: -3, z: 0 }, 0);
-    const b = addEntity(world, 'cart', { x: 0, z: 0 }, 0);
-    const c = addEntity(world, 'parcel', { x: 4, z: 0 }, 0);
+    const a = addEntity(world, 'cart', { x: -3, z: 0 });
+    const b = addEntity(world, 'cart', { x: 0, z: 0 });
+    const c = addEntity(world, 'parcel', { x: 4, z: 0 });
     attachTether(world, a.id, b.id);
     attachTether(world, b.id, c.id);
     for (const relation of world.tethers.values()) relation.length = 1;
@@ -230,8 +230,8 @@ describe('registered two-entity tethers', () => {
 
   it('leaves slack and rapidly approaching bodies unforced, then wakes a resting tethered body', () => {
     const { world } = scene();
-    const winch = addEntity(world, 'winch', { x: 0, z: 0 }, 0);
-    const parcel = addEntity(world, 'parcel', { x: 2, z: 0 }, 0);
+    const winch = addEntity(world, 'winch', { x: 0, z: 0 });
+    const parcel = addEntity(world, 'parcel', { x: 2, z: 0 });
     attachTether(world, winch.id, parcel.id);
     expect(pullTethers(world, 0.1).size).toBe(0);
     world.tethers.get(parcel.id)!.length = 1;
@@ -252,7 +252,7 @@ describe('registered two-entity tethers', () => {
     const source = world.entities.get(world.controlledId!)!;
     source.control!.yawRate = 2;
     KINDS.parcel.physics!.mass = undefined;
-    const parcel = addEntity(world, 'parcel', { x: 5, z: 1.66 }, 0);
+    const parcel = addEntity(world, 'parcel', { x: 5, z: 1.66 });
     parcel.y = source.y + 0.82;
     attachTether(world, source.id, parcel.id);
     world.tethers.get(parcel.id)!.length = 1.2;
@@ -266,8 +266,8 @@ describe('registered two-entity tethers', () => {
 
   it('tolerates missing or no-longer-capable endpoints without creating phantom forces', () => {
     const { world } = scene();
-    const winch = addEntity(world, 'winch', { x: 0, z: 0 }, 0);
-    const parcel = addEntity(world, 'parcel', { x: 4, z: 0 }, 0);
+    const winch = addEntity(world, 'winch', { x: 0, z: 0 });
+    const parcel = addEntity(world, 'parcel', { x: 4, z: 0 });
     attachTether(world, winch.id, parcel.id);
     const relation = world.tethers.get(parcel.id)!;
     relation.length = 1;

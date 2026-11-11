@@ -119,6 +119,7 @@ function makeWorld(entities: EntityState[] = [], tethered: EntityState[] = []): 
       ...tethered,
     ]),
     entitySerials: new Map(),
+    clock: { tick: 0, simSeconds: 0, wallNowMs: Date.now() },
     blocks: [],
     marks: [],
     populations: new Map(),
@@ -806,6 +807,7 @@ it('draws the registered models and updates their silk until release', () => {
 
 it('runs at most three fixed steps and clears hidden time on resume', () => {
   const now = vi.spyOn(performance, 'now').mockReturnValue(0);
+  const wallNow = vi.spyOn(Date, 'now').mockReturnValue(1000);
   const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
   const stage = new Stage(makeHost(), new RealSpider());
   const step = vi.fn();
@@ -814,6 +816,7 @@ it('runs at most three fixed steps and clears hidden time on resume', () => {
   const tick = renderer().loop!;
   tick(100);
   expect(step).toHaveBeenCalledTimes(3);
+  expect(step.mock.calls).toEqual(Array.from({ length: 3 }, () => [1 / 60, 1000]));
   tick(108);
   expect(step).toHaveBeenCalledTimes(3);
   hidden.mockReturnValue(true);
@@ -827,8 +830,9 @@ it('runs at most three fixed steps and clears hidden time on resume', () => {
   stage.hold(false);
   tick(1010);
   expect(step).toHaveBeenCalledTimes(3);
+  wallNow.mockReturnValue(2000);
   tick(1017);
-  expect(step).toHaveBeenLastCalledWith(1 / 60);
+  expect(step).toHaveBeenLastCalledWith(1 / 60, 2000);
   expect(step).toHaveBeenCalledTimes(4);
   stage.dispose();
 });

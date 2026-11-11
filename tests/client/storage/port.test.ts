@@ -43,7 +43,7 @@ function connect(handle = createStorageHandler(createDbRepository())): StorageCl
 }
 function snapshot(seq: number): WorldRecord {
   return {
-    ...captureBody(new SimSession(5), null),
+    ...captureBody(new SimSession(5, undefined, now.getTime()), null),
     id: 'current',
     format: 4,
     savedAt: 1,

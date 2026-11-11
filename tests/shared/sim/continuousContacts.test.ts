@@ -34,8 +34,8 @@ afterEach(() => {
 describe('continuous body contacts', () => {
   it('prevents equal bodies from swapping sides in one step', () => {
     const session = scene();
-    const a = addEntity(session.world, 'light', { x: -0.4, z: 0 }, 0);
-    const b = addEntity(session.world, 'light', { x: 0.4, z: 0 }, 0);
+    const a = addEntity(session.world, 'light', { x: -0.4, z: 0 });
+    const b = addEntity(session.world, 'light', { x: 0.4, z: 0 });
     a.vx = 10;
     b.vx = -10;
     stepPhysics(session.world, far, 0.1);
@@ -47,8 +47,8 @@ describe('continuous body contacts', () => {
 
   it('transfers momentum according to registered mass and continues after contact', () => {
     const session = scene();
-    const a = addEntity(session.world, 'light', { x: -0.4, z: 0 }, 0);
-    const b = addEntity(session.world, 'heavy', { x: 0.4, z: 0 }, 0);
+    const a = addEntity(session.world, 'light', { x: -0.4, z: 0 });
+    const b = addEntity(session.world, 'heavy', { x: 0.4, z: 0 });
     a.vx = 10;
     stepPhysics(session.world, far, 0.2);
     expect(a.x).toBeLessThan(b.x);
@@ -60,8 +60,8 @@ describe('continuous body contacts', () => {
 
   it('finds contacts along vertical motion as well as horizontal motion', () => {
     const session = scene();
-    const a = addEntity(session.world, 'light', { x: 0, z: 0 }, 0);
-    const b = addEntity(session.world, 'light', { x: 0, z: 0 }, 0);
+    const a = addEntity(session.world, 'light', { x: 0, z: 0 });
+    const b = addEntity(session.world, 'light', { x: 0, z: 0 });
     a.y = 1;
     b.y = 2;
     a.vy = 10;
@@ -74,7 +74,7 @@ describe('continuous body contacts', () => {
 
   it('detects a controller crossing a small item even when its endpoint is far away', () => {
     const session = scene();
-    const item = addEntity(session.world, 'light', { x: 0, z: 0 }, 0);
+    const item = addEntity(session.world, 'light', { x: 0, z: 0 });
     stepPhysics(session.world, { x: 1, z: 0, speed: 20, from: { x: -1, z: 0 } }, 0.1);
     expect(item.x).toBeGreaterThanOrEqual(1.5 - 1e-6);
     expect(item.vx).toBeGreaterThan(0);
@@ -83,7 +83,7 @@ describe('continuous body contacts', () => {
   it('propagates a collision through a chain and stops it at a wall', () => {
     const { world } = scene();
     world.blocks = [block('wall', 0.6, 0.61, -1, 1)];
-    const bodies = [-0.4, 0, 0.4].map((x) => addEntity(world, 'light', { x, z: 0 }, 0));
+    const bodies = [-0.4, 0, 0.4].map((x) => addEntity(world, 'light', { x, z: 0 }));
     bodies[0].vx = 10;
     stepPhysics(world, far, 0.4);
     for (let i = 1; i < bodies.length; i++) {
@@ -96,10 +96,10 @@ describe('continuous body contacts', () => {
   it('wakes a sleeping body without losing its elevated ground support', () => {
     const { world } = scene();
     world.terrain = { height: () => 5 };
-    const target = addEntity(world, 'light', { x: 0.4, z: 0 }, 0);
+    const target = addEntity(world, 'light', { x: 0.4, z: 0 });
     stepPhysics(world, far, 0.1);
     stepPhysics(world, far, 0.1);
-    const source = addEntity(world, 'light', { x: -0.4, z: 0 }, 0);
+    const source = addEntity(world, 'light', { x: -0.4, z: 0 });
     source.vx = 10;
     stepPhysics(world, far, 0.2);
     expect(target.x).toBeGreaterThan(0.4);
@@ -111,8 +111,8 @@ describe('continuous body contacts', () => {
   it('uses the controller radius and stops a pinned push without freezing unrelated bodies', () => {
     const { world } = scene();
     world.blocks = [block('wall', 0.6, 0.61, -1, 1)];
-    const pushed = addEntity(world, 'light', { x: 0, z: 0 }, 0);
-    const free = addEntity(world, 'light', { x: 0, z: 3 }, 0);
+    const pushed = addEntity(world, 'light', { x: 0, z: 0 });
+    const free = addEntity(world, 'light', { x: 0, z: 3 });
     free.vx = 2;
     const committed = stepPhysics(
       world,
@@ -128,7 +128,7 @@ describe('continuous body contacts', () => {
   it('commits a blocked controller position before the session completes its action', async () => {
     const session = scene();
     session.world.blocks = [block('wall', 0.65, 0.66, -1, 1)];
-    const item = addEntity(session.world, 'light', { x: 0.6, z: 0 }, 0);
+    const item = addEntity(session.world, 'light', { x: 0.6, z: 0 });
     Object.assign(session.actor.position, { x: 0, y: 0, z: 0 });
     session.actor.state.yaw = -Math.PI / 2;
     const action = drive(session, 3, { throttle: 1 });
@@ -143,8 +143,8 @@ describe('continuous body contacts', () => {
     const { world } = scene();
     KINDS.ghost = { ...KINDS.light, physics: { ...KINDS.light.physics!, solid: false } };
     world.blocks = [block('wall', 0.6, 0.61, -1, 1)];
-    const source = addEntity(world, 'ghost', { x: -0.4, z: 0 }, 0);
-    const target = addEntity(world, 'light', { x: 0.4, z: 0 }, 0);
+    const source = addEntity(world, 'ghost', { x: -0.4, z: 0 });
+    const target = addEntity(world, 'light', { x: 0.4, z: 0 });
     source.vx = 10;
     stepPhysics(world, far, 0.2);
     expect(source.x).toBeCloseTo(1.6, 6);
@@ -153,8 +153,8 @@ describe('continuous body contacts', () => {
 
   it('separates an initially overlapping stack when the higher body is indexed first', () => {
     const { world } = scene();
-    const high = addEntity(world, 'light', { x: 0, z: 0 }, 0);
-    const low = addEntity(world, 'light', { x: 0, z: 0 }, 0);
+    const high = addEntity(world, 'light', { x: 0, z: 0 });
+    const low = addEntity(world, 'light', { x: 0, z: 0 });
     high.y = low.y + 0.02;
     stepPhysics(world, far, 0.1);
     expect(high.y - low.y).toBeCloseTo(0.04, 6);
@@ -165,7 +165,7 @@ describe('continuous body contacts', () => {
     const { world } = scene();
     world.terrain = { height: () => 0, inside: (x, _z, radius = 0) => x <= shore - radius };
     world.blocks = [block('wall', 0.6, 0.61, -1, 1)];
-    const item = addEntity(world, 'light', { x: 0, z: 0 }, 0);
+    const item = addEntity(world, 'light', { x: 0, z: 0 });
     item.vx = 10;
     stepPhysics(world, far, 0.1);
     expect(item.x).toBeCloseTo(Math.min(shore, 0.6) - 0.02, 6);
@@ -174,8 +174,8 @@ describe('continuous body contacts', () => {
 
   it('resolves a tether impulse through the same continuous body contacts', () => {
     const { world } = scene();
-    const pulled = addEntity(world, 'light', { x: -0.4, z: 0 }, 0);
-    const target = addEntity(world, 'heavy', { x: 0.4, z: 0 }, 0);
+    const pulled = addEntity(world, 'light', { x: -0.4, z: 0 });
+    const target = addEntity(world, 'heavy', { x: 0.4, z: 0 });
     const source = world.entities.get(world.controlledId!)!;
     Object.assign(source, { x: 100, y: pulled.y - 0.82, z: -1.66 });
     attachTether(world, source.id, pulled.id);

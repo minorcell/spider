@@ -242,7 +242,7 @@ describe('createWorld', () => {
     removeEntity(world, tree);
     expect(world.entities.has(tree.id)).toBe(false);
     expect(world.blocks.some((block) => block.id === tree.id)).toBe(false);
-    const replacement = addEntity(world, 'tree', tree, 0);
+    const replacement = addEntity(world, 'tree', tree);
     expect(replacement.id).not.toBe(tree.id);
     expect(world.blocks.some((block) => block.id === replacement.id)).toBe(true);
   });

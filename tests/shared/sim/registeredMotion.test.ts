@@ -39,8 +39,8 @@ afterEach(() => {
 describe('registered bodies share continuous collision', () => {
   it('stops both a fast tiny item and the controlled body at a registered thin shape', () => {
     const session = scene();
-    addEntity(session.world, 'fence', { x: 0.8, z: 0 }, 0);
-    const pellet = addEntity(session.world, 'pellet', { x: 0, z: -2 }, 0);
+    addEntity(session.world, 'fence', { x: 0.8, z: 0 });
+    const pellet = addEntity(session.world, 'pellet', { x: 0, z: -2 });
     pellet.vx = 80;
     stepPhysics(session.world, away, 1 / 30);
     expect(pellet.x).toBeCloseTo(0.79, 6);
@@ -57,8 +57,8 @@ describe('registered bodies share continuous collision', () => {
 
   it('sweeps an actor push instead of teleporting an item to the far side of a wall', () => {
     const session = scene();
-    addEntity(session.world, 'fence', { x: 0.2, z: 0 }, 0);
-    const pellet = addEntity(session.world, 'pellet', { x: 0, z: 0 }, 0);
+    addEntity(session.world, 'fence', { x: 0.2, z: 0 });
+    const pellet = addEntity(session.world, 'pellet', { x: 0, z: 0 });
     stepPhysics(session.world, { x: -0.1, z: 0, speed: 2 }, 1 / 60);
     expect(pellet.x).toBeCloseTo(0.19, 6);
     expect(pellet.vx).toBe(0);
@@ -66,8 +66,8 @@ describe('registered bodies share continuous collision', () => {
 
   it('keeps the along-wall velocity after a dynamic contact', () => {
     const session = scene();
-    addEntity(session.world, 'fence', { x: 0.2, z: 0 }, 0);
-    const pellet = addEntity(session.world, 'pellet', { x: 0, z: 0 }, 0);
+    addEntity(session.world, 'fence', { x: 0.2, z: 0 });
+    const pellet = addEntity(session.world, 'pellet', { x: 0, z: 0 });
     pellet.vx = 2;
     pellet.vz = 1;
     stepPhysics(session.world, away, 0.5);
@@ -81,9 +81,9 @@ describe('registered bodies share continuous collision', () => {
     const session = scene();
     Object.assign(session.actor.position, { x: -5, y: 0, z: 0 });
     KINDS.ghost = { ...KINDS.pellet, physics: { ...KINDS.pellet.physics!, solid: false } };
-    addEntity(session.world, 'fence', { x: 0.2, z: 0 }, 0);
-    const ghost = addEntity(session.world, 'ghost', { x: 0, z: 0 }, 0);
-    const pellet = addEntity(session.world, 'pellet', { x: 0.4, z: 0 }, 0);
+    addEntity(session.world, 'fence', { x: 0.2, z: 0 });
+    const ghost = addEntity(session.world, 'ghost', { x: 0, z: 0 });
+    const pellet = addEntity(session.world, 'pellet', { x: 0.4, z: 0 });
     ghost.vx = 1;
     stepPhysics(session.world, { x: 0.4, z: 0.01, speed: 0 }, 0.4);
     expect(ghost.x).toBeCloseTo(0.4);
@@ -118,7 +118,7 @@ describe('registered bodies share continuous collision', () => {
 
   it('plans around the same shape and reports the owning entity instead of collider pieces', () => {
     const session = scene();
-    const fence = addEntity(session.world, 'fence', { x: 0.8, z: 0 }, 0);
+    const fence = addEntity(session.world, 'fence', { x: 0.8, z: 0 });
     const plan = planRoute(0, 0, 2, 0, session.world.blocks, () => 0, 10)!;
     expect(plan.direct).toBe(false);
     expect(plan.around).toEqual([fence.id]);

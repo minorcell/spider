@@ -12,7 +12,7 @@ export function viewDistance(
   height: number,
   lamp: boolean,
   requested = VIEW_DISTANCE,
-  now = new Date(),
+  now = new Date(world.clock.wallNowMs),
 ): number {
   const eye = surfaceOf(world.terrain, x, z) + EYE_HEIGHT + height;
   const light = VIEW_DISTANCE * visualRange(worldClock(now), lamp);

@@ -26,6 +26,7 @@ describe('loose-body scaling', () => {
         terrain: { height: () => 0, inside: () => true },
         entities: new Map(),
         entitySerials: new Map(),
+        clock: { tick: 0, simSeconds: 0, wallNowMs: Date.now() },
         tethers: new Map(),
         populations: new Map(),
         blocks: [],

@@ -69,7 +69,7 @@ stage = new Stage(host, presenter.model);
 stage.placeIsland(ready.island);
 stage.setIslandSource(async (seed) => (await prepareWorld(seed)).island);
 stage.bind(
-  (dt) => presenter.step(dt),
+  (dt, wallNowMs) => presenter.step(dt, wallNowMs),
   () => session.world,
 );
 stage.start();

@@ -103,8 +103,16 @@ export interface TetherRelation {
   length: number;
 }
 
+/** Time belongs to the world, including when there is no controlled actor. */
+export interface WorldTime {
+  tick: number;
+  simSeconds: number;
+  wallNowMs: number;
+}
+
 export interface WorldState {
   seed: number;
+  clock: WorldTime;
   terrain: {
     height(x: number, z: number): number;
     surface?(x: number, z: number): number;
@@ -376,7 +384,7 @@ export function toObservation(
     inside,
   );
   return {
-    time: round3(state.time),
+    time: round3(world.clock.simSeconds),
     view: round3(view),
     beyond,
     hidden,

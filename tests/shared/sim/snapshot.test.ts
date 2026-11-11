@@ -286,6 +286,25 @@ describe('snapshot', () => {
     expect(status({ entities: [{ ...home, expiresAt: 1 }, ...others] })).toBe('malformed');
   });
 
+  it('requires an explicit world clock and rejects invalid counters or wall timestamps', () => {
+    const record = good();
+    for (const clock of [
+      undefined,
+      null,
+      'bad',
+      {},
+      { ...record.clock, tick: -1 },
+      { ...record.clock, tick: 0.5 },
+      { ...record.clock, tick: Number.MAX_SAFE_INTEGER + 1 },
+      { ...record.clock, simSeconds: NaN },
+      { ...record.clock, simSeconds: -1 },
+      { ...record.clock, wallNowMs: Infinity },
+      { ...record.clock, wallNowMs: -1 },
+    ]) {
+      expect(classify({ ...record, clock }).status).toBe('malformed');
+    }
+  });
+
   it('names today from the local clock', () => {
     expect(localDate(new Date(2026, 10, 2, 23))).toBe('2026-11-02');
   });

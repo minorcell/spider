@@ -32,7 +32,7 @@ import {
 const SAVE_MS = 10_000;
 const LEASE_MS = 30_000;
 const POKE_MS = 400;
-const APPLE_DIRTY_S = 5;
+const CLOCK_DIRTY_S = 5;
 const MOVE_M = 0.05;
 const YAW_M = 0.02;
 const OPEN_MS = 1500;
@@ -275,7 +275,7 @@ async function write(reason: Reason, previous: Promise<void>): Promise<void> {
   const now = Date.now();
   const today = localDate(new Date(now));
   const body = captureBody(session, pending);
-  const slack = reason === 'interval' ? APPLE_DIRTY_S : 0.05;
+  const slack = reason === 'interval' ? CLOCK_DIRTY_S : 0.05;
   const dirty =
     !lastBody ||
     (reason === 'hide'
@@ -524,6 +524,7 @@ export function prefer(a?: WorldRecord, b?: WorldRecord): WorldRecord | undefine
 }
 
 function changed(prev: SimBody, next: SimBody, populationSlack: number): boolean {
+  if (Math.abs(next.clock.simSeconds - prev.clock.simSeconds) >= populationSlack) return true;
   if (prev.controlledId !== next.controlledId) return true;
   const before = prev.entities.find((entity) => entity.id === prev.controlledId)!;
   const after = next.entities.find((entity) => entity.id === next.controlledId)!;

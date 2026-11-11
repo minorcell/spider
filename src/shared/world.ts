@@ -69,6 +69,7 @@ export function indexEntities(entities: Iterable<EntityState>): Map<string, Enti
 export function createWorld(
   seed = Math.floor(Math.random() * 1_000_000_000),
   terrain = new Terrain(seed),
+  wallNowMs = Date.now(),
 ): WorldState {
   const rng = mulberry32(seed ^ 0x9e3779b9);
   const entities: EntityState[] = islandPlacements.map((placement) => ({
@@ -102,6 +103,7 @@ export function createWorld(
   }
   return {
     seed: terrain.seed,
+    clock: { tick: 0, simSeconds: 0, wallNowMs },
     terrain,
     entities: indexEntities(entities),
     entitySerials: new Map(),
@@ -117,7 +119,6 @@ export function addEntity(
   world: WorldState,
   kind: string,
   position: { x: number; z: number },
-  time: number,
 ): EntityState {
   const id = nextPropId(world, kind);
   const entity = makeEntity(
@@ -125,7 +126,7 @@ export function addEntity(
     id,
     kind,
     position,
-    time,
+    world.clock.simSeconds,
     kindOf(kind)?.placement?.footprint(id),
   );
   world.entities.set(id, entity);
@@ -146,9 +147,10 @@ export function removeEntity(world: WorldState, entity: EntityState): void {
   world.blocks = world.blocks.filter((block) => (block.owner ?? block.id) !== entity.id);
 }
 
-export function expireEntities(world: WorldState, time: number): void {
+export function expireEntities(world: WorldState): void {
   for (const entity of world.entities.values()) {
-    if (entity.expiresAt !== undefined && entity.expiresAt <= time) removeEntity(world, entity);
+    if (entity.expiresAt !== undefined && entity.expiresAt <= world.clock.simSeconds)
+      removeEntity(world, entity);
   }
 }
 
@@ -175,12 +177,7 @@ function makeEntity(
   return entity;
 }
 
-export function grow(
-  world: WorldState,
-  dt: number,
-  avoid?: { x: number; z: number },
-  time = 0,
-): void {
+export function grow(world: WorldState, dt: number, avoid?: { x: number; z: number }): void {
   for (const rule of populationRules) {
     const clock = world.populations.get(rule.id);
     if (!clock) continue;
@@ -191,7 +188,7 @@ export function grow(
     clock.remaining = onGround >= rule.count ? rule.interval : Math.max(0, clock.remaining - dt);
     if (clock.remaining > 0) continue;
     clock.remaining = rule.interval;
-    sprout(world, rule, clock.attempts++, time, avoid);
+    sprout(world, rule, clock.attempts++, avoid);
   }
 }
 
@@ -199,7 +196,6 @@ function sprout(
   world: WorldState,
   rule: PopulationRule,
   attempt: number,
-  time: number,
   avoid: { x: number; z: number } | undefined,
 ): void {
   const { kind, home, salt } = rule;
@@ -210,7 +206,7 @@ function sprout(
     if (!spot) continue;
     const settled = settle(world.terrain, world.blocks, kind, spot, placed, avoid, rule.gap);
     if (!settled) continue;
-    addEntity(world, kind, settled, time);
+    addEntity(world, kind, settled);
     return;
   }
 }
@@ -336,6 +332,7 @@ export function settle(
   };
   const scratch: WorldState = {
     seed: 0,
+    clock: { tick: 0, simSeconds: 0, wallNowMs: 0 },
     terrain,
     entities: indexEntities([entity]),
     entitySerials: new Map(),
@@ -345,10 +342,9 @@ export function settle(
     populations: new Map(),
     physics: PHYSICS,
   };
-  const far = { x: 1e6, z: 1e6, speed: 0 };
   const run = (): void => {
     for (let step = 0; step < SETTLE_STEPS; step++) {
-      stepPhysics(scratch, far, SETTLE_DT);
+      stepPhysics(scratch, undefined, SETTLE_DT);
       if (entity.vx === 0 && entity.vz === 0) return;
     }
   };

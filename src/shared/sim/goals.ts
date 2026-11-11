@@ -7,7 +7,6 @@ export interface MotionActor {
   yaw: number;
   yawRate: number;
   speed: number;
-  time: number;
   heightSet: number;
   stuckFor: number;
   halt: 'clear' | 'solid' | 'steep';

@@ -76,7 +76,7 @@ describe('registered controlled entities', () => {
     session.world.entities.set(session.actor.entity.id, structuredClone(session.actor.entity));
     session.frame(1 / 60);
     await expect(action).resolves.toMatchObject({ ok: false, reason: 'stale-actor' });
-    const item = addEntity(session.world, 'pebble', { x: 3, z: 3 }, 0);
+    const item = addEntity(session.world, 'pebble', { x: 3, z: 3 });
     removeEntity(session.world, item);
     expect(session.world.controlledId).toBe(session.actor.entity.id);
   });

@@ -42,8 +42,8 @@ export class ActorPresenter {
     this.model.present(dt, input);
   }
 
-  step(dt: number): void {
-    this.session.frame(dt);
+  step(dt: number, wallNowMs?: number): void {
+    this.session.frame(dt, wallNowMs);
     this.sync(dt);
   }
 }
