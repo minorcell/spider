@@ -154,6 +154,7 @@ export class Stage {
     });
 
     this.#camera = new PerspectiveCamera(VIEW.fov, 1, VIEW.near, VIEW.far);
+    this.#scene.fog = this.#sky.fog;
     this.#observe = new ObserveOverlay(host);
     enableWorldShadows(this.#spider.root);
     enableWorldShadows(this.#spider.rig);

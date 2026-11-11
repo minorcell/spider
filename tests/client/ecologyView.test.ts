@@ -71,9 +71,15 @@ describe('applyEcologyLighting', () => {
     expect(sky.clouds.children[0].position.x).not.toBe(cloudX);
     expect(sky.sun.visible).toBe(true);
     expect(sky.moon.visible).toBe(false);
+    expect(sky.stars.visible).toBe(false);
+    expect(sky.fog.density).toBe(0);
     sky.update(worldClock(new Date(2026, 0, 1, 23)), focus, true, 1);
     expect(sky.sun.visible).toBe(false);
     expect(sky.moon.visible).toBe(true);
+    expect(sky.stars.visible).toBe(true);
+    expect(sky.stars.position).toEqual(focus);
+    expect(sky.stars.geometry.getAttribute('position').count).toBe(220);
+    expect(sky.fog.density).toBeGreaterThan(0);
     sky.update(worldClock(new Date(2026, 0, 1, 23)), focus, true);
     sky.dispose();
   });
@@ -123,15 +129,16 @@ describe('applyEcologyLighting', () => {
     // Even in shadow the pale models remain readable; the key reveals their
     // shape without lifting the whole night scene to daytime exposure.
     for (const value of fill.toArray()) {
-      expect(value).toBeGreaterThan(0.09);
-      expect(value).toBeLessThan(0.2);
+      expect(value).toBeGreaterThan(0.02);
+      expect(value).toBeLessThan(0.05);
     }
     const lit = fill.clone().add(moon);
     for (const value of lit.toArray()) {
-      expect(value).toBeGreaterThan(0.2);
-      expect(value).toBeLessThan(0.5);
+      expect(value).toBeGreaterThan(0.07);
+      expect(value).toBeLessThan(0.22);
     }
     expect(lit.b).toBeGreaterThan(lit.r);
+    expect(lit.r).toBeGreaterThan(fill.r * 2.5);
     expect(lit.r / backgrounds[3].r).toBeGreaterThan(10);
     expect(sky.ambient.groundColor.r).toBeLessThan(sky.ambient.color.r);
     expect(sky.moon.visible).toBe(true);
@@ -144,7 +151,7 @@ describe('applyEcologyLighting', () => {
       const clock = worldClock(new Date(2026, 0, 1, Math.floor(hour), (hour % 1) * 60));
       sky.update(clock, new Vector3(), false);
       expect(sky.light.position.y).toBeGreaterThanOrEqual(-1e-12);
-      expect(sky.ambient.intensity).toBeGreaterThanOrEqual(Math.PI * 0.22);
+      expect(sky.ambient.intensity).toBeGreaterThanOrEqual(Math.PI * 0.055);
       expect(sky.sun.visible).not.toBe(sky.moon.visible);
     }
     sky.dispose();

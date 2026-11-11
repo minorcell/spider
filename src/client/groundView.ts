@@ -141,7 +141,7 @@ const shade = clamp(painted.dy.mul(7).add(0.42).add(ripples.mul(0.28)), 0, 1);
 const waterMaterial = new MeshBasicNodeMaterial({
   transparent: true,
   depthWrite: false,
-  fog: false,
+  fog: true,
   side: DoubleSide,
   colorNode: mix(mix(waterDeep, waterShallow, shade), waterShallow, crest.mul(0.8)),
   opacityNode: clamp(waterOpacity.add(crest.mul(0.1)).add(ripples.mul(0.04)), 0.4, 0.92),
