@@ -220,6 +220,46 @@ describe('restoreWorld', () => {
     expect(await db.get('snapshots', 'current')).toMatchObject({ seed: record.seed });
   });
 
+  it('saves a fresh world over obsolete snapshots in both stores', async () => {
+    const obsolete = { ...stamp(new SimSession(2), { seq: 42 }), format: 3 };
+    localStorage.setItem(KEY, JSON.stringify(obsolete));
+    const db = await openSpiderDb();
+    await db.put('snapshots', obsolete as unknown as WorldRecord);
+    const session = new SimSession(6);
+    const seed = session.world.terrain.seed;
+
+    expect(await restoreWorld(session)).toMatchObject({
+      restored: false,
+    });
+    expect(session.world.terrain.seed).toBe(seed);
+
+    installWorldStore(session);
+    session.actor.position.x += 1;
+    flushWorld('poke');
+    await writesDone();
+
+    const saved = await db.get('snapshots', 'current');
+    expect(saved).toMatchObject({ format: 4, seed });
+    expect(JSON.parse(String(localStorage.getItem(KEY)))).toEqual(saved);
+  });
+
+  it.each(['buffer', 'database'] as const)(
+    'restores the current world when the %s contains an obsolete snapshot',
+    async (location) => {
+      const obsolete = { ...stamp(new SimSession(2), { seq: 42 }), format: 3 };
+      const current = stamp(new SimSession(6));
+      localStorage.setItem(KEY, JSON.stringify(location === 'buffer' ? obsolete : current));
+      const store = memoryStore(location === 'database' ? obsolete : current);
+      const session = new SimSession(9);
+
+      expect(await restoreWorld(session, new Date(), store)).toMatchObject({
+        restored: true,
+        cause: null,
+      });
+      expect(session.world.terrain.seed).toBe(current.seed);
+    },
+  );
+
   it('does not overwrite a snapshot from a newer page', async () => {
     const record = { ...stamp(new SimSession(2)), format: 5 };
     localStorage.setItem(KEY, JSON.stringify(record));
@@ -1505,7 +1545,7 @@ describe('write cadence and leases', () => {
     const saved = captureBody(session, null);
     installWorldStore(session, store);
 
-    applyBody(session, saved, undefined, Date.now() + 720_000);
+    applyBody(session, saved, undefined, Date.now() + 24 * 3_600_000);
     expect(session.world.entities.has(food.id)).toBe(false);
     await vi.advanceTimersByTimeAsync(400);
     await writesDone();

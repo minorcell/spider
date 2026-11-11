@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { populationRules } from '@/src/shared/islandContent';
 import { KINDS } from '@/src/shared/kinds';
 import { SimSession } from '@/src/shared/sim/session';
@@ -116,22 +116,18 @@ describe('registered items in the island', () => {
     expect(restored.world.entities.has(berry.id)).toBe(false);
   });
 
-  it('expires berries only with simulation time and preserves the ID sequence across reloads', () => {
-    const session = new SimSession(7);
+  it('expires berries by wall time and preserves the ID sequence across reloads', () => {
+    const epoch = 1_800_000_000_000;
+    const session = new SimSession(7, undefined, epoch);
     const berry = session.addEntity('berry', 0, -0.8);
-    expect(berry.deadline).toMatchObject({
-      clock: 'simulation',
-      expiresAtSeconds: KINDS.berry.lifetime!.lifetimeSeconds,
-    });
-    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 86_400_000);
-    pump(session, 1);
+    const expiresAtMs = epoch + 6 * 3_600_000;
+    expect(berry.deadline).toMatchObject({ clock: 'wall', expiresAtMs });
+    session.frame(1 / 60, expiresAtMs - 1);
     expect(session.world.entities.get(berry.id)).toBe(berry);
-    session.world.clock.simSeconds =
-      (berry.deadline as { expiresAtSeconds: number }).expiresAtSeconds - 1 / 60;
-    pump(session, 1);
+    session.frame(0, expiresAtMs);
     expect(session.world.entities.has(berry.id)).toBe(false);
 
-    const restored = new SimSession(8);
+    const restored = new SimSession(8, undefined, expiresAtMs);
     restored.adopt(decode(captureBody(session, null)));
     const replacement = restored.addEntity('berry', 0, -0.8);
     expect(Number(replacement.id.split('-')[1])).toBe(Number(berry.id.split('-')[1]) + 1);

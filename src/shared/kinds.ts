@@ -120,7 +120,7 @@ export const KINDS: Record<string, KindSpec> = {
     label: '苹果',
     model: 'apple',
     modelScale: 0.54,
-    lifetime: { clock: 'wall', lifetimeSeconds: 720, rottenSeconds: 90 },
+    lifetime: { clock: 'wall', lifetimeSeconds: 24 * 3600, rottenSeconds: 3600 },
     eat: { bites: 6, secondsPerBite: 0.5, nutritionPerBite: 10, removes: true },
     rest: 0,
     physics: { solid: true, radius: 0.1944, loose: true, rolls: true, mass: 0.025, volume: 0.031 },
@@ -135,7 +135,7 @@ export const KINDS: Record<string, KindSpec> = {
   berry: {
     label: '浆果',
     model: 'berry',
-    lifetime: { clock: 'simulation', lifetimeSeconds: 180, rottenSeconds: 30 },
+    lifetime: { clock: 'wall', lifetimeSeconds: 6 * 3600, rottenSeconds: 30 * 60 },
     eat: { bites: 2, secondsPerBite: 0.5, nutritionPerBite: 4, removes: true },
     rest: 0,
     physics: { solid: true, radius: 0.16, loose: true, rolls: true, mass: 0.018 },

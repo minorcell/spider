@@ -7,6 +7,7 @@ import { applyBody, captureBody } from '@/src/shared/sim/snapshot';
 import { attachTether } from '@/src/shared/sim/tether';
 
 const epoch = 1_800_000_000_000;
+const hourMs = 3_600_000;
 
 function scene(): SimSession {
   const session = new SimSession(7, undefined, epoch);
@@ -34,11 +35,14 @@ describe('registered life capabilities', () => {
     for (const [i, apple] of apples.entries()) {
       expect(apple.deadline).toEqual({
         clock: 'wall',
-        expiresAtMs: epoch + (720 - i * 24) * 1000,
-        rotsAtMs: epoch + (630 - i * 24) * 1000,
+        expiresAtMs: epoch + 24 * hourMs - i * 24_000,
+        rotsAtMs: epoch + 23 * hourMs - i * 24_000,
       });
     }
-    KINDS.ration = { ...KINDS.berry };
+    KINDS.ration = {
+      ...KINDS.berry,
+      lifetime: { clock: 'simulation', lifetimeSeconds: 180, rottenSeconds: 30 },
+    };
     const food = addEntity(world, 'ration', { x: 5, z: 0 });
     const original = { ...food.deadline };
     KINDS.ration.lifetime = { clock: 'wall', lifetimeSeconds: 900, rottenSeconds: 100 };
@@ -56,7 +60,6 @@ describe('registered life capabilities', () => {
   it('reconciles wall expiry and relations without advancing hunger, physics or populations', async () => {
     const session = scene();
     const apple = session.addEntity('apple', 0, -0.8);
-    const berry = session.addEntity('berry', 1, 0);
     const pebble = session.addEntity('pebble', 4, 0);
     pebble.vx = 1;
     expect(pebble.deadline).toBeUndefined();
@@ -66,11 +69,10 @@ describe('registered life capabilities', () => {
     const meal = session.eat(apple.id);
     const clock = { ...session.world.clock };
     const hunger = session.actor.entity.metabolism!.hunger;
-    session.reconcileWallTime(epoch + 720_000);
+    session.reconcileWallTime(epoch + 24 * hourMs);
     await expect(meal).resolves.toMatchObject({ ok: false, reason: 'expired', nutrition: 0 });
     expect(session.world.entities.has(apple.id)).toBe(false);
     expect(session.world.tethers.size).toBe(0);
-    expect(session.world.entities.has(berry.id)).toBe(true);
     expect(session.world.clock.simSeconds).toBe(clock.simSeconds);
     expect(session.world.clock.tick).toBe(clock.tick);
     expect(session.actor.entity.metabolism!.hunger).toBe(hunger);
@@ -79,7 +81,7 @@ describe('registered life capabilities', () => {
     expect(session.world.populations.size).toBe(0);
     session.reconcileWallTime(NaN);
     session.reconcileWallTime(-1);
-    expect(session.world.clock.wallNowMs).toBe(epoch + 720_000);
+    expect(session.world.clock.wallNowMs).toBe(epoch + 24 * hourMs);
   });
 
   it('awards nutrition only for complete bites, including cancel, save and resume', async () => {
@@ -133,9 +135,9 @@ describe('registered life capabilities', () => {
   it('rejects rotten food at submission and at the next bite, and exposes freshness to readers', async () => {
     const session = scene();
     const apple = session.addEntity('apple', 0, -0.8);
-    session.reconcileWallTime(epoch + 629_500);
+    session.reconcileWallTime(epoch + 23 * hourMs - 500);
     const meal = session.eat(apple.id);
-    session.frame(0.05, epoch + 630_000);
+    session.frame(0.05, epoch + 23 * hourMs);
     await expect(meal).resolves.toMatchObject({
       ok: false,
       reason: 'spoiled',
@@ -182,20 +184,43 @@ describe('registered life capabilities', () => {
     tick(session, 1);
   });
 
-  it('restores wall-expired items before publication without aging simulation food or hunger', () => {
-    const session = scene();
-    const apple = session.addEntity('apple', 0, -0.8);
-    const berry = session.addEntity('berry', 1, 0);
-    attachTether(session.world, session.actor.entity.id, apple.id);
-    const saved = captureBody(session, null);
-    applyBody(session, saved, undefined, epoch + 721_000);
-    expect(session.world.entities.has(apple.id)).toBe(false);
-    expect(session.world.tethers.size).toBe(0);
-    expect(session.world.entities.get(berry.id)?.deadline).toEqual(berry.deadline);
-    expect(session.actor.entity.metabolism!.hunger).toBe(25);
-    expect(session.world.clock).toEqual({ tick: 0, simSeconds: 0, wallNowMs: epoch + 721_000 });
-    expect(saved.entities.some((item) => item.id === apple.id)).toBe(true);
-  });
+  it.each([
+    { kind: 'apple', freshHours: 23, expiresHours: 24, carryable: true },
+    { kind: 'berry', freshHours: 5.5, expiresHours: 6, carryable: false },
+  ])(
+    'ages $kind by wall time through exact restore and expiry boundaries',
+    ({ kind, freshHours, expiresHours, carryable }) => {
+      const session = scene();
+      const food = session.addEntity(kind, 0, -0.8);
+      const rotsAtMs = epoch + freshHours * hourMs;
+      const expiresAtMs = epoch + expiresHours * hourMs;
+      expect(food.deadline).toEqual({ clock: 'wall', rotsAtMs, expiresAtMs });
+      expect(attachTether(session.world, session.actor.entity.id, food.id).ok).toBe(carryable);
+
+      session.world.clock.simSeconds = expiresHours * 3600 + 1;
+      expect(freshnessOf(food, session.world.clock)).toBe('fresh');
+      const saved = captureBody(session, null);
+
+      applyBody(session, saved, undefined, rotsAtMs - 1);
+      const restored = session.world.entities.get(food.id)!;
+      expect(restored.deadline).toEqual(food.deadline);
+      expect(freshnessOf(restored, session.world.clock)).toBe('fresh');
+      expect(session.world.tethers.has(food.id)).toBe(carryable);
+
+      applyBody(session, saved, undefined, rotsAtMs);
+      expect(freshnessOf(session.world.entities.get(food.id)!, session.world.clock)).toBe('rotten');
+      applyBody(session, saved, undefined, expiresAtMs);
+      expect(session.world.entities.has(food.id)).toBe(false);
+      expect(session.world.tethers.has(food.id)).toBe(false);
+      expect(session.actor.entity.metabolism!.hunger).toBe(25);
+      expect(session.world.clock).toEqual({
+        tick: 0,
+        simSeconds: expiresHours * 3600 + 1,
+        wallNowMs: expiresAtMs,
+      });
+      expect(saved.entities.some((item) => item.id === food.id)).toBe(true);
+    },
+  );
 
   it('revalidates the eater at a bite boundary without consuming food or granting nutrition', async () => {
     const session = scene();

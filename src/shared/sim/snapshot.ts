@@ -45,7 +45,7 @@ export interface WorldRecord extends SimBody {
 
 export type Classify =
   | { status: 'ok'; record: WorldRecord }
-  | { status: 'malformed' | 'format' | 'empty' };
+  | { status: 'malformed' | 'obsolete' | 'format' | 'empty' };
 
 export interface Restorable {
   cancel(): void;
@@ -141,7 +141,7 @@ export function classify(input: unknown, _today?: string): Classify {
   if (!isFiniteNumber(raw.format) || !Number.isSafeInteger(raw.format) || raw.format < 1) {
     return { status: 'malformed' };
   }
-  if (raw.format < FORMAT) return { status: 'format' };
+  if (raw.format < FORMAT) return { status: 'obsolete' };
   if (raw.format > FORMAT) return { status: 'format' };
   if (!isDay(raw.day)) return { status: 'malformed' };
   if (

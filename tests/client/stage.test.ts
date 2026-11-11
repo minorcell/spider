@@ -549,7 +549,7 @@ describe('world sync', () => {
     stage.start();
     frame();
 
-    session.reconcileWallTime(session.world.clock.wallNowMs + 720_000);
+    session.reconcileWallTime(session.world.clock.wallNowMs + 24 * 3_600_000);
     frame();
 
     expect(session.world.entities.has(food.id)).toBe(false);
@@ -804,7 +804,7 @@ describe('feedback', () => {
     stage.start();
     frame();
 
-    applyBody(session, saved, undefined, session.world.clock.wallNowMs + 720_000);
+    applyBody(session, saved, undefined, session.world.clock.wallNowMs + 24 * 3_600_000);
     frame();
     expect(session.world.entities.has(food.id)).toBe(false);
     expect(sound.grasp).not.toHaveBeenCalled();

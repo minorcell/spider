@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SimSession } from '@/src/shared/sim/session';
 import { captureBody, applyBody } from '@/src/shared/sim/snapshot';
 import { stepPhysics } from '@/src/shared/sim/physics';
 import { removeEntity } from '@/src/shared/world';
+import { KINDS } from '@/src/shared/kinds';
 import { PHYSICS } from '@/src/shared/config';
 import { viewDistance } from '@/src/shared/vision';
 
@@ -17,13 +18,26 @@ function scene(): SimSession {
   return session;
 }
 
+function registerSimulationFood(): void {
+  KINDS.ration = {
+    ...KINDS.berry,
+    lifetime: { clock: 'simulation', lifetimeSeconds: 180, rottenSeconds: 30 },
+  };
+}
+
+afterEach(() => {
+  delete KINDS.ration;
+  vi.restoreAllMocks();
+});
+
 describe('world-owned time', () => {
   it('uses one committed wall sample for perception while only executed steps age items', () => {
+    registerSimulationFood();
     const session = scene();
-    const berry = session.addEntity('berry', 0, -0.8);
+    const ration = session.addEntity('ration', 0, -0.8);
     session.actor.state.time = 5000;
     session.frame(1 / 60, noon);
-    expect(session.world.entities.get(berry.id)).toBe(berry);
+    expect(session.world.entities.get(ration.id)).toBe(ration);
     expect(session.world.clock).toEqual({ tick: 1, simSeconds: 1 / 60, wallNowMs: noon });
     expect(session.observe().time).toBe(0.017);
     expect(viewDistance(session.world, 0, 0, 0, false)).toBe(24);
@@ -36,31 +50,31 @@ describe('world-owned time', () => {
     expect(session.world.clock).toEqual({ tick: 1, simSeconds: 1 / 60, wallNowMs: midnight });
     expect(session.worldInfo().clock.phase).toBe('night');
     expect(viewDistance(session.world, 0, 0, 0, false)).toBeCloseTo(2.4);
-    expect(session.world.entities.get(berry.id)).toBe(berry);
+    expect(session.world.entities.get(ration.id)).toBe(ration);
   });
 
   it('keeps expiry, population and collisions running after the controlled actor is removed', async () => {
+    registerSimulationFood();
     const session = scene();
-    const berry = session.addEntity('berry', 2, 0);
+    const ration = session.addEntity('ration', 2, 0);
     const rock = session.addEntity('pebble', -1, 0);
     rock.vx = 4;
     session.world.physics = { ...PHYSICS, damping: 0 };
     session.world.clock.simSeconds =
-      (berry.deadline as { expiresAtSeconds: number }).expiresAtSeconds - 0.1;
+      (ration.deadline as { expiresAtSeconds: number }).expiresAtSeconds - 0.1;
     const action = session.walk(5);
     removeEntity(session.world, session.actor.entity);
     session.world.populations.get('berries')!.remaining = 0;
     session.frame(0.05, midnight);
     await expect(action).resolves.toMatchObject({ ok: false, reason: 'stale-actor' });
     expect(session.world.populations.get('berries')!.attempts).toBe(1);
-    const replacement = [...session.world.entities.values()].find(
-      (item) => item.kind === 'berry' && item !== berry,
-    )!;
-    expect((replacement.deadline as { expiresAtSeconds: number }).expiresAtSeconds).toBeCloseTo(
-      session.world.clock.simSeconds + 180 - 2 / 60,
-    );
+    const replacement = [...session.world.entities.values()].find((item) => item.kind === 'berry')!;
+    expect(replacement.deadline).toMatchObject({
+      clock: 'wall',
+      expiresAtMs: midnight + 6 * 3_600_000,
+    });
     for (let i = 0; i < 9; i++) session.frame(0.05, midnight);
-    expect(session.world.entities.has(berry.id)).toBe(false);
+    expect(session.world.entities.has(ration.id)).toBe(false);
     expect(session.world.entities.has(replacement.id)).toBe(true);
     expect(rock.x).toBeCloseTo(1); // No invisible controller remains at the origin.
     expect(session.world.clock.tick).toBe(30);
@@ -71,18 +85,19 @@ describe('world-owned time', () => {
   });
 
   it('restores independent clocks and uses world time for interrupted and resumed actions', async () => {
+    registerSimulationFood();
     const session = scene();
     session.world.clock = { tick: 600, simSeconds: 10, wallNowMs: noon };
     session.actor.state.time = 500;
-    const berry = session.addEntity('berry', 0, -0.8);
+    const ration = session.addEntity('ration', 0, -0.8);
     const saved = captureBody(session, null);
-    expect(berry.deadline).toMatchObject({ expiresAtSeconds: 190 });
+    expect(ration.deadline).toMatchObject({ expiresAtSeconds: 190 });
     session.frame(0.05, midnight);
     expect(saved.clock).toEqual({ tick: 600, simSeconds: 10, wallNowMs: noon });
     applyBody(session, saved, undefined, noon);
     expect(session.world.clock).toEqual(saved.clock);
     expect(session.actor.time).toBe(500);
-    const eating = session.eat(berry.id);
+    const eating = session.eat(ration.id);
     session.actor.state.time = 0;
     for (let i = 0; i < 10; i++) session.frame(0.05, noon);
     session.cancel();
